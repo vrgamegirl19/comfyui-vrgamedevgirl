@@ -652,7 +652,7 @@ export function buildVideoSettingsPanels({ previewFluxButton, previewNBButton, w
   miniMaxSceneVideoButton.title = "Render this scene with the MiniMax H3 hidden workflow and preserve the exact timeline duration.";
   const miniMaxSceneVideoButtons = [miniMaxSceneVideoButton];
   const miniMaxReferencesButton = makeButton("Choose MiniMax References (0/9)");
-  miniMaxReferencesButton.title = "Choose and order up to nine images from the existing Reference Builder for this scene.";
+  miniMaxReferencesButton.title = "Choose and order up to eight images from the existing Reference Builder for this scene. The scene image used as Image 1 is a ninth image.";
   const miniMaxVideoReferencesButton = makeButton("Choose MiniMax Edit References (0/9)");
   miniMaxVideoReferencesButton.title = "Choose character, location, background, prop, or style images to use alongside the Video to Video source.";
   const miniMaxReferenceButtons = [miniMaxReferencesButton, miniMaxVideoReferencesButton];

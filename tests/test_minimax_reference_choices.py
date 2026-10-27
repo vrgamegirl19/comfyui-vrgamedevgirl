@@ -105,7 +105,8 @@ class ReferenceChoicesTests(unittest.TestCase):
         # Image 1 is the scene's start frame only when that option is on, so numbering starts at 1 here
         self.assertEqual([item["image_number"] for item in choices["selected"]], [1, 2, 3])
         self.assertEqual(choices["automatic_keys"], ["subject:ava", "extra:crowd", "location:roof"])
-        self.assertEqual(choices["limits"], {"max_images": 9, "start_frame_image_1": False, "max_choices": 9})
+        self.assertEqual(choices["limits"], {"max_images": 9, "start_frame_image_1": False, "max_choices": 8})
+        self.assertEqual(choices["over_limit_by"], 0)
         self.assertEqual((choices["scene_id"], choices["scene_number"], choices["video_mode"]), ("seg_1", 1, "reference_to_video"))
 
     def test_scenes_can_be_addressed_by_number(self):
@@ -118,7 +119,7 @@ class ReferenceChoicesTests(unittest.TestCase):
         session["segments"][0]["minimax_h3_use_scene_image_as_start_frame"] = True
         Path(self.folder, "vrgdg_builder_session.json").write_text(json.dumps(session), encoding="utf-8")
         choices = mutations.get_scene_minimax_references("Refs", "seg_1")
-        self.assertEqual(choices["limits"], {"max_images": 9, "start_frame_image_1": False, "max_choices": 9})
+        self.assertEqual(choices["limits"], {"max_images": 9, "start_frame_image_1": False, "max_choices": 8})
         self.assertEqual([item["image_number"] for item in choices["selected"]], [1, 2, 3])
 
     # ---- writing
@@ -166,10 +167,30 @@ class ReferenceChoicesTests(unittest.TestCase):
         keys = [item["key"] for item in available]
         with self.assertRaisesRegex(errors_value_error(), "at most 8 chosen references.*start frame.*9 were given"):
             scene_inputs.validate_reference_keys({"available": available, "limits": {"max_choices": 8, "start_frame_image_1": True}}, keys[:9])
+        with self.assertRaisesRegex(errors_value_error(), "at most 8 chosen references for this scene; 9 were given"):
+            scene_inputs.validate_reference_keys({"available": available, "limits": {"max_choices": 8, "start_frame_image_1": False}}, keys[:9])
         self.assertEqual(
-            scene_inputs.validate_reference_keys({"available": available, "limits": {"max_choices": 9, "start_frame_image_1": False}}, keys[:9]),
-            keys[:9],
+            scene_inputs.validate_reference_keys({"available": available, "limits": {"max_choices": 8, "start_frame_image_1": False}}, keys[:8]),
+            keys[:8],
         )
+
+    def test_a_scene_sends_at_most_eight_references_however_many_it_maps(self):
+        session = self._saved()
+        builder = session["flux_reference_builder"]
+        people = [{"id": f"p{n}", "name": f"Person {n}", "description": "x", "image": _image(f"p{n}")} for n in range(10)]
+        builder["subjects"] = [*builder["subjects"], *people]
+        builder["subject_count"] = len(builder["subjects"])
+        builder["subject_scene_map"]["seg_1"] = ["ava", *[person["id"] for person in people]]
+        Path(self.folder, "vrgdg_builder_session.json").write_text(json.dumps(session), encoding="utf-8")
+        choices = mutations.get_scene_minimax_references("Refs", "seg_1")
+        self.assertEqual(len(choices["selected"]), 8)
+        self.assertEqual(choices["limits"]["max_choices"], 8)
+        # Ava, ten people, the mapped extra and the mapped location are 13 references. Eight are sent.
+        self.assertEqual(choices["over_limit_by"], 5)
+        sent = scene_inputs.render_reference_image_paths(self._saved(), self._saved()["segments"][0], "reference_to_video", 0)
+        self.assertEqual(len(sent), 8)
+        with self.assertRaisesRegex(errors.ValidationError, "at most 8 chosen references"):
+            mutations.set_scene_minimax_references("Refs", "seg_1", keys=[f"subject:p{n}" for n in range(9)])
 
     def test_a_stale_revision_is_a_conflict(self):
         with self.assertRaises(errors.RevisionConflictError):

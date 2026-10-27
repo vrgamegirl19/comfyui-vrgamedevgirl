@@ -7,6 +7,10 @@ import { applySceneItemUsers, assignLabels, clothingChoices, composeRefmodItems,
 import { expandSubjectReferencesForRender, normalizeFluxReferenceBuilder } from "./reference_data.mjs";
 import { mediaPathKey } from "./timeline_state.mjs";
 
+// The most Reference Builder images (or RefMods in the RefMod pipeline) one scene sends. H3 takes nine images in all, so the
+// scene start frame, end frame and continuity frame share the ninth slot with the references and never raise this number.
+export const MAX_SCENE_REFERENCES = 8;
+
 export function referenceBuilderSubjectHasImage(item = {}) {
   const image = item?.image || item || {};
   return Boolean(String(image.path || "").trim() || String(image.data || "").trim());
@@ -140,7 +144,7 @@ export function createMiniMaxReferences({
 
   function miniMaxReferenceKeysForSegment(segment, refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder)) {
     if (!segment) return [];
-    return miniMaxDesiredReferenceKeysForSegment(segment, refs).slice(0, 9);
+    return miniMaxDesiredReferenceKeysForSegment(segment, refs).slice(0, MAX_SCENE_REFERENCES);
   }
 
   function miniMaxReferenceBuilderImagePathsForSegment(segment, mode = miniMaxH3ModeForSegment(segment)) {
@@ -156,7 +160,7 @@ export function createMiniMaxReferences({
     return miniMaxReferenceKeysForSegment(segment, refs)
       .map((key) => byKey.get(key))
       .filter(Boolean)
-      .slice(0, 9);
+      .slice(0, MAX_SCENE_REFERENCES);
   }
 
   // The whole project switches pipeline at once, so the project setting decides.
@@ -294,24 +298,31 @@ export function createMiniMaxReferences({
   function miniMaxH3ReferenceCapacityStatus(segment, mode = miniMaxH3ModeForSegment(segment)) {
     const normalizedMode = normalizeMiniMaxH3Mode(mode);
     if (isRefmodPipeline()) {
-      // RefMods have no nine-image limit. The render allows 24 per scene.
+      // A scene sends at most MAX_SCENE_REFERENCES RefMods. The token total only warns, it never blocks.
       const items = miniMaxRefmodItemsForSegment(segment);
       const allSubjects = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder).subjects || [];
       return {
-        count: items.length, overflow: Math.max(0, items.length - 24), labels: items.map((item) => item.name),
+        count: items.length, limit: MAX_SCENE_REFERENCES, referenceCount: items.length, noun: "RefMods",
+        overflow: Math.max(0, items.length - MAX_SCENE_REFERENCES), labels: items.map((item) => item.name),
         tokenText: tokenStatusText(items), clothing: clothingChoices(items, allSubjects, undefined),
       };
     }
-    if (!segment || !["reference_to_video", "image_reference_to_video", "video_to_video"].includes(normalizedMode)) return { count: 0, overflow: 0, labels: [] };
+    if (!segment || !["reference_to_video", "image_reference_to_video", "video_to_video"].includes(normalizedMode)) return { count: 0, limit: MAX_SCENE_REFERENCES, overflow: 0, labels: [] };
+    const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     if (normalizedMode === "image_reference_to_video") {
       const items = miniMaxH3ImageReferencePromptItems(segment, 99);
+      // The start and end frames are not references. They share H3's nine images with them.
+      const frames = items.filter((item) => item?.kind === "start_frame" || item?.kind === "end_frame").length;
+      const referenceCount = miniMaxDesiredReferenceKeysForSegment(segment, refs).length;
       return {
         count: items.length,
-        overflow: Math.max(0, items.length - 9),
+        limit: Math.min(9, MAX_SCENE_REFERENCES + frames),
+        referenceCount,
+        noun: "reference images",
+        overflow: Math.max(0, items.length - 9, referenceCount - MAX_SCENE_REFERENCES),
         labels: items.map((item, index) => String(item?.label || `Image ${index + 1}`)),
       };
     }
-    const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     const catalog = new Map(miniMaxReferenceBuilderCatalog(refs).map((item) => [item.key, item]));
     const seenImages = new Set();
     const imageFingerprint = (image = {}) => {
@@ -343,12 +354,20 @@ export function createMiniMaxReferences({
       count += 1;
       labels.push("Continuity frame");
     }
-    return { count, overflow: Math.max(0, count - 9), labels };
+    const continuity = miniMaxH3ContinuityReferenceReserved(segment) ? 1 : 0;
+    return {
+      count, limit: Math.min(9, MAX_SCENE_REFERENCES + continuity), referenceCount: desired.length, noun: "reference images",
+      overflow: Math.max(0, count - 9, desired.length - MAX_SCENE_REFERENCES), labels,
+    };
   }
 
   function assertMiniMaxH3ReferenceCapacity(segment, mode = miniMaxH3ModeForSegment(segment)) {
     const status = miniMaxH3ReferenceCapacityStatus(segment, mode);
     if (!status.overflow) return status;
+    if (status.referenceCount > MAX_SCENE_REFERENCES) {
+      const extra = status.referenceCount - MAX_SCENE_REFERENCES;
+      throw new Error(`This scene uses ${status.referenceCount} ${status.noun}, but a scene can use at most ${MAX_SCENE_REFERENCES}. Unmap or uncheck ${extra} of them.\n\nCurrent references:\n- ${status.labels.join("\n- ")}`);
+    }
     throw new Error(`This scene requires ${status.count} MiniMax reference images, but H3 accepts at most 9 in this workflow. Uncheck or remove ${status.overflow} reference image${status.overflow === 1 ? "" : "s"}.\n\nCurrent references:\n- ${status.labels.join("\n- ")}`);
   }
 
@@ -380,7 +399,7 @@ export function createMiniMaxReferences({
     const promptInspiration = miniMaxH3ModeForSegment(segment) === "reference_to_video"
       && miniMaxH3SceneImageIsPromptInspiration(segment);
     const continuityReserved = miniMaxH3ContinuityReferenceReserved(segment);
-    const maxLibraryReferences = Math.max(0, 9 - (startFrameReserved ? 1 : 0) - (continuityReserved ? 1 : 0));
+    const maxLibraryReferences = Math.max(0, Math.min(MAX_SCENE_REFERENCES, 9 - (startFrameReserved ? 1 : 0) - (continuityReserved ? 1 : 0)));
     let selectedKeys = miniMaxReferenceKeysForSegment(segment, refs).slice(0, maxLibraryReferences);
     let useAutomaticMappings = !Array.isArray(segment.minimax_h3_reference_keys);
 

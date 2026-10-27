@@ -196,7 +196,7 @@ export function clothingChoices(items, allSubjects, override) {
   });
 }
 
-export const TOKEN_WARN_LIMIT = 6000;
+export const TOKEN_WARN_LIMIT = 8192;
 export const IMBALANCE_RATIO = 2;
 
 // Scene token total and character balance. Twin of token_report in minimax/refmod_scene.py. A character weighing less
@@ -223,7 +223,7 @@ export function tokenStatusText(items) {
   if (!(items || []).some((item) => item.strength > 0)) return "";
   const report = tokenReport(items);
   let line = `RefMods: ${report.total.toLocaleString()} tokens.`;
-  if (report.over_limit) line += ` Over ${report.limit.toLocaleString()}: render time and memory rise, lower a strength or use lighter RefMods.`;
+  if (report.over_limit) line += ` Over ${report.limit.toLocaleString()}: this scene may not render or may crash. Lower a strength or use lighter RefMods.`;
   if (report.imbalance) {
     line += ` ${report.imbalance.weak} is ${report.imbalance.ratio}x lighter than ${report.imbalance.strong} and may be duplicated. Add images to ${report.imbalance.weak} or lower ${report.imbalance.strong}'s strength.`;
   }

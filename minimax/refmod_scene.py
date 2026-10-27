@@ -222,7 +222,7 @@ def total_tokens(items: List[Dict[str, Any]]) -> int:
     return sum(int(item.get("tokens") or 0) for item in items if item.get("strength", 0) > 0)
 
 
-TOKEN_WARN_LIMIT = 6000
+TOKEN_WARN_LIMIT = 8192
 IMBALANCE_RATIO = 2.0
 
 

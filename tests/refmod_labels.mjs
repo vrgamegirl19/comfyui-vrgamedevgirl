@@ -158,10 +158,17 @@ test('strength counts toward the balance and a balanced scene has no warning', (
 });
 
 test('over the limit is reported and the status line names it', () => {
-  const items = [person('A', 3500), person('B', 3500)];
+  const items = [person('A', 4500), person('B', 4500)];
   assert.equal(tokenReport(items).over_limit, true);
-  assert.match(tokenStatusText(items), /7,000 tokens\. Over 6,000/);
+  assert.match(tokenStatusText(items), /9,000 tokens\. Over 8,192: this scene may not render or may crash/);
   assert.equal(tokenStatusText([]), '');
+});
+
+test('the token warning starts above 8,192 and never limits the scene', () => {
+  assert.equal(tokenReport([person('A', 8192)]).over_limit, false);
+  assert.equal(tokenReport([person('A', 8193)]).over_limit, true);
+  assert.equal(tokenReport([person('A', 8192)]).limit, 8192);
+  assert.doesNotMatch(tokenStatusText([person('A', 8192)]), /Over/);
 });
 
 test('clothing choices list every RefMod clothing card per character and what the scene wears now', () => {

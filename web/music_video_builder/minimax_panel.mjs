@@ -511,10 +511,10 @@ export function createMiniMaxPanel({
     const capacity = segment ? miniMaxH3ReferenceCapacityStatus(segment, effectiveMode) : { count: 0, overflow: 0 };
     for (const button of miniMaxReferenceButtons) {
       button.textContent = button === miniMaxVideoReferencesButton
-        ? `Choose MiniMax Edit References (${capacity.count}/9${capacity.overflow ? " — TOO MANY" : ""})`
+        ? `Choose MiniMax Edit References (${capacity.count}/${capacity.limit || 9}${capacity.overflow ? " — TOO MANY" : ""})`
         : hasStartFrame
-          ? `Choose MiniMax References (${capacity.count}/9${capacity.overflow ? " — TOO MANY" : ` — start + ${Math.max(0, orderedCount - 1)}`})`
-          : `Choose MiniMax References (${capacity.count || libraryCount}/9${capacity.overflow ? " — TOO MANY" : ""})`;
+          ? `Choose MiniMax References (${capacity.count}/${capacity.limit || 9}${capacity.overflow ? " — TOO MANY" : ` — start + ${Math.max(0, orderedCount - 1)}`})`
+          : `Choose MiniMax References (${capacity.count || libraryCount}/${capacity.limit || 9}${capacity.overflow ? " — TOO MANY" : ""})`;
       button.style.borderColor = capacity.overflow ? "#ef4444" : "";
       button.disabled = !segment;
     }

@@ -16,10 +16,10 @@ from typing import Any, Dict, List
 
 from ..minimax.refmod_library import find_refmod
 from ..minimax.refmod_scene import assign_labels, token_report
+from ..minimax.scene_inputs import MAX_SCENE_REFERENCES
 
 LOADER_SLOTS = 8
-MAX_LOADERS = 3
-MAX_REFERENCES = LOADER_SLOTS * MAX_LOADERS
+MAX_REFERENCES = MAX_SCENE_REFERENCES
 _REFERENCE_INPUT_PREFIXES = ("ref_images.", "ref_videos.", "ref_video_audios.", "ref_audios.")
 
 
@@ -160,7 +160,7 @@ def apply_refmod_pipeline(prompt: Dict[str, Any], payload: Dict[str, Any]) -> Di
         print(f"[VRGDG RefMod] {report['imbalance']['weak']} is {report['imbalance']['ratio']}x lighter than "
               f"{report['imbalance']['strong']} and may be duplicated.")
     if report["over_limit"]:
-        print(f"[VRGDG RefMod] Scene uses {report['total']} RefMod tokens (above {report['limit']}).")
+        print(f"[VRGDG RefMod] Scene uses {report['total']} RefMod tokens (above {report['limit']}), so it may not render or may crash.")
     text = str(payload.get("prompt") or "")
     relabelled = _relabel_prompt(prompt, prompt_node, references, labels)
     if relabelled:

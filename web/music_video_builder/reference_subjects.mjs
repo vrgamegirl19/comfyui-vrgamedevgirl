@@ -7,7 +7,7 @@ import { sceneConceptPromptText } from "./image_prompts.mjs";
 import { hasReferenceImage } from "./llm_runner.mjs";
 import { MINIMAX_H3_VOICE_PRESETS, normalizeMiniMaxH3Pipeline, normalizeMiniMaxH3Voice } from "./minimax_h3.mjs";
 import { isNoLipSyncSingerChoice, loadPromptJsonFromPath } from "./prompt_text.mjs";
-import { isExtraSubjectReference, subjectExtraTargetId } from "./reference_data.mjs";
+import { MAX_BLANK_SUBJECTS_PER_ENTRY, isExtraSubjectReference, subjectExtraTargetId } from "./reference_data.mjs";
 import { buildRefmodPicker } from "./refmod_card.mjs";
 
 function subjectGenderHint(subject) {
@@ -35,9 +35,10 @@ export function createReferenceSubjects({
   const refmodPipeline = miniMaxProject && normalizeMiniMaxH3Pipeline(state.miniMaxH3Settings?.pipeline) === "refmod";
 
   function ensureSubjectCount(options = {}) {
-    let desiredCount = Math.max(0, Math.min(12, Number(subjectCountInput.value || refs.subject_count || refs.subjects.length || 0)));
+    let desiredCount = Math.max(0, Number(subjectCountInput.value || refs.subject_count || refs.subjects.length || 0));
+    desiredCount = Math.min(desiredCount, refs.subjects.length + MAX_BLANK_SUBJECTS_PER_ENTRY);
     if (!options.allowTrim && refs.subjects.length > desiredCount) {
-      desiredCount = Math.min(12, refs.subjects.length);
+      desiredCount = refs.subjects.length;
       subjectCountInput.value = String(desiredCount);
     }
     refs.subject_count = desiredCount;
@@ -372,7 +373,7 @@ export function createReferenceSubjects({
         : extra.send_to_minimax && extra.reference_image_type === "multi_view"
           ? "Reference-sheet mode treats every panel as the same person. Panels may use any framing or pose and are not separate people or scenes."
           : extra.send_to_minimax
-            ? "This image will use one of the scene's nine MiniMax reference slots whenever this extra is mapped."
+            ? "This image will use one of the scene's eight MiniMax reference slots whenever this extra is mapped."
             : "The image is used only to help describe the extra unless MiniMax image use is checked.";
       referenceWarning.style.cssText = `font-size:11px;line-height:1.4;color:${missingCheckedImage ? "#fca5a5" : "#94a3b8"};`;
       const buttons = document.createElement("div");

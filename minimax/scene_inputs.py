@@ -17,6 +17,9 @@ import os
 from typing import Any, Callable, Dict, List, Optional
 
 MAX_REFERENCE_IMAGES = 9
+# The most Reference Builder images a scene sends. H3 takes nine images in all, so the scene start frame shares the
+# ninth slot with the references and never raises this number. Twin of ``MAX_SCENE_REFERENCES`` in minimax_references.mjs.
+MAX_SCENE_REFERENCES = 8
 _IMAGE_REFERENCE_MODES = ("reference_to_video", "image_reference_to_video")
 _REFERENCE_BUILDER_MODES = ("reference_to_video", "image_reference_to_video", "video_to_video")
 _CONTINUITY_MODES = ("off", "latent_continuation_masked")
@@ -283,8 +286,8 @@ def _mapped_keys(refs: Dict[str, Any], segment: Dict[str, Any], index: int, cata
     return keys
 
 
-def desired_reference_keys(refs: Dict[str, Any], segment: Dict[str, Any], index: int) -> List[str]:
-    """Mirror ``miniMaxReferenceKeysForSegment``: explicit keys else mapped keys, plus forced extras, max 9."""
+def all_desired_reference_keys(refs: Dict[str, Any], segment: Dict[str, Any], index: int) -> List[str]:
+    """Mirror ``miniMaxDesiredReferenceKeysForSegment``: explicit keys else mapped keys, plus forced extras, with no limit."""
     catalog_keys = {item["key"] for item in reference_catalog(refs)}
     explicit = segment.get("minimax_h3_reference_keys")
     selected = [_text(k) for k in explicit] if isinstance(explicit, list) else _mapped_keys(refs, segment, index, catalog_keys)
@@ -296,7 +299,12 @@ def desired_reference_keys(refs: Dict[str, Any], segment: Dict[str, Any], index:
             continue
         seen.add(key)
         keys.append(key)
-    return keys[:MAX_REFERENCE_IMAGES]
+    return keys
+
+
+def desired_reference_keys(refs: Dict[str, Any], segment: Dict[str, Any], index: int) -> List[str]:
+    """Mirror ``miniMaxReferenceKeysForSegment``: the keys above, the first ``MAX_SCENE_REFERENCES`` of them."""
+    return all_desired_reference_keys(refs, segment, index)[:MAX_SCENE_REFERENCES]
 
 
 def reference_choices(session: Dict[str, Any], segment: Dict[str, Any], index: int, mode: str) -> Dict[str, Any]:
@@ -315,8 +323,9 @@ def reference_choices(session: Dict[str, Any], segment: Dict[str, Any], index: i
     start_frame_reserved = (
         mode == "image_reference_to_video" and _uses_scene_image_as_start_frame(segment) and bool(segment_image_path(segment))
     )
-    max_choices = max(0, MAX_REFERENCE_IMAGES - (1 if start_frame_reserved else 0))
+    max_choices = max(0, min(MAX_SCENE_REFERENCES, MAX_REFERENCE_IMAGES - (1 if start_frame_reserved else 0)))
     mapped = _mapped_keys(refs, segment, index, catalog_keys)
+    over_limit_by = max(0, len(all_desired_reference_keys(refs, segment, index)) - max_choices)
     selected_keys = desired_reference_keys(refs, segment, index)[:max_choices]
     number_offset = 2 if start_frame_reserved else 1
     position = {key: number + number_offset for number, key in enumerate(selected_keys)}
@@ -344,6 +353,8 @@ def reference_choices(session: Dict[str, Any], segment: Dict[str, Any], index: i
         "available": [describe(item) for item in available],
         "selected": [describe(by_key[key]) for key in selected_keys if key in by_key],
         "automatic_keys": [key for key in dict.fromkeys([*mapped, *forced]) if key in by_key][:max_choices],
+        # How many references the scene asks for beyond ``max_choices``. The render sends the first ones and leaves these out.
+        "over_limit_by": over_limit_by,
         "limits": {
             "max_images": MAX_REFERENCE_IMAGES,
             "start_frame_image_1": start_frame_reserved,

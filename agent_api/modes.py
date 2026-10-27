@@ -36,13 +36,13 @@ def get_modes_catalog() -> Dict[str, Any]:
                         ),
                         "scene_inputs": ["refmods", "audio"],
                         "render_pass": ["single", "two_pass"],
-                        "limits": {"refmods_per_scene": 24},
+                        "limits": {"refmods_per_scene": 8},
                         "supports": {"audio_drive": True, "latent_continuation": True},
                     },
                     "reference_to_video": {
                         "name": "Reference to Video",
                         "scene_inputs": ["reference_images", "audio"],
-                        "limits": {"reference_images": 9, "video_references": 0},
+                        "limits": {"reference_images": 8, "video_references": 0},
                         "render_pass": ["single", "two_pass", "three_pass"],
                         "audio_mode": ["input_audio", "built_in_audio"],
                         "supports": {
