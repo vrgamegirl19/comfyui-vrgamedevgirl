@@ -61,6 +61,7 @@ def llm_payload_from_session(session: Dict[str, Any], overrides: Optional[Dict[s
         "n_ctx": s.get("gemma_context_limit") or 8000,
         "gemma_output_token_limit": s.get("gemma_output_token_limit") or 8192,
         "n_gpu_layers": s.get("gemma_gpu_layers", 99),
+        "gpu_device": s.get("gemma_gpu_device", -1),
         "lmstudio_base_url": s.get("lm_studio_base_url") or _LM_STUDIO_DEFAULT_BASE_URL,
         "lmstudio_model": s.get("lm_studio_model") or "",
         "lmstudio_api_key": s.get("lm_studio_api_key") or "",

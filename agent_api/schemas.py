@@ -3,6 +3,7 @@
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
+from ..llm.gpus import normalize_gpu_device
 from ..minimax.settings_payload import (
     minimax_h3_defaults,
     normalize_minimax_h3_settings,
@@ -66,6 +67,7 @@ class LlmSettings:
     gemma_context_limit: int = 8000
     gemma_output_token_limit: int = 8192
     gemma_gpu_layers: int = 99
+    gemma_gpu_device: int = -1
     lm_studio_base_url: str = "http://127.0.0.1:1234/v1"
     lm_studio_model: str = ""
     llm_api_provider: str = "openai"
@@ -161,6 +163,7 @@ def extract_effective_settings(session: Dict[str, Any]) -> Dict[str, Any]:
         gemma_context_limit=int(llm_source.get("gemma_context_limit", 8000)),
         gemma_output_token_limit=int(llm_source.get("gemma_output_token_limit", 8192)),
         gemma_gpu_layers=int(llm_source.get("gemma_gpu_layers", 99)),
+        gemma_gpu_device=normalize_gpu_device(llm_source.get("gemma_gpu_device")),
         lm_studio_base_url=str(llm_source.get("lm_studio_base_url") or "http://127.0.0.1:1234/v1"),
         lm_studio_model=str(llm_source.get("lm_studio_model") or ""),
         llm_api_provider=str(llm_source.get("llm_api_provider") or "openai"),

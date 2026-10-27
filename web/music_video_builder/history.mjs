@@ -1,4 +1,5 @@
 import { normalizeOverlayClip, normalizeOverlayTrackState } from "../VRGDG_OverlayTrack.js";
+import { normalizeOverlayLayers, normalizeOverlayLayerTrack } from "./overlay_layers.mjs";
 import {
   normalizeOwnServerTimeoutMinutes,
   normalizeSceneRenderWaitHours,
@@ -20,6 +21,7 @@ import {
   normalizeContinuityMode,
   normalizeGemmaContextLimit,
   applyGemmaLocalTokenLimits,
+  normalizeGemmaGpuDevice,
   normalizeGemmaGpuLayers,
   normalizeLmStudioContextLimit,
   normalizeOutputTokenLimit,
@@ -83,6 +85,8 @@ export function createHistory({
       speakingAudioDefaults: state.speakingAudioDefaults || {},
       overlaySegments: state.overlaySegments,
       overlayTrack: normalizeOverlayTrackState(state.overlayTrack),
+      overlayLayerTrack: normalizeOverlayLayerTrack(state.overlayLayerTrack),
+      overlayLayers: state.overlayLayers,
       activeId: state.activeId,
       activeTrack: state.activeTrack,
       timingFrozen: state.timingFrozen,
@@ -111,6 +115,7 @@ export function createHistory({
       gemmaContextLimit: normalizeGemmaContextLimit(state.gemmaContextLimit),
       gemmaOutputTokenLimit: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit),
       gemmaGpuLayers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
+      gemmaGpuDevice: normalizeGemmaGpuDevice(state.gemmaGpuDevice),
       lmStudioBaseUrl: state.lmStudioBaseUrl,
       lmStudioModel: state.lmStudioModel,
       lmStudioApiKey: state.lmStudioApiKey,
@@ -183,6 +188,8 @@ export function createHistory({
     state.overlaySegments = data.overlaySegments || data.overlay_segments || [];
     state.overlaySegments.forEach(normalizeOverlayClip);
     state.overlayTrack = normalizeOverlayTrackState(data.overlayTrack || data.overlay_track || state.overlayTrack);
+    state.overlayLayerTrack = normalizeOverlayLayerTrack(data.overlayLayerTrack ?? state.overlayLayerTrack);
+    state.overlayLayers = normalizeOverlayLayers(data.overlayLayers ?? state.overlayLayers);
     ensureAllSegmentRuntimeFields();
     state.activeId = data.activeId || state.segments[0]?.id || "";
     state.activeTrack = data.activeTrack || data.active_track || segmentTrack(activeSegment()) || "base";
@@ -221,6 +228,7 @@ export function createHistory({
     state.gemmaOutputTokenLimit = normalizeOutputTokenLimit(data.gemmaOutputTokenLimit ?? data.gemma_output_token_limit ?? legacyLlmMaxTokens ?? state.gemmaOutputTokenLimit);
     applyGemmaLocalTokenLimits(state);
     state.gemmaGpuLayers = normalizeGemmaGpuLayers(data.gemmaGpuLayers ?? data.gemma_gpu_layers ?? data.n_gpu_layers ?? state.gemmaGpuLayers);
+    state.gemmaGpuDevice = normalizeGemmaGpuDevice(data.gemmaGpuDevice ?? data.gemma_gpu_device ?? state.gemmaGpuDevice);
     state.lmStudioBaseUrl = data.lmStudioBaseUrl || data.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
     state.lmStudioModel = data.lmStudioModel || data.lm_studio_model || state.lmStudioModel || "";
     state.lmStudioApiKey = data.lmStudioApiKey || data.lm_studio_api_key || state.lmStudioApiKey || "";

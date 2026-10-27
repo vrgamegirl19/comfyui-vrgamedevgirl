@@ -5,6 +5,7 @@ import os
 import re
 
 from .builder_runner import _llm_runner_from_payload, _run_builder_text_llm
+from .gpus import normalize_gpu_device
 from .prompts.gemma4 import (
     _VRGDG_GEMMA4_STYLE_INSTRUCTIONS,
     _VRGDG_GEMMA4_STORY_INSTRUCTIONS,
@@ -247,6 +248,7 @@ def _run_gemma4_prompt(payload):
         }
 
     llm = VRGDG_SuperGemmaGGUFChat()
+    llm._gpu_device = normalize_gpu_device(payload.get("gpu_device"))
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
     mmproj_path = ""
     model = None

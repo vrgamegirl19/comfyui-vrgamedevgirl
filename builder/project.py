@@ -1008,6 +1008,7 @@ _MODEL_DEFAULT_KEYS = (
     "gemma_context_limit",
     "gemma_output_token_limit",
     "gemma_gpu_layers",
+    "gemma_gpu_device",
     "lm_studio_base_url",
     "lm_studio_model",
     "lm_studio_api_key",
@@ -1038,7 +1039,7 @@ GLOBAL_LLM_KEY_FIELDS = ("llm_api_key", "own_server_api_key", "elevenlabs_api_ke
 # always wins, so switching runners or projects never loses a server, model or limit.
 GLOBAL_LLM_RUNNER_FIELDS = (
     "text_gemma_runner", "gemma_model_file", "qwen_model_file", "qwen_mmproj_file",
-    "gemma_context_limit", "gemma_output_token_limit", "gemma_gpu_layers",
+    "gemma_context_limit", "gemma_output_token_limit", "gemma_gpu_layers", "gemma_gpu_device",
     "lm_studio_base_url", "lm_studio_model", "lm_studio_api_key", "lm_studio_context_limit", "lm_studio_output_token_limit",
     "llm_api_provider", "llm_api_model",
     "own_server_url", "own_server_model", "own_server_output_token_limit", "own_server_timeout",

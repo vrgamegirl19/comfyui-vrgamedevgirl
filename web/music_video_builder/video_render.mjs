@@ -9,6 +9,7 @@ import {
 import { DEFAULT_LTX_INGREDIENTS_HEIGHT, DEFAULT_LTX_INGREDIENTS_WIDTH } from "./constants.mjs";
 import { makeButton, makeField, makeInput, normalizeProjectVideoEngine, toast } from "./controls.mjs";
 import { showFinalVideoReadyModal } from "./dialogs.mjs";
+import { applyOverlayAfterStitch } from "./overlay_render.mjs";
 import { chooseBatchModeAction } from "./project_actions.mjs";
 import { audioMaskInUse } from "./audio_mask_store.mjs";
 import { prepareEditedAudio, prepareEmbeddedAudioWithClips, speakingAudioEditsActive } from "./audio_clip_editor.mjs";
@@ -1305,7 +1306,8 @@ export function createVideoRender({
       output_prefix: options.outputPrefix || "FINAL_VIDEO",
     }, 20 * 60 * 1000);
     state.finalVideoPath = data.final_video_path || "";
-    return data;
+    // The overlays, when the project has any: the stitched video is rewritten with them on it, in place.
+    return applyOverlayAfterStitch(state, data, { progress, timelineOffset: options.timelineOffset, projectFolder: projectInput.value });
   }
 
   async function runGemmaThenCreateSceneVideo() {

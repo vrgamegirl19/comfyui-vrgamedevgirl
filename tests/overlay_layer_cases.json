@@ -1,0 +1,1094 @@
+[
+ {
+  "name": "not a list: null",
+  "fn": "normalize_overlay_layers",
+  "raw": null,
+  "return": []
+ },
+ {
+  "name": "not a list: text",
+  "fn": "normalize_overlay_layers",
+  "raw": "grain",
+  "return": []
+ },
+ {
+  "name": "not a list: object",
+  "fn": "normalize_overlay_layers",
+  "raw": {
+   "kind": "grain"
+  },
+  "return": []
+ },
+ {
+  "name": "empty list",
+  "fn": "normalize_overlay_layers",
+  "raw": [],
+  "return": []
+ },
+ {
+  "name": "a media clip with only a kind gets every default",
+  "fn": "normalize_overlay_layers",
+  "raw": [
+   {
+    "kind": "media"
+   }
+  ],
+  "return": [
+   {
+    "id": "overlay_1",
+    "kind": "media",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 0.9,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "path": "",
+    "source_start": 0,
+    "blend_mode": "screen",
+    "scale": "cover",
+    "loop": true,
+    "speed": 1,
+    "flip_h": false,
+    "brightness": 0,
+    "contrast": 1,
+    "tint": ""
+   }
+  ]
+ },
+ {
+  "name": "a full media clip is kept, names and colors are tidied",
+  "fn": "normalize_overlay_layers",
+  "raw": [
+   {
+    "id": " leak_1 ",
+    "kind": " Media ",
+    "start": 12,
+    "end": 15.5,
+    "enabled": false,
+    "locked": false,
+    "opacity": 0.6,
+    "fade_in": 0.4,
+    "fade_out": 0.5,
+    "path": " overlay/light_leak_warm_03.mp4 ",
+    "source_start": 2.5,
+    "blend_mode": "SCREEN",
+    "scale": "Contain",
+    "loop": false,
+    "speed": 1.5,
+    "flip_h": true,
+    "brightness": 0.2,
+    "contrast": 1.2,
+    "tint": "#ABC"
+   }
+  ],
+  "return": [
+   {
+    "id": "leak_1",
+    "kind": "media",
+    "start": 12,
+    "end": 15.5,
+    "enabled": false,
+    "locked": false,
+    "opacity": 0.6,
+    "fade_in": 0.4,
+    "fade_out": 0.5,
+    "path": "overlay/light_leak_warm_03.mp4",
+    "source_start": 2.5,
+    "blend_mode": "screen",
+    "scale": "contain",
+    "loop": false,
+    "speed": 1.5,
+    "flip_h": true,
+    "brightness": 0.2,
+    "contrast": 1.2,
+    "tint": "#aabbcc"
+   }
+  ]
+ },
+ {
+  "name": "media values out of range are clamped",
+  "fn": "normalize_overlay_layers",
+  "raw": [
+   {
+    "kind": "media",
+    "start": -2,
+    "end": -5,
+    "opacity": 5,
+    "speed": 0.1,
+    "brightness": -3,
+    "contrast": -1,
+    "source_start": -4,
+    "blend_mode": "dodge",
+    "scale": "tile",
+    "tint": "orange"
+   }
+  ],
+  "return": [
+   {
+    "id": "overlay_1",
+    "kind": "media",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "path": "",
+    "source_start": 0,
+    "blend_mode": "screen",
+    "scale": "cover",
+    "loop": true,
+    "speed": 0.5,
+    "flip_h": false,
+    "brightness": -1,
+    "contrast": 0,
+    "tint": ""
+   }
+  ]
+ },
+ {
+  "name": "speed above the top and a missing end",
+  "fn": "normalize_overlay_layers",
+  "raw": [
+   {
+    "kind": "media",
+    "start": 4,
+    "speed": 9
+   }
+  ],
+  "return": [
+   {
+    "id": "overlay_1",
+    "kind": "media",
+    "start": 4,
+    "end": 4.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 0.9,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "path": "",
+    "source_start": 0,
+    "blend_mode": "screen",
+    "scale": "cover",
+    "loop": true,
+    "speed": 2,
+    "flip_h": false,
+    "brightness": 0,
+    "contrast": 1,
+    "tint": ""
+   }
+  ]
+ },
+ {
+  "name": "numbers can be numeric text, anything else falls back",
+  "fn": "normalize_overlay_layers",
+  "raw": [
+   {
+    "kind": "grain",
+    "strength": "42.5",
+    "chroma": " 3 ",
+    "opacity": "0.75"
+   },
+   {
+    "kind": "grain",
+    "strength": "abc",
+    "chroma": "",
+    "opacity": true
+   },
+   {
+    "kind": "grain",
+    "strength": "0x10",
+    "chroma": "1e1",
+    "opacity": null
+   }
+  ],
+  "return": [
+   {
+    "id": "overlay_1",
+    "kind": "grain",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 0.75,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "strength": 42.5,
+    "chroma": 3,
+    "size": "fine",
+    "animated": true
+   },
+   {
+    "id": "overlay_2",
+    "kind": "grain",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "strength": 28,
+    "chroma": 0,
+    "size": "fine",
+    "animated": true
+   },
+   {
+    "id": "overlay_3",
+    "kind": "grain",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "strength": 28,
+    "chroma": 10,
+    "size": "fine",
+    "animated": true
+   }
+  ]
+ },
+ {
+  "name": "fades shrink together when they do not fit",
+  "fn": "normalize_overlay_layers",
+  "raw": [
+   {
+    "kind": "vignette",
+    "start": 0,
+    "end": 1,
+    "fade_in": 5,
+    "fade_out": 5
+   },
+   {
+    "kind": "vignette",
+    "start": 0,
+    "end": 2
+   },
+   {
+    "kind": "vignette",
+    "start": 0,
+    "end": 0.05,
+    "fade_in": 5,
+    "fade_out": 5
+   },
+   {
+    "kind": "vignette",
+    "start": 0,
+    "end": 3,
+    "fade_in": 2,
+    "fade_out": 0
+   }
+  ],
+  "return": [
+   {
+    "id": "overlay_1",
+    "kind": "vignette",
+    "start": 0,
+    "end": 1,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.5,
+    "fade_out": 0.5,
+    "strength": 0.7
+   },
+   {
+    "id": "overlay_2",
+    "kind": "vignette",
+    "start": 0,
+    "end": 2,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.3,
+    "fade_out": 0.3,
+    "strength": 0.7
+   },
+   {
+    "id": "overlay_3",
+    "kind": "vignette",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "strength": 0.7
+   },
+   {
+    "id": "overlay_4",
+    "kind": "vignette",
+    "start": 0,
+    "end": 3,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 2,
+    "fade_out": 0,
+    "strength": 0.7
+   }
+  ]
+ },
+ {
+  "name": "grain defaults",
+  "fn": "normalize_overlay_layers",
+  "raw": [
+   {
+    "kind": "grain"
+   }
+  ],
+  "return": [
+   {
+    "id": "overlay_1",
+    "kind": "grain",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "strength": 28,
+    "chroma": 0,
+    "size": "fine",
+    "animated": true
+   }
+  ]
+ },
+ {
+  "name": "grain clamps and choices",
+  "fn": "normalize_overlay_layers",
+  "raw": [
+   {
+    "kind": "grain",
+    "strength": 99,
+    "chroma": -5,
+    "size": "Coarse",
+    "animated": "yes"
+   },
+   {
+    "kind": "grain",
+    "strength": -3,
+    "chroma": 50,
+    "size": "huge",
+    "animated": false
+   }
+  ],
+  "return": [
+   {
+    "id": "overlay_1",
+    "kind": "grain",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "strength": 60,
+    "chroma": 0,
+    "size": "coarse",
+    "animated": true
+   },
+   {
+    "id": "overlay_2",
+    "kind": "grain",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "strength": 0,
+    "chroma": 20,
+    "size": "fine",
+    "animated": false
+   }
+  ]
+ },
+ {
+  "name": "vignette",
+  "fn": "normalize_overlay_layers",
+  "raw": [
+   {
+    "kind": "vignette"
+   },
+   {
+    "kind": "vignette",
+    "strength": 3
+   },
+   {
+    "kind": "vignette",
+    "strength": -1
+   }
+  ],
+  "return": [
+   {
+    "id": "overlay_1",
+    "kind": "vignette",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "strength": 0.7
+   },
+   {
+    "id": "overlay_2",
+    "kind": "vignette",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "strength": 1
+   },
+   {
+    "id": "overlay_3",
+    "kind": "vignette",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "strength": 0
+   }
+  ]
+ },
+ {
+  "name": "text defaults",
+  "fn": "normalize_overlay_layers",
+  "raw": [
+   {
+    "kind": "text"
+   }
+  ],
+  "return": [
+   {
+    "id": "overlay_1",
+    "kind": "text",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "text": "",
+    "font": "Anton",
+    "size": 96,
+    "color": "#ffffff",
+    "outline_width": 3,
+    "outline_color": "#000000",
+    "shadow": 4,
+    "x": 0.5,
+    "y": 0.78,
+    "animation": "none"
+   }
+  ]
+ },
+ {
+  "name": "text values are tidied and clamped",
+  "fn": "normalize_overlay_layers",
+  "raw": [
+   {
+    "kind": "text",
+    "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "font": "   ",
+    "size": 1,
+    "color": "red",
+    "outline_width": 99,
+    "outline_color": "#FFF",
+    "shadow": -4,
+    "x": 2,
+    "y": -1,
+    "animation": "SLIDE_UP"
+   }
+  ],
+  "return": [
+   {
+    "id": "overlay_1",
+    "kind": "text",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "font": "Anton",
+    "size": 8,
+    "color": "#ffffff",
+    "outline_width": 20,
+    "outline_color": "#ffffff",
+    "shadow": 0,
+    "x": 1,
+    "y": 0,
+    "animation": "slide_up"
+   }
+  ]
+ },
+ {
+  "name": "text keeps emoji whole and its own spaces",
+  "fn": "normalize_overlay_layers",
+  "raw": [
+   {
+    "kind": "text",
+    "text": "  Verse 2 😀😀😀 ",
+    "font": " Anton ",
+    "size": 400.4
+   }
+  ],
+  "return": [
+   {
+    "id": "overlay_1",
+    "kind": "text",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "text": "  Verse 2 😀😀😀 ",
+    "font": "Anton",
+    "size": 400,
+    "color": "#ffffff",
+    "outline_width": 3,
+    "outline_color": "#000000",
+    "shadow": 4,
+    "x": 0.5,
+    "y": 0.78,
+    "animation": "none"
+   }
+  ]
+ },
+ {
+  "name": "lut",
+  "fn": "normalize_overlay_layers",
+  "raw": [
+   {
+    "kind": "lut"
+   },
+   {
+    "kind": "lut",
+    "lut": " Teal Orange.cube ",
+    "strength": 0.5
+   },
+   {
+    "kind": "lut",
+    "strength": 2
+   }
+  ],
+  "return": [
+   {
+    "id": "overlay_1",
+    "kind": "lut",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "lut": "",
+    "strength": 1
+   },
+   {
+    "id": "overlay_2",
+    "kind": "lut",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "lut": "Teal Orange.cube",
+    "strength": 0.5
+   },
+   {
+    "id": "overlay_3",
+    "kind": "lut",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "lut": "",
+    "strength": 1
+   }
+  ]
+ },
+ {
+  "name": "an unknown kind keeps its own fields and gets only the common ones",
+  "fn": "normalize_overlay_layers",
+  "raw": [
+   {
+    "kind": "Glitch",
+    "id": "g",
+    "start": 1,
+    "end": 2,
+    "amount": 7,
+    "nested": {
+     "a": [
+      1,
+      2
+     ]
+    },
+    "strength": 9
+   }
+  ],
+  "return": [
+   {
+    "amount": 7,
+    "nested": {
+     "a": [
+      1,
+      2
+     ]
+    },
+    "strength": 9,
+    "id": "g",
+    "kind": "glitch",
+    "start": 1,
+    "end": 2,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.3,
+    "fade_out": 0.3
+   }
+  ]
+ },
+ {
+  "name": "other keys are kept on known kinds too",
+  "fn": "normalize_overlay_layers",
+  "raw": [
+   {
+    "kind": "media",
+    "note": "keep me",
+    "strength": 5,
+    "tags": [
+     "a"
+    ]
+   }
+  ],
+  "return": [
+   {
+    "note": "keep me",
+    "strength": 5,
+    "tags": [
+     "a"
+    ],
+    "id": "overlay_1",
+    "kind": "media",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 0.9,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "path": "",
+    "source_start": 0,
+    "blend_mode": "screen",
+    "scale": "cover",
+    "loop": true,
+    "speed": 1,
+    "flip_h": false,
+    "brightness": 0,
+    "contrast": 1,
+    "tint": ""
+   }
+  ]
+ },
+ {
+  "name": "junk entries are dropped but still count for generated ids",
+  "fn": "normalize_overlay_layers",
+  "raw": [
+   null,
+   5,
+   "x",
+   [],
+   {},
+   {
+    "kind": ""
+   },
+   {
+    "kind": 3
+   },
+   {
+    "kind": "grain"
+   },
+   {
+    "kind": "vignette"
+   }
+  ],
+  "return": [
+   {
+    "id": "overlay_8",
+    "kind": "grain",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "strength": 28,
+    "chroma": 0,
+    "size": "fine",
+    "animated": true
+   },
+   {
+    "id": "overlay_9",
+    "kind": "vignette",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "strength": 0.7
+   }
+  ]
+ },
+ {
+  "name": "ids that are missing, empty or repeated",
+  "fn": "normalize_overlay_layers",
+  "raw": [
+   {
+    "kind": "grain",
+    "id": "a"
+   },
+   {
+    "kind": "grain",
+    "id": "a"
+   },
+   {
+    "kind": "grain",
+    "id": "a_2"
+   },
+   {
+    "kind": "grain",
+    "id": ""
+   },
+   {
+    "kind": "grain",
+    "id": 7
+   },
+   {
+    "kind": "grain"
+   }
+  ],
+  "return": [
+   {
+    "id": "a",
+    "kind": "grain",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "strength": 28,
+    "chroma": 0,
+    "size": "fine",
+    "animated": true
+   },
+   {
+    "id": "a_2",
+    "kind": "grain",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "strength": 28,
+    "chroma": 0,
+    "size": "fine",
+    "animated": true
+   },
+   {
+    "id": "a_2_2",
+    "kind": "grain",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "strength": 28,
+    "chroma": 0,
+    "size": "fine",
+    "animated": true
+   },
+   {
+    "id": "overlay_4",
+    "kind": "grain",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "strength": 28,
+    "chroma": 0,
+    "size": "fine",
+    "animated": true
+   },
+   {
+    "id": "overlay_5",
+    "kind": "grain",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "strength": 28,
+    "chroma": 0,
+    "size": "fine",
+    "animated": true
+   },
+   {
+    "id": "overlay_6",
+    "kind": "grain",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "strength": 28,
+    "chroma": 0,
+    "size": "fine",
+    "animated": true
+   }
+  ]
+ },
+ {
+  "name": "numbers are rounded to three places, half away from zero",
+  "fn": "normalize_overlay_layers",
+  "raw": [
+   {
+    "kind": "media",
+    "opacity": 0.12345,
+    "brightness": -0.0004,
+    "contrast": 1.0005,
+    "speed": 1.2345,
+    "start": 0.0005,
+    "end": 1.9995
+   },
+   {
+    "kind": "media",
+    "brightness": -0.0005,
+    "contrast": 0.9995
+   }
+  ],
+  "return": [
+   {
+    "id": "overlay_1",
+    "kind": "media",
+    "start": 0.001,
+    "end": 2,
+    "enabled": true,
+    "locked": true,
+    "opacity": 0.123,
+    "fade_in": 0.3,
+    "fade_out": 0.3,
+    "path": "",
+    "source_start": 0,
+    "blend_mode": "screen",
+    "scale": "cover",
+    "loop": true,
+    "speed": 1.235,
+    "flip_h": false,
+    "brightness": 0,
+    "contrast": 1.001,
+    "tint": ""
+   },
+   {
+    "id": "overlay_2",
+    "kind": "media",
+    "start": 0,
+    "end": 0.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 0.9,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "path": "",
+    "source_start": 0,
+    "blend_mode": "screen",
+    "scale": "cover",
+    "loop": true,
+    "speed": 1,
+    "flip_h": false,
+    "brightness": -0.001,
+    "contrast": 1,
+    "tint": ""
+   }
+  ]
+ },
+ {
+  "name": "an end before the start becomes a short clip",
+  "fn": "normalize_overlay_layers",
+  "raw": [
+   {
+    "kind": "grain",
+    "start": 10,
+    "end": 3
+   },
+   {
+    "kind": "grain",
+    "start": 10,
+    "end": 10
+   }
+  ],
+  "return": [
+   {
+    "id": "overlay_1",
+    "kind": "grain",
+    "start": 10,
+    "end": 10.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "strength": 28,
+    "chroma": 0,
+    "size": "fine",
+    "animated": true
+   },
+   {
+    "id": "overlay_2",
+    "kind": "grain",
+    "start": 10,
+    "end": 10.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "strength": 28,
+    "chroma": 0,
+    "size": "fine",
+    "animated": true
+   }
+  ]
+ },
+ {
+  "name": "the largest start",
+  "fn": "normalize_overlay_layers",
+  "raw": [
+   {
+    "kind": "grain",
+    "start": 999999,
+    "end": 1000001
+   }
+  ],
+  "return": [
+   {
+    "id": "overlay_1",
+    "kind": "grain",
+    "start": 86400,
+    "end": 86400.05,
+    "enabled": true,
+    "locked": true,
+    "opacity": 1,
+    "fade_in": 0.025,
+    "fade_out": 0.025,
+    "strength": 28,
+    "chroma": 0,
+    "size": "fine",
+    "animated": true
+   }
+  ]
+ },
+ {
+  "name": "track: nothing",
+  "fn": "normalize_overlay_layer_track",
+  "raw": null,
+  "return": {
+   "enabled": true
+  }
+ },
+ {
+  "name": "track: not an object",
+  "fn": "normalize_overlay_layer_track",
+  "raw": "on",
+  "return": {
+   "enabled": true
+  }
+ },
+ {
+  "name": "track: list",
+  "fn": "normalize_overlay_layer_track",
+  "raw": [
+   1
+  ],
+  "return": {
+   "enabled": true
+  }
+ },
+ {
+  "name": "track: off",
+  "fn": "normalize_overlay_layer_track",
+  "raw": {
+   "enabled": false
+  },
+  "return": {
+   "enabled": false
+  }
+ },
+ {
+  "name": "track: a word is not a switch",
+  "fn": "normalize_overlay_layer_track",
+  "raw": {
+   "enabled": "no"
+  },
+  "return": {
+   "enabled": true
+  }
+ },
+ {
+  "name": "track: other keys are kept",
+  "fn": "normalize_overlay_layer_track",
+  "raw": {
+   "enabled": false,
+   "label": "x"
+  },
+  "return": {
+   "enabled": false,
+   "label": "x"
+  }
+ }
+]

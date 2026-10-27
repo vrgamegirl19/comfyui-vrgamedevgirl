@@ -12,10 +12,15 @@ import gc
 import time
 
 from .cache import _GGUF_CHAT_HANDLER_CACHE, _GGUF_LOCK, _GGUF_MODEL_CACHE, _clear_vrgdg_llm_caches, _close_gguf_cached_resources
+from .gpus import check_gpu_device, gpu_kwargs, normalize_gpu_device
 from .huggingface import VRGDG_Qwen25
 
 
 class VRGDG_GeneralGGUF(VRGDG_Qwen25):
+    # The GPU a load puts the whole model on. -1 lets llama.cpp spread it over every GPU ComfyUI can see. The Video Builder sets it from the
+    # LLM Runner's settings, a node from its gpu_device input.
+    _gpu_device = -1
+
     _GEMMA_STOP_SEQUENCES = (
         "<end_of_turn>",
         "<start_of_turn>",
@@ -207,8 +212,20 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
                 ),
             },
             "optional": {
-                f"image{i}": ("IMAGE", {"tooltip": "Optional reference image input."})
-                for i in range(1, cls.MAX_IMAGES + 1)
+                **{
+                    f"image{i}": ("IMAGE", {"tooltip": "Optional reference image input."})
+                    for i in range(1, cls.MAX_IMAGES + 1)
+                },
+                "gpu_device": (
+                    "INT",
+                    {
+                        "default": -1,
+                        "min": -1,
+                        "max": 63,
+                        "step": 1,
+                        "tooltip": "Which GPU holds the model. -1 lets llama.cpp spread it over every GPU ComfyUI can see. A number puts the whole model on that GPU, numbered as ComfyUI sees them (the LLM Runner of the Video Builder lists them with names).",
+                    },
+                ),
             },
         }
 
@@ -596,6 +613,7 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
             int(n_threads),
             str(chat_format or "").strip(),
             os.path.normpath(str(mmproj_path or "")),
+            int(getattr(self, "_gpu_device", -1)),
         )
 
     def _load_gguf_model(
@@ -631,6 +649,10 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
             "n_threads": int(n_threads),
             "verbose": False,
         }
+        check_gpu_device(self._gpu_device)
+        kwargs.update(gpu_kwargs(self._gpu_device))
+        if self._gpu_device >= 0:
+            print(f"[VRGDG LLM] {os.path.basename(normalized_model_path)} goes on GPU {self._gpu_device}")
         chat_format_value = str(chat_format or "").strip()
         if chat_format_value:
             kwargs["chat_format"] = chat_format_value
@@ -696,7 +718,8 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
                     "Failed to load GGUF model after cleanup retry.\n"
                     f"Model file exists: {normalized_model_path}\n"
                     f"Size: {size_gb:.2f} GB\n"
-                    f"n_ctx: {int(n_ctx)}, n_gpu_layers: {int(n_gpu_layers)}, n_threads: {int(n_threads)}\n"
+                    f"n_ctx: {int(n_ctx)}, n_gpu_layers: {int(n_gpu_layers)}, n_threads: {int(n_threads)}, "
+                    f"gpu: {'automatic' if self._gpu_device < 0 else self._gpu_device}\n"
                     "This usually means llama-cpp could not mmap/load the file because of memory pressure, a locked/stale model handle, or an incompatible/corrupt GGUF.\n"
                     f"First error: {first_error}\n"
                     f"Retry error: {second_error}"
@@ -908,6 +931,7 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
         max_new_tokens: int,
         **kwargs,
     ) -> Tuple[str, str, str]:
+        self._gpu_device = normalize_gpu_device(kwargs.pop("gpu_device", None), self._gpu_device)
         model_id = self._resolve_model_id(model_preset, custom_model_id)
         instruction_text = self._build_instruction_text(
             task_preset, user_input, trigger_word, custom_instructions
@@ -1159,12 +1183,14 @@ class VRGDG_QwenGGUF(VRGDG_GeneralGGUF):
                 "{% if enable_thinking is defined and enable_thinking %}<think>\\n{% endif %}"
             )
 
+        check_gpu_device(self._gpu_device)
         handler = QwenMTMDChatHandler(clip_model_path=str(mmproj_path), verbose=False)
         kwargs = {
             "model_path": str(model_path), "n_ctx": int(n_ctx),
             "n_gpu_layers": int(n_gpu_layers), "n_threads": int(n_threads),
             "verbose": False, "chat_handler": handler,
         }
+        kwargs.update(gpu_kwargs(self._gpu_device))
         if str(chat_format or "").strip():
             kwargs["chat_format"] = str(chat_format).strip()
         model = Llama(**kwargs)
@@ -1464,6 +1490,18 @@ class VRGDG_SuperGemmaGGUFChat(VRGDG_GeneralGGUF):
             f"image{i}": ("IMAGE", {"tooltip": "Optional reference image input."})
             for i in range(1, cls.MAX_IMAGES + 1)
         }
+        optional.update({
+            "gpu_device": (
+                "INT",
+                {
+                    "default": -1,
+                    "min": -1,
+                    "max": 63,
+                    "step": 1,
+                    "tooltip": "Which GPU holds the model. -1 lets llama.cpp spread it over every GPU ComfyUI can see. A number puts the whole model on that GPU, numbered as ComfyUI sees them (the LLM Runner of the Video Builder lists them with names).",
+                },
+            ),
+        })
         return {
             "required": required,
             "optional": optional,

@@ -15,6 +15,7 @@ import {
   flattenLyricForPrompt,
   isInstrumentalLyricText,
   normalizeGemmaContextLimit,
+  normalizeGemmaGpuDevice,
   normalizeGemmaGpuLayers,
   segmentUsesNoLipSyncPerformance,
 } from "./prompt_text.mjs";
@@ -1117,6 +1118,7 @@ export function createStoryboardBridge({
         mmproj_file: storyboardSelectedMmproj,
         n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
         n_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
+        gpu_device: normalizeGemmaGpuDevice(state.gemmaGpuDevice),
         n_threads: 8,
         unload_after: true,
       },

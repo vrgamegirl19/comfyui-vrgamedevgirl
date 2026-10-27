@@ -13,6 +13,7 @@ export function createMusicVideoBuilderLuts(options = {}) {
     loading: false,
     error: "",
     selectedName: "",
+    lutsDir: "",
   };
 
   const root = document.createElement("div");
@@ -45,6 +46,7 @@ export function createMusicVideoBuilderLuts(options = {}) {
         throw new Error(data?.error || `LUT list failed (${response.status})`);
       }
       state.luts = Array.isArray(data.luts) ? data.luts : [];
+      state.lutsDir = String(data.luts_dir || "");
       state.loaded = true;
     } catch (error) {
       state.error = String(error?.message || error || "Could not load LUTs.");

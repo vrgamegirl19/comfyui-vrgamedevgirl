@@ -7,6 +7,7 @@ import { createPostProcessComparePreview } from "../VRGDG_PostProcessComparePrev
 import { createFaceFixTool } from "../VRGDG_FaceFixUI.js?v=20260716-1";
 
 import { normalizeOverlayTrackState } from "../VRGDG_OverlayTrack.js";
+import { normalizeOverlayLayerTrack } from "./overlay_layers.mjs";
 import "./styles.mjs";
 import {
   DEFAULT_SCENE_RENDER_WAIT_HOURS,
@@ -148,6 +149,9 @@ import { createMiniMaxReferences } from "./minimax_references.mjs";
 import { createIdLoraBuilder } from "./id_lora_builder.mjs";
 import { createVideoRender } from "./video_render.mjs";
 import { wireExportVideo } from "./export_video.mjs";
+import { loadOverlayCapabilities } from "./overlay_render.mjs";
+import { createOverlayDeleteKey } from "./overlay_lane.mjs";
+import { createOverlayPreview } from "./overlay_preview.mjs";
 import { createBatchRender } from "./batch_render.mjs";
 import { createModelPickers } from "./model_pickers.mjs";
 import { createStoryBuilder } from "./story_builder.mjs";
@@ -954,6 +958,11 @@ export function openBuilder(node, options = {}) {
     segments: [],
     overlaySegments: [],
     overlayTrack: normalizeOverlayTrackState(),
+    overlayLayerTrack: normalizeOverlayLayerTrack(),
+    overlayLayers: [],
+    overlayAvailable: false,
+    activeOverlayId: "",
+    overlayLaneOpen: false,
     activeId: "",
     miniMaxH3PanelSegmentId: "",
     activeTrack: "base",
@@ -1034,6 +1043,7 @@ export function openBuilder(node, options = {}) {
     gemmaContextLimit: 16384,
     gemmaOutputTokenLimit: 16384,
     gemmaGpuLayers: 99,
+    gemmaGpuDevice: -1,
     lmStudioBaseUrl: "http://127.0.0.1:1234/v1",
     lmStudioModel: "",
     lmStudioApiKey: "",
@@ -1112,6 +1122,16 @@ export function openBuilder(node, options = {}) {
   };
   // API keys and LLM runner settings kept for every project: bound to the state, and filled in now.
   bindGlobalLlmKeys(state);
+  // Whether this build can draw the overlays (the app can, a pack without the overlay render answers 404 and the overlays are left out).
+  loadOverlayCapabilities(state).then((available) => { if (available) state.syncOverlayTabs?.(); });
+  // The overlays drawn over the player, in step with the timeline (it works in the pop-out player too, since it lives in the stage).
+  createOverlayPreview({
+    stage: previewStage, state,
+    visibleMedia: () => (previewVideo.style.display !== "none" ? previewVideo : previewImage.style.display !== "none" ? previewImage : null),
+    currentGlobalTime: (...args) => currentGlobalTime(...args),
+    isTimelinePlaying: (...args) => isTimelinePlaying(...args),
+    projectFolder: () => projectInput.value || state.projectFolder || "",
+  }).start();
   getJson("/vrgdg/music_builder/model_defaults").then((data) => {
     rememberGlobalLlmKeys(data?.global_llm_keys, data?.global_llm_runner);
     applyGlobalLlmKeys(state);
@@ -1197,11 +1217,20 @@ export function openBuilder(node, options = {}) {
     applySceneFilmGrainToRenderedVideo: (...args) => applySceneFilmGrainToRenderedVideo(...args),
     applySceneLutToRenderedVideo: (...args) => applySceneLutToRenderedVideo(...args),
     render: (...args) => render(...args),
+    playheadTime: (...args) => currentGlobalTime(...args),
+    timelineSeconds: (...args) => timelineDuration(...args),
     activeSegment: (...args) => activeSegment(...args),
     allEditableSegments: (...args) => allEditableSegments(...args),
     segmentIndexInfo: (...args) => segmentIndexInfo(...args),
     segmentTrack: (...args) => segmentTrack(...args),
   });
+
+  // The Delete key removes the selected overlay (not while typing). The Builder's close releases the listener, with the others.
+  builderLifecycle.keydownHandler = createOverlayDeleteKey({
+    state, root: overlay, pushHistory,
+    commit: (reason) => { render(); autoSaveSessionQuiet(reason).catch(() => null); },
+  });
+  document.addEventListener("keydown", builderLifecycle.keydownHandler, true);
 
   const { playBuilderNotification, shouldNotifyForToast, syncVideoTypeControl } = createNotificationSounds({
     state, videoTypeSelect, syncWorkflowActionOrder,

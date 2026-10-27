@@ -2,6 +2,7 @@ import { api } from "../../../scripts/api.js";
 import { postJson } from "./comfy_api.mjs";
 import { escapeHtml, makeButton, makeCheckbox, makeMiniButton, toast } from "./controls.mjs";
 import { showInfoModal, showLargeTextModal, showTextInputModal } from "./dialogs.mjs";
+import { createOverlayLibraryPanel } from "./overlay_library_panel.mjs";
 import { selectedSegmentVideoPath } from "./selection_preview.mjs";
 import { activateSegmentVideoPath, mediaPathKey, normalizeSegmentVideoHistory } from "./timeline_state.mjs";
 
@@ -110,8 +111,40 @@ export function createPostProcess({
   postProcessPane, projectInput, pushHistory, render, sceneAdjustPanel, sceneListPane, sceneToolsPanel,
   scenesTabButton, segmentIndexInfo, segmentTrack, selectedSegmentImagePath, showAdjustPreviewImage,
   showFilmGrainPreviewImage, showLutPreviewImage, state, syncInspector, syncPreview, toolsPane,
-  toolsTabButton,
+  toolsTabButton, playheadTime, timelineSeconds,
 }) {
+  // The overlay library of clips to lay over the video, in the Overlays tab (only in a build that can draw overlays).
+  const overlayLibraryPanel = createOverlayLibraryPanel({
+    state, pushHistory, playheadTime, timelineSeconds,
+    luts: () => (lutsTools.state.luts || []).map((lut) => lut.name),
+    lutsFolder: () => lutsTools.state.lutsDir || "",
+    activeSceneRange: () => {
+      const segment = activeSegment();
+      return segment ? { start: Number(segment.start) || 0, end: Number(segment.end) || 0 } : null;
+    },
+    segmentAt: (time) => (state.segments || []).find((segment) => time >= Number(segment.start) && time < Number(segment.end)) || (state.segments || []).find((segment) => time === Number(segment.end)) || null,
+    videoPathOf: (segment) => selectedSegmentVideoPath(segment),
+    inspectorCommit: (reason, redrawTimeline, save) => {
+      if (redrawTimeline) render();
+      if (save) autoSaveSessionQuiet(reason).catch(() => null);
+    },
+    projectFolder: () => projectInput.value || state.projectFolder || "",
+    commit: (reason) => { render(); autoSaveSessionQuiet(reason).catch(() => null); },
+  });
+
+  // Selecting a clip on the overlay lane opens its settings in the Overlays tab, and a change made on the lane refreshes them.
+  state.showOverlayInspector = () => {
+    if (state.overlayAvailable && state.activeOverlayId && !(state.leftPanelTab === "luts" && state.postProcessTab === "fx")) {
+      state.leftPanelTab = "luts";
+      state.postProcessTab = "fx";
+      syncLeftPanelTabs();
+    }
+    overlayLibraryPanel.renderSelected();
+  };
+  state.refreshOverlayInspector = () => overlayLibraryPanel.renderSelected();
+  // Called when the build says it can draw overlays: the tabs change to the Overlays tab alone.
+  state.syncOverlayTabs = () => syncLeftPanelTabs();
+
   function syncLeftPanelTabs() {
     const active = state.leftPanelTab === "tools" || state.leftPanelTab === "luts" ? state.leftPanelTab : "scenes";
     state.leftPanelTab = active;
@@ -133,7 +166,18 @@ export function createPostProcess({
   }
 
   function syncPostProcessTabs() {
-    const active = ["film_grain", "fx"].includes(state.postProcessTab) ? state.postProcessTab : "luts";
+    // A build that draws overlays has the Overlays tab alone: grain, LUT, vignette, text and overlay clips are all there, so the per-scene LUTS and Film Grain tabs go.
+    const overlayOnly = Boolean(state.overlayAvailable);
+    postProcessLutsTab.style.display = overlayOnly ? "none" : "";
+    postProcessGrainTab.style.display = overlayOnly ? "none" : "";
+    const tabBar = postProcessFxTab.parentElement;
+    if (tabBar) tabBar.style.gridTemplateColumns = overlayOnly ? "1fr" : "repeat(3,minmax(0,1fr))";
+    // The pack's FX tab holds an Overlays sub-tab. When overlays can be drawn, the tab is the Overlays tab and the sub-tab bar is not needed.
+    postProcessFxTab.textContent = overlayOnly ? "Overlays" : "FX";
+    postProcessFxTab.title = overlayOnly ? "Grain, vignette, text, lyric captions, LUTs and clips such as dust and light leaks, laid over the finished video." : "Browse overlay and visual FX packs.";
+    const subTabBar = fxOverlaysTab.parentElement;
+    if (subTabBar) subTabBar.style.display = overlayOnly ? "none" : "grid";
+    const active = overlayOnly ? "fx" : ["film_grain", "fx"].includes(state.postProcessTab) ? state.postProcessTab : "luts";
     state.postProcessTab = active;
     const styleTab = (button, selected) => {
       button.style.background = selected ? "#0e7490" : "#18181b";
@@ -153,6 +197,8 @@ export function createPostProcess({
     } else if (active === "film_grain") {
       renderFilmGrainPostProcessPanel();
     } else {
+      // The LUT clips choose from the installed LUTs, which the LUTS tab used to load.
+      if (overlayOnly) lutsTools.loadLuts(true).then(() => overlayLibraryPanel.renderSelected()).catch(() => null);
       renderFxPostProcessPanel();
     }
   }
@@ -1080,6 +1126,12 @@ export function createPostProcess({
     };
     styleFxSubTab(fxOverlaysTab, true);
 
+    if (state.overlayAvailable) {
+      fxOverlaysPane.append(overlayLibraryPanel.element);
+      overlayLibraryPanel.render();
+      overlayLibraryPanel.load();
+      return;
+    }
     const intro = document.createElement("div");
     intro.style.cssText = "border:1px solid #3f3f46;border-radius:7px;background:#18181b;color:#f4f4f5;padding:12px;display:flex;flex-direction:column;gap:7px;";
     intro.innerHTML = `

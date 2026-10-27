@@ -317,6 +317,14 @@ export function normalizeGemmaGpuLayers(value) {
   return Math.max(0, Math.min(999, Math.round(parsed)));
 }
 
+// The GPU of Gemma Local and Qwen Local: -1 is automatic (every GPU ComfyUI sees), 0 and up is one GPU, numbered the way ComfyUI numbers them.
+export function normalizeGemmaGpuDevice(value) {
+  if (value === null || value === undefined || value === "" || typeof value === "boolean") return -1;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return -1;
+  return Math.min(63, Math.round(parsed));
+}
+
 export function normalizeGemmaContextLimit(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 8000;

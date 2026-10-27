@@ -1,4 +1,5 @@
 import { normalizeOverlayClip, normalizeOverlayTrackState } from "../VRGDG_OverlayTrack.js";
+import { normalizeOverlayLayers, normalizeOverlayLayerTrack } from "./overlay_layers.mjs";
 import {
   announceBuilderEvent,
   audioUrl,
@@ -48,6 +49,7 @@ import {
   normalizeAutoImg2ImgStartStep,
   normalizeContinuityMode,
   normalizeGemmaContextLimit,
+  normalizeGemmaGpuDevice,
   normalizeGemmaGpuLayers,
   normalizeLmStudioContextLimit,
   normalizeOutputTokenLimit,
@@ -771,6 +773,8 @@ export function createSession({
       speaking_audio_defaults: state.speakingAudioDefaults || {},
       overlay_segments: sanitizedSessionSegments(state.overlaySegments, "overlay"),
       overlay_track: normalizeOverlayTrackState(state.overlayTrack),
+      overlay_layer_track: normalizeOverlayLayerTrack(state.overlayLayerTrack),
+      overlay_layers: normalizeOverlayLayers(state.overlayLayers),
       active_track: state.activeTrack,
       active_scene_id: state.activeId || "",
       timing_frozen: state.timingFrozen,
@@ -803,6 +807,7 @@ export function createSession({
       gemma_context_limit: normalizeGemmaContextLimit(state.gemmaContextLimit),
       gemma_output_token_limit: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit),
       gemma_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
+      gemma_gpu_device: normalizeGemmaGpuDevice(state.gemmaGpuDevice),
       lm_studio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
       lm_studio_model: state.lmStudioModel || "",
       lm_studio_api_key: state.lmStudioApiKey || "",
@@ -1061,6 +1066,8 @@ export function createSession({
         state.overlaySegments = Array.isArray(data.session.overlay_segments) ? data.session.overlay_segments : state.overlaySegments;
         state.overlaySegments.forEach(normalizeOverlayClip);
         state.overlayTrack = normalizeOverlayTrackState(data.session.overlay_track || state.overlayTrack);
+        state.overlayLayerTrack = normalizeOverlayLayerTrack(data.session.overlay_layer_track ?? data.session.fx_track ?? state.overlayLayerTrack);
+        state.overlayLayers = normalizeOverlayLayers(data.session.overlay_layers ?? data.session.fx_clips ?? state.overlayLayers);
         ensureAllSegmentRuntimeFields();
         state.activeTrack = data.session.active_track || state.activeTrack || "base";
         state.audioClips = Array.isArray(data.session.audio_clips) ? data.session.audio_clips : null;
@@ -1130,6 +1137,7 @@ export function createSession({
         state.gemmaContextLimit = normalizeGemmaContextLimit(data.session.gemma_context_limit ?? data.session.n_ctx ?? data.session.llm_max_tokens ?? data.session.llmMaxTokens ?? state.gemmaContextLimit);
         state.gemmaOutputTokenLimit = normalizeOutputTokenLimit(data.session.gemma_output_token_limit ?? data.session.llm_max_tokens ?? data.session.llmMaxTokens ?? state.gemmaOutputTokenLimit);
         state.gemmaGpuLayers = normalizeGemmaGpuLayers(data.session.gemma_gpu_layers ?? data.session.n_gpu_layers ?? state.gemmaGpuLayers);
+        state.gemmaGpuDevice = normalizeGemmaGpuDevice(data.session.gemma_gpu_device ?? state.gemmaGpuDevice);
         state.lmStudioBaseUrl = data.session.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
         state.lmStudioModel = data.session.lm_studio_model || state.lmStudioModel || "";
         state.lmStudioApiKey = data.session.lm_studio_api_key || state.lmStudioApiKey || "";
@@ -1340,6 +1348,9 @@ export function createSession({
       state.overlaySegments = Array.isArray(session.overlay_segments) ? session.overlay_segments : [];
       state.overlaySegments.forEach(normalizeOverlayClip);
       state.overlayTrack = normalizeOverlayTrackState(session.overlay_track || {});
+      // fx_track and fx_clips are what the first builds saved these under, before they were called overlays. They are read once and saved under the new names.
+      state.overlayLayerTrack = normalizeOverlayLayerTrack(session.overlay_layer_track ?? session.fx_track);
+      state.overlayLayers = normalizeOverlayLayers(session.overlay_layers ?? session.fx_clips);
       // Nothing is rendering when a session loads, so a saved "running" status is left over from a closed render.
       for (const item of [...state.segments, ...state.overlaySegments]) {
         if (item?.video_status === "running") item.video_status = item.video_path ? "done" : "none";
@@ -1413,6 +1424,7 @@ export function createSession({
       state.gemmaContextLimit = normalizeGemmaContextLimit(session.gemma_context_limit ?? session.n_ctx ?? session.llm_max_tokens ?? session.llmMaxTokens ?? state.gemmaContextLimit);
       state.gemmaOutputTokenLimit = normalizeOutputTokenLimit(session.gemma_output_token_limit ?? session.llm_max_tokens ?? session.llmMaxTokens ?? state.gemmaOutputTokenLimit);
       state.gemmaGpuLayers = normalizeGemmaGpuLayers(session.gemma_gpu_layers ?? session.n_gpu_layers ?? state.gemmaGpuLayers);
+      state.gemmaGpuDevice = normalizeGemmaGpuDevice(session.gemma_gpu_device ?? state.gemmaGpuDevice);
       state.lmStudioBaseUrl = session.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
       state.lmStudioModel = session.lm_studio_model || state.lmStudioModel || "";
       state.lmStudioApiKey = session.lm_studio_api_key || state.lmStudioApiKey || "";
