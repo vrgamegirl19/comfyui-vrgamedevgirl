@@ -17,6 +17,7 @@ from typing import Any, Dict, Iterable, List, Optional
 from ..builder.lyric_scenes import is_instrumental_lyric_text
 from .scene_card_fields import VIDEO_PROMPT_TYPES
 from .scene_defaults import normalize_scene_defaults
+from .scene_helpers import _refmod_card_fields
 
 # Card fields the open Storyboard takes from the live timeline scene (``liveOwned`` and ``sharedFields`` in
 # ``loadExisting``, plus timing and lyrics). The saved card keeps every other field.
@@ -92,6 +93,8 @@ def _slim_reference(ref: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         return None
     image = _dict(ref.get("image"))
     return {
+        # A RefMod card keeps its RefMod, so the Storyboard shows its preview and labels it (``refmodCardFields``).
+        **_refmod_card_fields(ref),
         "id": _text(ref.get("id")),
         "name": _text(ref.get("name")),
         "description": _text(ref.get("description")),
@@ -100,6 +103,22 @@ def _slim_reference(ref: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         "trigger_position": "end" if _text(ref.get("trigger_position")) == "end" else "start",
         "image": {"path": _text(image.get("path")), "name": _text(image.get("name")), "data": ""},
     }
+
+
+def _live_reference(saved_ref: Optional[Dict[str, Any]], ref: Dict[str, Any]) -> Dict[str, Any]:
+    """Twin of ``liveReference`` in ``persistence.mjs``: a card from the Video Builder is its Reference Builder card as it
+    is now (picture, RefMod). The saved copy only fills in what the live card does not have, and its picture is kept only
+    when the live card has none."""
+    if not isinstance(saved_ref, dict):
+        return copy.deepcopy(ref)
+    live_image = ref.get("image") if isinstance(ref.get("image"), dict) else {}
+    image = ref.get("image") if live_image.get("path") or live_image.get("data") else saved_ref.get("image")
+    merged = {**copy.deepcopy(saved_ref), **copy.deepcopy(ref)}
+    if image is None:
+        merged.pop("image", None)
+    else:
+        merged["image"] = copy.deepcopy(image)
+    return merged
 
 
 def _id_list(value: Any) -> List[str]:
@@ -311,7 +330,7 @@ def _linked_card(saved: Dict[str, Any], fresh: Dict[str, Any]) -> Dict[str, Any]
     merged["id"] = fresh.get("id") or saved.get("id")
     saved_refs = {_text(ref.get("id")): ref for ref in saved.get("subject_refs") or [] if isinstance(ref, dict)}
     merged["subject_refs"] = [] if fresh.get("no_character_present") else [
-        copy.deepcopy(saved_refs.get(_text(ref.get("id"))) or ref) for ref in fresh.get("subject_refs") or []
+        _live_reference(saved_refs.get(_text(ref.get("id"))), ref) for ref in fresh.get("subject_refs") or []
     ]
     names = [ref.get("name") for ref in merged["subject_refs"] if ref.get("name")]
     merged["subjects"] = names or list(fresh.get("subjects") or [])
@@ -320,6 +339,8 @@ def _linked_card(saved: Dict[str, Any], fresh: Dict[str, Any]) -> Dict[str, Any]
     if _text((fresh_location or {}).get("id")) != _text((saved_location or {}).get("id")):
         merged["location_ref"] = copy.deepcopy(fresh_location)
         merged["setting"] = fresh.get("setting", "")
+    elif fresh_location is not None:
+        merged["location_ref"] = _live_reference(saved_location, fresh_location)
     merged["status"] = video_prompt_status(merged, _text(saved.get("status")))
     return merged
 
