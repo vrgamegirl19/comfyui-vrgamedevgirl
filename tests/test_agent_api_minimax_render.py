@@ -191,12 +191,14 @@ class MiniMaxRenderPayloadTests(_RenderScaffold):
             self._render({"mode": "minimax_h3"})
         self.assertIn("roof.png", str(ctx.exception))
 
-    def test_built_in_audio_with_multipass_is_rejected(self):
+    def test_built_in_audio_with_advanced_multipass_uses_native_audio(self):
         self.session["minimax_h3_settings"]["audio_mode"] = "built_in_audio"
         with open(os.path.join(self.project_dir, "vrgdg_builder_session.json"), "w", encoding="utf-8") as handle:
             json.dump(self.session, handle)
-        with self.assertRaises(errors.ValidationError):
-            self._render({"mode": "minimax_h3"})
+        captured = self._render({"mode": "minimax_h3"})
+        self.assertEqual(captured["mode"], "minimax_h3_advanced_2pass")
+        self.assertEqual(captured["payload"]["audio_mode"], "built_in_audio")
+        self.assertEqual(captured["payload"]["audio_path"], "")
 
 
 

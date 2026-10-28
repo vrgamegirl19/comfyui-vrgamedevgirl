@@ -334,6 +334,26 @@ def normalize_minimax_h3_settings(raw: Optional[Dict[str, Any]]) -> Dict[str, An
     return settings
 
 
+def apply_minimax_h3_settings_patch(
+    current: Optional[Dict[str, Any]],
+    patch: Dict[str, Any],
+    inherited_mode: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Merge an intentional API edit without treating pass selection as an old save.
+
+    Unedited legacy saves still migrate to Single. Explicit pass edits opt into
+    the current pass semantics, like the Builder's pass buttons do.
+    """
+    merged = {**(current or {}), **patch}
+    if "render_pass" in patch:
+        mode = merged.get("video_mode") or inherited_mode or "text_to_video"
+        if mode == "text_to_video":
+            merged["t2v_pass_settings_version"] = 1
+        elif mode == "image_to_video":
+            merged["i2v_pass_settings_version"] = 1
+    return merged
+
+
 def minimax_h3_settings_for_scene(session: Dict[str, Any], segment: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Project settings, overlaid with the scene's own settings when the scene opts in (mirrors the UI)."""
     project_raw = session.get("minimax_h3_settings") if isinstance(session, dict) else None
