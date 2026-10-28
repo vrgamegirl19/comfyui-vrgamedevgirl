@@ -213,6 +213,39 @@ class MiniMaxI2VTwoPassTests(unittest.TestCase):
         self.assertEqual(result["prompt"]["136"]["class_type"], "MiniMaxH3ReferenceToVideo")
         self.assertEqual(result["prompt"]["193"]["inputs"]["conditioning"], ["136", 0])
 
+    def test_text_two_pass_compiles_without_reference_media_and_can_finalize(self) -> None:
+        for audio_mode in ("input_audio", "built_in_audio"):
+            with self.subTest(audio_mode=audio_mode):
+                payload = {**self.payload, "video_mode": "text_to_video", "image_paths": [],
+                           "audio_mode": audio_mode,
+                           "diffusion_model_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+                           "two_pass_lora_name": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors"}
+                built = workflows._build_minimax_h3_2pass_api_prompt(payload)
+                graph = built["prompt"]
+                self.assertEqual(built["reference_inputs"], {"image_count": 0, "video_count": 0})
+                self.assertEqual(json.loads(graph["180"]["inputs"]["image_paths"]), [])
+                self.assertEqual(graph["136"]["class_type"], "MiniMaxH3ReferenceToVideo")
+                self.assertEqual(graph["193"]["inputs"]["conditioning"], ["136", 0])
+                self.assertEqual(graph["124"]["inputs"]["steps"], 23)
+                self.assertEqual(graph["190"]["inputs"]["value"], 7)
+                draft = drafts._build_minimax_draft(built, payload)
+                Path(draft["prompt"]["draft_save"]["inputs"]["checkpoint_path"]).touch()
+                final = drafts._build_minimax_finalize({**payload, "draft_id": draft["draft_id"]})
+                self.assertEqual(final["prompt"]["194"], graph["194"])
+
+    def test_text_two_pass_migration_and_renderer_selection(self) -> None:
+        legacy = settings.normalize_minimax_h3_settings({"video_mode": "text_to_video", "render_pass": "two_pass"})
+        self.assertEqual(settings.minimax_workflow_key(legacy), "minimax_h3")
+        selected = settings.normalize_minimax_h3_settings({**legacy, "render_pass": "two_pass", "two_pass_pass1_steps": 29})
+        self.assertEqual(settings.minimax_workflow_key(selected), "minimax_h3_2pass")
+        self.assertEqual(settings.build_minimax_render_payload(selected)["pass1_steps"], 29)
+        reloaded = settings.normalize_minimax_h3_settings(json.loads(json.dumps(selected)))
+        self.assertEqual(settings.minimax_workflow_key(reloaded), "minimax_h3_2pass")
+        locked = {"use_scene_minimax_h3_settings": True,
+                  "minimax_h3_settings": {"video_mode": "text_to_video", "render_pass": "two_pass"}}
+        self.assertEqual(settings.minimax_workflow_key(settings.minimax_h3_settings_for_scene(
+            {"minimax_h3_settings": selected}, locked)), "minimax_h3")
+
     def test_invalid_i2v_requests_fail_before_queueing(self) -> None:
         for extra, message in (
             ({"image_paths": []}, "requires a scene image"),

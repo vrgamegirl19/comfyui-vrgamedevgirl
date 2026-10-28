@@ -306,6 +306,17 @@ def normalize_minimax_h3_settings(raw: Optional[Dict[str, Any]]) -> Dict[str, An
             settings["diffusion_model_name"] = "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
         if settings["two_pass_lora_name"] == defaults["two_pass_lora_name"]:
             settings["two_pass_lora_name"] = "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors"
+    elif raw.get("video_mode") == "text_to_video":
+        # Older T2V saves ignored render_pass even when it contained the global default.
+        try:
+            t2v_version = int(raw.get("t2v_pass_settings_version") or 0)
+        except (TypeError, ValueError):
+            t2v_version = 0
+        if t2v_version < 1:
+            settings["render_pass"] = "single"
+        elif settings["render_pass"] == "three_pass":
+            settings["render_pass"] = "two_pass"
+        settings["t2v_pass_settings_version"] = 1
     # One output resolution for every pass type; older saves took it from the pass type they rendered with.
     settings["resolution_preset"], settings["megapixels"] = migrate_resolution(raw, settings["render_pass"])
     for key, default in _OPTIONAL_SETTINGS.items():
@@ -337,6 +348,8 @@ def minimax_h3_settings_for_scene(session: Dict[str, Any], segment: Optional[Dic
                 merged["video_mode"] = mode
         # The pipeline belongs to the whole project, so a scene with its own settings follows it.
         merged["pipeline"] = (project_raw or {}).get("pipeline", "standard") if isinstance(project_raw, dict) else "standard"
+        if merged.get("video_mode") == "text_to_video" and isinstance(scene_raw, dict):
+            merged["t2v_pass_settings_version"] = scene_raw.get("t2v_pass_settings_version", 0)
     return normalize_minimax_h3_settings(merged)
 
 
@@ -362,9 +375,9 @@ def minimax_h3_attention_summary(settings: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def minimax_render_pass(settings: Dict[str, Any]) -> str:
-    """Resolve supported passes: I2V has Single/2 Pass; reference modes also have Advanced."""
+    """Resolve supported passes: T2V/I2V have Single/2 Pass; reference modes also have Advanced."""
     render_pass = str(settings.get("render_pass") or "single")
-    if render_pass == "two_pass" and settings.get("video_mode") == "image_to_video":
+    if render_pass == "two_pass" and settings.get("video_mode") in ("image_to_video", "text_to_video"):
         return render_pass
     if render_pass in ("two_pass", "three_pass") and settings.get("video_mode") in _REFERENCE_MODES:
         return render_pass
