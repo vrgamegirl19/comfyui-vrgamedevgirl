@@ -490,6 +490,9 @@ export function selectMiniMaxH3PassSettings(settings, passMode) {
   return cloneMiniMaxH3Settings({
     ...current,
     ...(profiles[passMode] || {}),
+    // Pass profiles may contain a different pipeline from an earlier session.
+    // The project pipeline controls the video mode and must survive pass changes.
+    pipeline: current.pipeline,
     // The output resolution is shared by every pass mode, not stored per profile.
     i2v_transition_style: current.i2v_transition_style,
     i2v_transition_direction: current.i2v_transition_direction,
@@ -499,6 +502,7 @@ export function selectMiniMaxH3PassSettings(settings, passMode) {
     video_mode: normalizeMiniMaxH3Mode(current.video_mode),
     render_pass: (isI2V || current.video_mode === "text_to_video") && passMode === "three_pass" ? "two_pass" : passMode,
     i2v_pass_settings_version: 1,
+    t2v_pass_settings_version: 1,
     ref_pass_profiles: isI2V ? ref_pass_profiles : profiles,
     i2v_pass_profiles: isI2V ? profiles : i2v_pass_profiles,
   });

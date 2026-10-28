@@ -378,6 +378,22 @@ test('T2V pass selection survives reload and migrates old ignored settings', () 
   assert.equal(c.selectMiniMaxH3PassSettings(selected, 'three_pass').render_pass, 'two_pass');
 });
 
+test('T2V pass selection cannot restore a RefMod pipeline from an older pass profile', () => {
+  const c = fixture();
+  let settings = c.cloneMiniMaxH3Settings({ pipeline: 'standard', video_mode: 'text_to_video',
+    render_pass: 'single', t2v_pass_settings_version: 1,
+    ref_pass_profiles: { two_pass: { pipeline: 'refmod', video_mode: 'reference_to_video',
+      render_pass: 'two_pass', t2v_pass_settings_version: 0, two_pass_pass1_steps: 29 } } });
+  for (const pass of ['two_pass', 'single', 'two_pass']) {
+    settings = c.selectMiniMaxH3PassSettings(settings, pass);
+    settings = c.cloneMiniMaxH3Settings(JSON.parse(JSON.stringify(settings)));
+    assert.equal(settings.pipeline, 'standard');
+    assert.equal(settings.video_mode, 'text_to_video');
+    assert.equal(settings.render_pass, pass);
+  }
+  assert.equal(settings.two_pass_pass1_steps, 29);
+});
+
 test('I2V LoRA presets skip reference-to-video adapters', () => {
   const c = fixture();
   const ref = 'minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors';
@@ -392,8 +408,9 @@ test('actual pass-button handlers keep global and locked-scene T2V/I2V settings 
   for (const mode of ['text_to_video', 'image_to_video']) {
   for (const locked of [false, true]) {
     const c = fixture();
-    const globalSettings = c.cloneMiniMaxH3Settings({ video_mode: locked ? 'reference_to_video' : mode, render_pass: 'single', i2v_pass_settings_version: 1, t2v_pass_settings_version: 1 });
-    const scene = locked ? { use_scene_minimax_h3_settings: true, minimax_h3_settings: c.cloneMiniMaxH3Settings({ video_mode: mode, render_pass: 'single', i2v_pass_settings_version: 1, t2v_pass_settings_version: 1 }) } : null;
+    const staleProfiles = { two_pass: { pipeline: 'refmod', video_mode: 'reference_to_video', t2v_pass_settings_version: 0 } };
+    const globalSettings = c.cloneMiniMaxH3Settings({ video_mode: locked ? 'reference_to_video' : mode, render_pass: 'single', i2v_pass_settings_version: 1, t2v_pass_settings_version: 1, ref_pass_profiles: staleProfiles });
+    const scene = locked ? { use_scene_minimax_h3_settings: true, minimax_h3_settings: c.cloneMiniMaxH3Settings({ video_mode: mode, render_pass: 'single', i2v_pass_settings_version: 1, t2v_pass_settings_version: 1, ref_pass_profiles: staleProfiles }) } : null;
     Object.assign(c, {
       state: { miniMaxH3Settings: globalSettings },
       wizardVideoSettings: { global: !locked },
@@ -411,6 +428,7 @@ test('actual pass-button handlers keep global and locked-scene T2V/I2V settings 
     await c.miniMaxPassButtons[0].onclick();
     const selected = locked ? scene.minimax_h3_settings : c.state.miniMaxH3Settings;
     assert.equal(selected.video_mode, mode);
+    assert.equal(selected.pipeline, 'standard');
     assert.equal(selected.render_pass, 'two_pass');
     if (locked) {
       assert.equal(c.state.miniMaxH3Settings.video_mode, 'reference_to_video');
