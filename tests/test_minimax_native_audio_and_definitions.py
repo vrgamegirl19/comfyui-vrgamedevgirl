@@ -74,12 +74,151 @@ class NativeAudioTwoPassTests(unittest.TestCase):
         self.assertIn("_use_minimax_h3_native_audio(prompt)", body)
         self.assertIn('"audio_mode": audio_mode,', body)
 
-    def test_two_pass_settings_with_built_in_audio_build_a_payload_and_advanced_still_refuses(self):
-        base = {"video_mode": "reference_to_video", "audio_mode": "built_in_audio"}
-        two = payload_mod.build_minimax_render_payload(payload_mod.normalize_minimax_h3_settings({**base, "render_pass": "two_pass"}))
-        self.assertEqual(two["audio_mode"], "built_in_audio")
-        with self.assertRaises(ValueError):
-            payload_mod.build_minimax_render_payload(payload_mod.normalize_minimax_h3_settings({**base, "render_pass": "three_pass"}))
+    def test_every_mode_and_supported_pass_accepts_built_in_audio(self):
+        for mode in payload_mod.SETTINGS_ENUMS["video_mode"]:
+            for render_pass in ("single", "two_pass", "three_pass"):
+                with self.subTest(mode=mode, render_pass=render_pass):
+                    settings = payload_mod.normalize_minimax_h3_settings({
+                        "video_mode": mode, "audio_mode": "built_in_audio", "render_pass": render_pass,
+                        "i2v_pass_settings_version": 1, "t2v_pass_settings_version": 1,
+                    })
+                    self.assertEqual(payload_mod.build_minimax_render_payload(settings)["audio_mode"], "built_in_audio")
+
+    def test_legacy_three_pass_reuses_generated_audio_in_all_outputs(self):
+        template = TEMPLATE.with_name("minimax_ref2video_3pass_audio_driven_api.json")
+        graph = _rewire()(json.loads(template.read_text(encoding="utf-8")))
+        decode = next(key for key, node in graph.items() if node["class_type"] == "LTXVAudioVAEDecode")
+        self.assertEqual(graph[decode]["inputs"]["samples"], ["247", 0])
+        self.assertEqual(graph["347"]["inputs"]["samples"], ["350", 0])
+        for node in graph.values():
+            if node["class_type"] == "VHS_VideoCombine":
+                self.assertEqual(node["inputs"]["audio"], [decode, 0])
+
+    def test_i2v_and_image_reference_branches_generate_audio_without_input(self):
+        tree = ast.parse((ROOT / "runner/minimax_inputs.py").read_text(encoding="utf-8"))
+        fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_patch_minimax_h3_image_to_video_node")
+        namespace = {}
+        exec(compile(ast.Module([fn], []), "image_conditioning", "exec"), namespace)
+        for references in (False, True):
+            with self.subTest(references=references):
+                graph = copy.deepcopy(self.template)
+                namespace[fn.name](graph, ["first.png", "last.png", "ref.png"] if references else ["first.png", "last.png"],
+                                   include_references=references, has_last_frame=True)
+                graph["214"] = copy.deepcopy(graph["136"])
+                graph["193"]["inputs"]["conditioning"] = ["214", 0]
+                graph = _rewire()(graph)
+                self.assertEqual(graph["125"]["inputs"]["latent_image"], ["136", 1])
+                self.assertIn("last_frame", graph["214"]["inputs"])
+                for key, node in graph.items():
+                    for name, value in node["inputs"].items():
+                        if isinstance(value, list) and len(value) == 2 and isinstance(value[0], str):
+                            self.assertIn(value[0], graph, f"{key}.{name}")
+
+    def test_advanced_native_audio_survives_draft_and_finalize(self):
+        import importlib.util
+        import tempfile
+        from test_builder_minimax_advanced_two_pass import BuilderMiniMaxAdvancedTwoPassTests
+
+        fixture = BuilderMiniMaxAdvancedTwoPassTests()
+        namespace = fixture._advanced_prompt_namespace(object())
+        base = namespace["_build_minimax_h3_2pass_api_prompt"]
+        def native_base(payload):
+            result = base(payload)
+            result["prompt"] = _rewire()(result["prompt"])
+            return result
+        namespace["_build_minimax_h3_2pass_api_prompt"] = native_base
+        result = namespace["_build_minimax_h3_advanced_2pass_api_prompt"]({"audio_mode": "built_in_audio"})
+        graph = result["prompt"]
+        decode = next(key for key, node in graph.items() if node["class_type"] == "LTXVAudioVAEDecode")
+        self.assertEqual(graph[decode]["inputs"]["samples"], ["125", 0])
+        for output in ("142", "9308"):
+            self.assertEqual(graph[output]["inputs"]["audio"], [decode, 0])
+        for node in graph.values():
+            for value in node["inputs"].values():
+                if isinstance(value, list) and len(value) == 2 and isinstance(value[0], str):
+                    self.assertIn(value[0], graph)
+
+        spec = importlib.util.spec_from_file_location("native_drafts", ROOT / "runner/minimax_drafts.py")
+        drafts = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(drafts)
+        with tempfile.TemporaryDirectory() as folder:
+            payload = {"project_folder": folder, "scene_number": 1, "timeline_start_seconds": 0, "timeline_end_seconds": 5}
+            draft = drafts._build_minimax_draft(result, payload)
+            self.assertIn(decode, draft["prompt"])
+            Path(draft["prompt"]["draft_save"]["inputs"]["checkpoint_path"]).touch()
+            final = drafts._build_minimax_finalize({**payload, "draft_id": draft["draft_id"]})
+            self.assertEqual(final["prompt"]["125"]["class_type"], "VRGDG_MiniMaxH3LoadDraft")
+            self.assertEqual(final["prompt"][decode]["inputs"]["samples"], ["125", 0])
+
+    def test_native_compilers_need_no_audio_file_or_audio_preparation(self):
+        """Compile real templates without importing ComfyUI, torch, or model weights."""
+        import os
+        import random
+        import tempfile
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+
+        folder = TEMPLATE.parent
+        namespace = {"copy": copy, "json": json, "os": os, "random": random,
+                     "_NONE_LORA": "[none]", "_MINIMAX_H3_ASPECT_RATIOS": {"16:9 (Widescreen)"}}
+        for path, names in ((RUNNER, {"_build_minimax_h3_2pass_api_prompt", "_build_minimax_h3_3pass_api_prompt", "_use_minimax_h3_native_audio"}),
+                            (ROOT / "runner/paths.py", {"_first_payload_value", "_bool_payload", "_int_payload", "_float_payload"}),
+                            (ROOT / "runner/minimax_inputs.py", {"_patch_minimax_h3_image_to_video_node"})):
+            nodes = [n for n in ast.parse(path.read_text(encoding="utf-8")).body if isinstance(n, ast.FunctionDef) and n.name in names]
+            exec(compile(ast.Module(nodes, []), str(path), "exec"), namespace)
+        def load(path):
+            return str(path), json.loads(Path(path).read_text(encoding="utf-8"))
+        namespace.update({
+            "_load_api_template": load,
+            "_minimax_h3_2pass_api_template_path": lambda mode: folder / ("minimax_i2v_audio_driven_builder_latent_upscale_2pass_api.json" if mode == "image_to_video" else TEMPLATE.name),
+            "_minimax_h3_3pass_api_template_path": lambda: folder / "minimax_ref2video_3pass_audio_driven_api.json",
+            "_set_api_input": lambda p, n, k, v: p[n]["inputs"].update({k: v}),
+            "_require_model_choice": lambda *args: None,
+            "_clean_lora_name": lambda name: name,
+            "_minimax_h3_image_paths": lambda p: p.get("image_paths", []),
+            "_minimax_h3_video_references": lambda p: [],
+            "_minimax_h3_output_location": lambda *args: ("output", "scene"),
+            "_minimax_h3_effective_warmup_frames": lambda p: 5,
+            "_minimax_h3_cooldown_frames": lambda p: 0,
+            "_minimax_h3_latent_continuation_mode": lambda p: "off",
+            "_minimax_h3_is_latent_mode": lambda mode: False,
+            "_patch_minimax_h3_latent_continuation": lambda *args: None,
+            "_patch_minimax_h3_save_latent": lambda *args: None,
+            "_patch_minimax_h3_optional_model_paths": lambda *args: [],
+            "patch_i2v_keyframe_timing": lambda *args: None,
+            "calculate_minimax_h3_timing": Mock(return_value=SimpleNamespace(
+                workflow_duration_input_seconds=5, final_trim_start_seconds=0,
+                final_trim_duration_seconds=5, final_frame_count=120, to_dict=lambda: {})),
+            "_probe_media_duration_seconds": Mock(side_effect=AssertionError("must not probe input audio")),
+            "_trim_minimax_h3_audio_context": Mock(side_effect=AssertionError("must not prepare input audio")),
+        })
+        with tempfile.TemporaryDirectory() as project:
+            for mode in payload_mod.SETTINGS_ENUMS["video_mode"]:
+                for compiler in ("_build_minimax_h3_2pass_api_prompt", "_build_minimax_h3_3pass_api_prompt"):
+                    with self.subTest(mode=mode, compiler=compiler):
+                        result = namespace[compiler]({"project_folder": project, "prompt": "A cinematic scene with speech.",
+                            "audio_mode": "built_in_audio", "video_mode": mode, "scene_duration_seconds": 5,
+                            "image_paths": ["first.png", "ref.png"] if mode.startswith("image_") else []})
+                        self.assertEqual(result["audio_mode"], "built_in_audio")
+                        self.assertIsNone(result["prepared_audio"])
+                        self.assertTrue(namespace["calculate_minimax_h3_timing"].call_args.kwargs["pad_warmup"])
+                        self.assertFalse(any(n["class_type"] == "VHS_LoadAudio" for n in result["prompt"].values()))
+                        for node in result["prompt"].values():
+                            for value in node["inputs"].values():
+                                if isinstance(value, list) and len(value) == 2 and isinstance(value[0], str):
+                                    self.assertIn(value[0], result["prompt"])
+            # Supplied audio continues to use the external-audio templates.
+            source = Path(project) / "source.wav"
+            source.touch()
+            namespace["_probe_media_duration_seconds"].side_effect = None
+            namespace["_probe_media_duration_seconds"].return_value = 5
+            namespace["_trim_minimax_h3_audio_context"].side_effect = None
+            namespace["_trim_minimax_h3_audio_context"].return_value = {"audio_path": str(source)}
+            for compiler in ("_build_minimax_h3_2pass_api_prompt", "_build_minimax_h3_3pass_api_prompt"):
+                result = namespace[compiler]({"project_folder": project, "prompt": "A cinematic scene.",
+                    "audio_mode": "input_audio", "audio_path": str(source), "scene_duration_seconds": 5})
+                self.assertEqual(result["audio_mode"], "input_audio")
+                self.assertTrue(any(n["class_type"] == "VRGDG_MiniMaxH3AudioDrive" for n in result["prompt"].values()))
 
 
 ITEMS = [

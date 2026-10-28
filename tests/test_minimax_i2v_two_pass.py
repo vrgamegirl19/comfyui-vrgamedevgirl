@@ -78,8 +78,6 @@ class MiniMaxI2VTwoPassTests(unittest.TestCase):
     def test_draft_and_finalize_use_real_compiled_graph_for_input_and_native_audio(self) -> None:
         for audio_mode in ("input_audio", "built_in_audio"):
             for mode in ("image_to_video", "reference_to_video", "image_reference_to_video"):
-                if audio_mode == "built_in_audio" and mode == "image_to_video":
-                    continue  # The existing I2V compiler supports supplied audio only.
                 with self.subTest(audio_mode=audio_mode, mode=mode):
                     payload = {**self.payload, "audio_mode": audio_mode, "video_mode": mode,
                                "scene_number": 1, "timeline_start_seconds": 0, "timeline_end_seconds": 1}
@@ -251,7 +249,6 @@ class MiniMaxI2VTwoPassTests(unittest.TestCase):
             ({"image_paths": []}, "requires a scene image"),
             ({"two_pass_lora_name": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors"},
              "FL2V/I2V Turbo LoRA"),
-            ({"audio_mode": "built_in_audio"}, "Input Audio only"),
         ):
             with self.subTest(extra=extra), self.assertRaisesRegex(ValueError, message):
                 workflows._build_minimax_h3_2pass_api_prompt({**self.payload, **extra})

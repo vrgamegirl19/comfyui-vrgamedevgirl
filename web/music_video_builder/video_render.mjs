@@ -784,9 +784,6 @@ export function createVideoRender({
     if (refmodPipeline && threePass) {
       throw new Error("The RefMod pipeline supports Single and 2 Pass only. Choose one of those passes before rendering.");
     }
-    if ((twoPass || threePass) && builtInAudio) {
-      throw new Error(`MiniMax H3 ${threePass ? "2 Pass Advanced" : "2 Pass"} currently supports Input Audio only. Switch Audio Mode to Input Audio before rendering.`);
-    }
     if (!projectFolder) throw new Error("Save or select a project folder before rendering MiniMax H3.");
     if (!Number.isFinite(timelineStart) || !Number.isFinite(timelineEnd) || sceneDuration <= 0) {
       throw new Error(`${sceneDisplayName(segment, sceneIndex)} has invalid timeline boundaries.`);

@@ -547,7 +547,6 @@ export function createWizardBridge({
       const engine = normalizeProjectVideoEngine(state.projectVideoEngine);
       const mini = cloneMiniMaxH3Settings(state.miniMaxH3Settings);
       const mode = engine === "minimax_h3" ? mini.video_mode : currentVideoMode();
-      const inputOnly = mode === "image_reference_to_video" || (mode === "reference_to_video" && ["two_pass", "advanced"].includes(mini.ref_pass_mode));
       const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
       const subjectReferences = refs.subjects.filter(item => item.image?.path || item.image?.data);
       const locationReferences = refs.locations.filter(item => item.image?.path || item.image?.data);
@@ -556,8 +555,8 @@ export function createWizardBridge({
         performance: state.videoType, performances: VIDEO_TYPE_OPTIONS,
         promptRunnerLabel: promptRunnerActionName(),
         audioMode: engine === "minimax_h3" ? mini.audio_mode : mode === "id_lora" ? "reference_voice" : ltxAudioChoice,
-        audioModes: engine === "minimax_h3" ? MINIMAX_H3_AUDIO_MODE_OPTIONS.map(item => ({ ...item, disabled: inputOnly && item.value === "built_in_audio" })) : mode === "id_lora" ? [{ value: "reference_voice", label: "ID-LoRA reference voice" }] : [{ value: "input_audio", label: "Use an audio file" }, { value: "silent", label: "Silent timeline" }],
-        audioHelp: engine === "minimax_h3" ? inputOnly ? "This multi-pass mode requires input audio. Choose a single-pass mode for built-in audio." : "Built-in audio generates sound from the prompt and does not require a song." : mode === "id_lora" ? "Set the reference voice in Models & LoRAs. Scene dialogue guides speech." : "The current LTX Builder supports supplied audio or silence; native generated audio is not enabled in its render path.",
+        audioModes: engine === "minimax_h3" ? MINIMAX_H3_AUDIO_MODE_OPTIONS.map(item => ({ ...item })) : mode === "id_lora" ? [{ value: "reference_voice", label: "ID-LoRA reference voice" }] : [{ value: "input_audio", label: "Use an audio file" }, { value: "silent", label: "Silent timeline" }],
+        audioHelp: engine === "minimax_h3" ? "Built-in audio generates sound from the prompt and does not require a song." : mode === "id_lora" ? "Set the reference voice in Models & LoRAs. Scene dialogue guides speech." : "The current LTX Builder supports supplied audio or silence; native generated audio is not enabled in its render path.",
         audioPath: String(audioInput.value || state.audioPath || ""),
         lyrics: state.lyricMapper?.source_text || "", direction: state.builderStoryLayer?.overall_story_idea || "",
         subjects: subjectReferences.map(referenceDraft), locations: locationReferences.map(referenceDraft),
