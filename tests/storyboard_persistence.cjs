@@ -223,6 +223,27 @@ test("Timeline prompt and note edits replace stale storyboard values on reopen, 
   }
 });
 
+test("Reopening shows the current Reference Builder card of a scene, not the saved copy", async () => {
+  const folder = path.join(project, "live-cards");
+  const location = (image, extra = {}) => ({ id: "street", name: "Street", description: "A street at dawn",
+    image: { path: image, data: "", name: "street.png" }, ...extra });
+  const saved = stateFor(folder);
+  saved.scenes[0].location_ref = location("street_02.png");
+  saved.scenes[0].subject_refs = [{ id: "subject1", name: "Singer", description: "Saved", image: { path: "singer_01.png", data: "", name: "" } }];
+  await fixture(saved).saveStoryboard({ throwOnError: true });
+  const refmod = { name: "background/Street", folder: "background", type: "background", kind: "image", tokens: 558, frames: 1, strength: 1 };
+  const current = stateFor(folder);
+  current.scenes[0].location_ref = location("street_06.png", { source: "refmod", refmod });
+  current.scenes[0].subject_refs = [{ id: "subject1", name: "Singer", description: "Saved", image: { path: "", data: "", name: "" } }];
+  assert.equal(await fixture(current).loadExisting(), true);
+  const scene = current.scenes[0];
+  assert.equal(scene.location_ref.image.path, "street_06.png");
+  assert.equal(scene.location_ref.source, "refmod");
+  assert.equal(scene.location_ref.refmod.name, "background/Street");
+  // A live card with no picture keeps the saved one.
+  assert.equal(scene.subject_refs[0].image.path, "singer_01.png");
+});
+
 test("Main timeline payload keeps canonical prompts and notes instead of old aliases", () => {
   const api = fixture(stateFor(project));
   const convert = vm.runInContext("scenesFromBuilderPayload", api.context);
