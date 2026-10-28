@@ -1,12 +1,15 @@
 import { sceneDefaultTargets } from "./defaults_actions.mjs";
+import { makeEditorThumbnailUrl } from "../music_video_builder/comfy_api.mjs";
 import { assignLabels, composeRefmodItems, isRefmodCard, refmodCardFields } from "../music_video_builder/refmod_labels.mjs";
 import { postJson } from "./api.mjs";
 import { createToast, escapeHtml, makeButton, makeInput, makeTextarea, tagsHtml } from "./controls.mjs";
 import { normalizeStoryboardSpeakerAssignments } from "./scenes.mjs";
 import { storyboardSceneSupportsVideoStyle } from "./video_style.mjs";
 
+// The Video Builder's thumbnail URL: the same for a picture until it is made again, so the browser keeps it instead of
+// downloading every picture in full each time the table is drawn.
 export function makeStoryboardImageUrl(path) {
-  return `/vrgdg/video_editor/image?path=${encodeURIComponent(path)}&rand=${Date.now()}`;
+  return makeEditorThumbnailUrl(path);
 }
 
 export function storyboardReferenceImageSrc(image) {

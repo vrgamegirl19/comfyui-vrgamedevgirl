@@ -1,5 +1,5 @@
 import { FACIAL_PERFORMANCE_PRESETS } from "../storyboard_builder/performance_presets.mjs";
-import { audioUrl, makeEditorImageUrl } from "./comfy_api.mjs";
+import { audioUrl, makeEditorThumbnailUrl } from "./comfy_api.mjs";
 import { escapeHtml, makeButton, makeCheckbox, makeField, makeInput, makeSelect, toast } from "./controls.mjs";
 import { showConfirmModal, showInfoModal } from "./dialogs.mjs";
 import { formatDurationSeconds, formatTime } from "./format.mjs";
@@ -1589,7 +1589,7 @@ export function createLyricReview({
       const refmodName = String(subject?.refmod?.name || "").trim();
       if (subject?.source === "refmod" && refmodName) return refmodPreviewUrl(refmodName);
       const image = subject?.image || {};
-      return String(image.data || "").trim() || (image.path ? makeEditorImageUrl(image.path) : "");
+      return String(image.data || "").trim() || (image.path ? makeEditorThumbnailUrl(image.path) : "");
     };
     // One picture card for a subject: its preview or image, with its name underneath.
     const identityPictureCard = (subject, fallbackName) => {
