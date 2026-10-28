@@ -152,8 +152,15 @@ export function createStoryboardPersistence({
               temporal_world_effect_custom: fresh.temporal_world_effect_custom,
             }
             : {};
+          // A card from the Video Builder is its Reference Builder card as it is now (image, RefMod). The saved copy only
+          // fills in what the live card does not have.
+          const liveReference = (savedRef, ref) => {
+            if (!savedRef) return ref;
+            const image = ref?.image?.path || ref?.image?.data ? ref.image : savedRef.image;
+            return { ...savedRef, ...ref, image };
+          };
           const subjectRefs = incomingScenes.length
-            ? (fresh.subject_refs || []).map((ref) => normalized.subject_refs.find((savedRef) => savedRef.id === ref.id) || ref)
+            ? (fresh.subject_refs || []).map((ref) => liveReference(normalized.subject_refs.find((savedRef) => savedRef.id === ref.id), ref))
             : normalized.subject_refs;
           const subjects = subjectRefs?.length
             ? storyboardSubjectNamesFromRefs(subjectRefs)
@@ -192,7 +199,9 @@ export function createStoryboardPersistence({
             subjects,
             subject_refs: noCharacterPresent ? [] : subjectRefs,
             setting: currentLocationsCleared ? "" : normalized.setting,
-            location_ref: currentLocationsCleared ? null : (incomingScenes.length && fresh.location_ref?.id !== normalized.location_ref?.id ? fresh.location_ref : normalized.location_ref),
+            location_ref: currentLocationsCleared ? null : (incomingScenes.length && fresh.location_ref?.id !== normalized.location_ref?.id
+              ? fresh.location_ref
+              : (incomingScenes.length && fresh.location_ref ? liveReference(normalized.location_ref, fresh.location_ref) : normalized.location_ref)),
             ...sharedFields,
           };
         });
