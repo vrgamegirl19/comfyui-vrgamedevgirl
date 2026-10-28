@@ -214,7 +214,7 @@ For each case, fill in all three lines. If a case fails, also add its ID to the 
 - Exact error message: __________
 - Notes / screenshot / log: __________
 
-**MM-06 — Built-in audio.** Render MiniMax H3 2 Pass with built-in audio and no source audio. Audio is present in the final clip. In 2 Pass Advanced, the UI still requires input audio where that mode needs it.
+**MM-06 — Built-in audio.** Render MiniMax H3 2 Pass with built-in audio and no source audio. Audio is present in the final clip. Repeat with Single and 2 Pass Advanced in each mode offering that pass, including image keyframes and RefMods where supported. Built-in audio needs no source audio file; draft/finalize and refinement preserve the generated soundtrack.
 - Result: [ ] Pass [ ] Fail [ ] Not tested
 - Exact error message: __________
 - Notes / screenshot / log: __________

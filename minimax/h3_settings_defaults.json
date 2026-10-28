@@ -113,5 +113,6 @@
   "advanced_two_pass_pass2_denoise": 0.2,
   "advanced_two_pass_pass2_sampler": "sa_solver",
   "advanced_two_pass_pass2_scheduler": "simple",
-  "advanced_two_pass_pass2_seed": 69
+  "advanced_two_pass_pass2_seed": 69,
+  "t2v_pass_settings_version": 1
 }

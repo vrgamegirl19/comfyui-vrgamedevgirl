@@ -327,10 +327,11 @@ async def render_scene_video_async(
     payload["prompt"] = video_prompt
 
     # Audio preparation
-    audio_path = str(p.get("audio_path") or "").strip()
-    project_audio = session_audio_path(session)
+    native_audio = mode_group == "minimax_h3" and payload.get("audio_mode") == "built_in_audio"
+    audio_path = "" if native_audio else str(p.get("audio_path") or "").strip()
+    project_audio = "" if native_audio else session_audio_path(session)
     speaking_clips = session.get("video_type") == "speaking" and isinstance(session.get("audio_clips"), list)
-    if not audio_path and speaking_clips:
+    if not native_audio and not audio_path and speaking_clips:
         from ...builder.audio_clips import prepare_audio_clip_mix
 
         edited = await asyncio.to_thread(prepare_audio_clip_mix, {

@@ -660,6 +660,10 @@
             "minimum": 1,
             "type": "integer"
           },
+          "t2v_pass_settings_version": {
+            "default": 1,
+            "type": "integer"
+          },
           "three_pass_lightx_lora_name": {
             "default": "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
             "type": "string"

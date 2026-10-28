@@ -306,6 +306,17 @@ def normalize_minimax_h3_settings(raw: Optional[Dict[str, Any]]) -> Dict[str, An
             settings["diffusion_model_name"] = "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
         if settings["two_pass_lora_name"] == defaults["two_pass_lora_name"]:
             settings["two_pass_lora_name"] = "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors"
+    elif raw.get("video_mode") == "text_to_video":
+        # Older T2V saves ignored render_pass even when it contained the global default.
+        try:
+            t2v_version = int(raw.get("t2v_pass_settings_version") or 0)
+        except (TypeError, ValueError):
+            t2v_version = 0
+        if t2v_version < 1:
+            settings["render_pass"] = "single"
+        elif settings["render_pass"] == "three_pass":
+            settings["render_pass"] = "two_pass"
+        settings["t2v_pass_settings_version"] = 1
     # One output resolution for every pass type; older saves took it from the pass type they rendered with.
     settings["resolution_preset"], settings["megapixels"] = migrate_resolution(raw, settings["render_pass"])
     for key, default in _OPTIONAL_SETTINGS.items():
@@ -323,6 +334,26 @@ def normalize_minimax_h3_settings(raw: Optional[Dict[str, Any]]) -> Dict[str, An
     return settings
 
 
+def apply_minimax_h3_settings_patch(
+    current: Optional[Dict[str, Any]],
+    patch: Dict[str, Any],
+    inherited_mode: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Merge an intentional API edit without treating pass selection as an old save.
+
+    Unedited legacy saves still migrate to Single. Explicit pass edits opt into
+    the current pass semantics, like the Builder's pass buttons do.
+    """
+    merged = {**(current or {}), **patch}
+    if "render_pass" in patch:
+        mode = merged.get("video_mode") or inherited_mode or "text_to_video"
+        if mode == "text_to_video":
+            merged["t2v_pass_settings_version"] = 1
+        elif mode == "image_to_video":
+            merged["i2v_pass_settings_version"] = 1
+    return merged
+
+
 def minimax_h3_settings_for_scene(session: Dict[str, Any], segment: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Project settings, overlaid with the scene's own settings when the scene opts in (mirrors the UI)."""
     project_raw = session.get("minimax_h3_settings") if isinstance(session, dict) else None
@@ -337,6 +368,8 @@ def minimax_h3_settings_for_scene(session: Dict[str, Any], segment: Optional[Dic
                 merged["video_mode"] = mode
         # The pipeline belongs to the whole project, so a scene with its own settings follows it.
         merged["pipeline"] = (project_raw or {}).get("pipeline", "standard") if isinstance(project_raw, dict) else "standard"
+        if merged.get("video_mode") == "text_to_video" and isinstance(scene_raw, dict):
+            merged["t2v_pass_settings_version"] = scene_raw.get("t2v_pass_settings_version", 0)
     return normalize_minimax_h3_settings(merged)
 
 
@@ -362,9 +395,9 @@ def minimax_h3_attention_summary(settings: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def minimax_render_pass(settings: Dict[str, Any]) -> str:
-    """Resolve supported passes: I2V has Single/2 Pass; reference modes also have Advanced."""
+    """Resolve supported passes: T2V/I2V have Single/2 Pass; reference modes also have Advanced."""
     render_pass = str(settings.get("render_pass") or "single")
-    if render_pass == "two_pass" and settings.get("video_mode") == "image_to_video":
+    if render_pass == "two_pass" and settings.get("video_mode") in ("image_to_video", "text_to_video"):
         return render_pass
     if render_pass in ("two_pass", "three_pass") and settings.get("video_mode") in _REFERENCE_MODES:
         return render_pass
@@ -392,11 +425,6 @@ def build_minimax_render_payload(settings: Dict[str, Any], overrides: Optional[D
     two_pass = render_pass == "two_pass"
     advanced = render_pass == "three_pass"
     multi = two_pass or advanced
-    if advanced and s.get("audio_mode") == "built_in_audio":
-        raise ValueError(
-            "MiniMax H3 2 Pass Advanced currently supports Input Audio only. "
-            "Switch audio_mode to input_audio, or use Single or 2 Pass, before rendering."
-        )
 
     def pick(single: Any, two: Any, adv: Any) -> Any:
         return two if two_pass else adv if advanced else single

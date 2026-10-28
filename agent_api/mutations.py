@@ -59,7 +59,11 @@ from ..builder.timeline import (
 )
 from ..minimax.latent_manager import SceneLatentManager
 from ..minimax.scene_inputs import MAX_SCENE_REFERENCES, reference_choices, validate_reference_keys
-from ..minimax.settings_payload import minimax_h3_settings_for_scene, validate_minimax_h3_patch
+from ..minimax.settings_payload import (
+    apply_minimax_h3_settings_patch,
+    minimax_h3_settings_for_scene,
+    validate_minimax_h3_patch,
+)
 from ..minimax.prompt_assembly import (
     assemble_minimax_h3_prompt,
     build_minimax_prompt_context,
@@ -751,9 +755,11 @@ def patch_scene(
             scene["lyric_no_lip_sync"] = is_instrumental_lyric_text(scene.get("lyric_text"))
 
         for key, val in legacy.items():
-            if key == "minimax_h3_settings" and isinstance(val, dict) and isinstance(scene.get(key), dict):
-                # Merge like the Builder's scene lock (project settings overlaid with the scene's own).
-                scene[key] = {**scene[key], **val}
+            if key == "minimax_h3_settings" and isinstance(val, dict):
+                project_mode = (session.get("minimax_h3_settings") or {}).get("video_mode")
+                scene[key] = apply_minimax_h3_settings_patch(
+                    scene.get(key), val, scene.get("minimax_h3_mode") or project_mode,
+                )
             elif key.startswith("use_scene_") or key.endswith("_settings"):
                 scene[key] = val
 
@@ -2096,7 +2102,10 @@ def patch_project_settings(
             elif group_key and isinstance(val, dict):
                 # Nested groups live under the key the Video Builder UI saves and reads.
                 current = session.get(group_key) if isinstance(session.get(group_key), dict) else {}
-                session[group_key] = {**current, **val}
+                session[group_key] = (
+                    apply_minimax_h3_settings_patch(current, val)
+                    if key == "minimax_h3" else {**current, **val}
+                )
             elif isinstance(val, dict) and isinstance(session.get(key), dict):
                 session[key].update(val)
             else:

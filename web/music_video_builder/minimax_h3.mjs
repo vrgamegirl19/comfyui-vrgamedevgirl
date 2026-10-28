@@ -490,6 +490,9 @@ export function selectMiniMaxH3PassSettings(settings, passMode) {
   return cloneMiniMaxH3Settings({
     ...current,
     ...(profiles[passMode] || {}),
+    // Pass profiles may contain a different pipeline from an earlier session.
+    // The project pipeline controls the video mode and must survive pass changes.
+    pipeline: current.pipeline,
     // The output resolution is shared by every pass mode, not stored per profile.
     i2v_transition_style: current.i2v_transition_style,
     i2v_transition_direction: current.i2v_transition_direction,
@@ -497,8 +500,9 @@ export function selectMiniMaxH3PassSettings(settings, passMode) {
     resolution_preset: current.resolution_preset,
     megapixels: current.megapixels,
     video_mode: normalizeMiniMaxH3Mode(current.video_mode),
-    render_pass: isI2V && passMode === "three_pass" ? "two_pass" : passMode,
+    render_pass: (isI2V || current.video_mode === "text_to_video") && passMode === "three_pass" ? "two_pass" : passMode,
     i2v_pass_settings_version: 1,
+    t2v_pass_settings_version: 1,
     ref_pass_profiles: isI2V ? ref_pass_profiles : profiles,
     i2v_pass_profiles: isI2V ? profiles : i2v_pass_profiles,
   });
@@ -566,6 +570,10 @@ export function cloneMiniMaxH3Settings(value = {}) {
   // I2V previously ignored render_pass, even when a save carried the global two-pass default.
   if (isI2V && Number(source.i2v_pass_settings_version || 0) < 1) renderPass = "single";
   if (isI2V && renderPass === "three_pass") renderPass = "two_pass";
+  const isT2V = pipeline !== "refmod" && Boolean(source.video_mode || source.mode) && normalizeMiniMaxH3Mode(source.video_mode || source.mode) === "text_to_video";
+  // T2V saves previously carried an ignored global two-pass default.
+  if (isT2V && Number(source.t2v_pass_settings_version || 0) < 1) renderPass = "single";
+  if (isT2V && renderPass === "three_pass") renderPass = "two_pass";
   const resolution = resolveMiniMaxH3Resolution(source, renderPass);
   const sourceLoras = Array.isArray(source.loras)
     ? source.loras
@@ -625,6 +633,7 @@ export function cloneMiniMaxH3Settings(value = {}) {
       ? "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors"
       : String(source.two_pass_lora_name || DEFAULT_MINIMAX_H3_SETTINGS.two_pass_lora_name),
     i2v_pass_settings_version: 1,
+    t2v_pass_settings_version: 1,
     i2v_pass_profiles: source.i2v_pass_profiles && typeof source.i2v_pass_profiles === "object" && !Array.isArray(source.i2v_pass_profiles)
       ? source.i2v_pass_profiles : {},
     clip_name: String(source.clip_name || DEFAULT_MINIMAX_H3_SETTINGS.clip_name),

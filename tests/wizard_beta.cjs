@@ -201,14 +201,22 @@ test('adapter preserves selected engine/mode/audio when saving and rendering exi
   assert.ok(!f.events.includes('prompt:text_to_video')); assert.ok(f.events.includes('minimax-render')); assert.ok(!f.events.includes('ltx-build'));
 });
 
-test('adapter exposes all LTX modes and constrains multipass MiniMax audio', () => {
+test('adapter exposes all LTX modes and allows built-in MiniMax audio', () => {
   const f = adapterFixture();
   f.api.configure({ engine: 'ltx', mode: 'flf', audioMode: 'silent' });
   assert.equal(f.api.snapshot().mode, 'flf'); assert.equal(f.api.snapshot().audioMode, 'silent');
   assert.equal(f.api.snapshot().modes.ltx.filter(item => !item.disabled).length, 6);
   f.api.configure({ engine: 'minimax_h3', mode: 'image_reference_to_video' });
   assert.equal(f.state.videoModelMode, 'i2v');
-  assert.equal(f.api.snapshot().audioModes.find(item => item.value === 'built_in_audio').disabled, true);
+  for (const mode of ['text_to_video', 'image_to_video', 'image_reference_to_video', 'reference_to_video', 'video_to_video']) {
+    for (const render_pass of ['single', 'two_pass', 'three_pass']) {
+      f.state.miniMaxH3Settings.render_pass = render_pass;
+      f.api.configure({ engine: 'minimax_h3', mode, audioMode: 'built_in_audio' });
+      const snapshot = f.api.snapshot();
+      assert.notEqual(snapshot.audioModes.find(item => item.value === 'built_in_audio').disabled, true);
+      assert.equal(snapshot.audioMode, 'built_in_audio');
+    }
+  }
 });
 
 test('wizard pipeline choice updates project settings used by Reference Builder', () => {

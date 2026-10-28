@@ -777,15 +777,12 @@ export function createVideoRender({
     const refmodPipeline = normalizeMiniMaxH3Pipeline(state.miniMaxH3Settings?.pipeline) === "refmod";
     const mode = refmodPipeline ? "reference_to_video" : normalizeMiniMaxH3Mode(options.mode ?? miniMaxSettings.video_mode);
     const twoPass = miniMaxSettings.render_pass === "two_pass"
-      && ["reference_to_video", "image_reference_to_video", "image_to_video"].includes(mode);
+      && ["reference_to_video", "image_reference_to_video", "image_to_video", "text_to_video"].includes(mode);
     const threePass = miniMaxSettings.render_pass === "three_pass"
       && ["reference_to_video", "image_reference_to_video"].includes(mode);
     if (options.renderPhase === "draft" && !twoPass && !threePass) throw new Error("Draft rendering requires a MiniMax two-pass workflow.");
     if (refmodPipeline && threePass) {
       throw new Error("The RefMod pipeline supports Single and 2 Pass only. Choose one of those passes before rendering.");
-    }
-    if ((twoPass || threePass) && builtInAudio) {
-      throw new Error(`MiniMax H3 ${threePass ? "2 Pass Advanced" : "2 Pass"} currently supports Input Audio only. Switch Audio Mode to Input Audio before rendering.`);
     }
     if (!projectFolder) throw new Error("Save or select a project folder before rendering MiniMax H3.");
     if (!Number.isFinite(timelineStart) || !Number.isFinite(timelineEnd) || sceneDuration <= 0) {

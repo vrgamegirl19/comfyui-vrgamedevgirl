@@ -448,6 +448,8 @@ export function createMiniMaxPanel({
       // The pipeline belongs to the whole project, so a scene with its own settings follows it.
       pipeline: globalSettings.pipeline,
       video_mode: sceneSettings.video_mode || segment.minimax_h3_mode || globalSettings.video_mode,
+      // A migrated project must not opt an older locked T2V scene into two passes.
+      t2v_pass_settings_version: sceneSettings.t2v_pass_settings_version ?? 0,
       render_pass: sceneSettings.render_pass ?? (normalizeMiniMaxH3Mode(sceneSettings.video_mode || segment.minimax_h3_mode) === "image_reference_to_video" ? "two_pass" : globalSettings.render_pass),
       location_transition_preset: hasSceneTransitionPreset ? sceneSettings.location_transition_preset : legacyPreset,
       location_transition_custom: hasSceneTransitionPreset ? sceneSettings.location_transition_custom : legacyCustom,
@@ -709,7 +711,7 @@ export function createMiniMaxPanel({
     const modeLabel = miniMaxH3ModeLabel(mode);
     const imageReferenceTwoPass = mode === "image_reference_to_video";
     const twoPass = Boolean(state.miniMaxH3TwoPassEnabled)
-      && ["reference_to_video", "image_reference_to_video", "image_to_video"].includes(mode);
+      && ["reference_to_video", "image_reference_to_video", "image_to_video", "text_to_video"].includes(mode);
     const threePass = Boolean(state.miniMaxH3ThreePassEnabled)
       && ["reference_to_video", "image_reference_to_video"].includes(mode);
     const hideMultiPassIgnoredSettings = twoPass || threePass;
@@ -754,10 +756,10 @@ export function createMiniMaxPanel({
       }
     }
     // 2 Pass Advanced is not offered with RefMods.
-    const singleOrTwoPassOnly = refmodPipeline || mode === "image_to_video";
+    const singleOrTwoPassOnly = refmodPipeline || ["image_to_video", "text_to_video"].includes(mode);
     miniMaxPassButtons[2].style.display = singleOrTwoPassOnly ? "none" : "";
     miniMaxPassChooser.style.gridTemplateColumns = singleOrTwoPassOnly ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))";
-    miniMaxPassChooser.style.display = ["reference_to_video", "image_to_video"].includes(mode) ? "grid" : "none";
+    miniMaxPassChooser.style.display = ["reference_to_video", "image_to_video", "text_to_video"].includes(mode) ? "grid" : "none";
     for (const button of miniMaxPassButtons) {
       const active = button.dataset.passMode === settings.render_pass;
       button.setAttribute("aria-pressed", String(active));

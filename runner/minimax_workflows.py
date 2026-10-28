@@ -269,55 +269,61 @@ def _build_minimax_h3_api_prompt(payload):
 
 
 def _use_minimax_h3_native_audio(prompt):
-    """Rewire the audio-driven 2-pass graph to use H3's own joint video+audio latent (built-in audio).
+    """Generate audio with pass 1 and reuse it through every refinement/output.
 
-    The template reads a project audio file and locks the pass-1 latent to it through ``VRGDG_MiniMaxH3AudioDrive``
-    (Reference to Video also gets it as a reference audio). For built-in audio those inputs go away, everything that
-    read the audio-locked latent reads the H3 conditioning node's own latent, and the pass-1 audio is decoded with
-    ``LTXVAudioVAEDecode`` and becomes the saved video's audio. Pass 2 keeps the audio half locked, so the pass-1
-    audio is the final audio. Every H3 conditioning node (Reference to Video, Image to Video, Image + Reference)
-    outputs a joint latent, so the H3 node is whatever feeds the drive. Nodes are found by class and link, not by
-    id, so the rewire survives a template renumbering. Run it before any patch that rewires the pass-1 latent.
+    Two-pass templates lock the input latent through AudioDrive; the legacy
+    three-pass template drives the final latent instead. Remove either lock,
+    sample the conditioning node's joint AV latent, and decode pass 1's audio.
+    Run before continuation, RefMod, and draft/finalize rewrites.
     """
     def by_class(class_type):
         return [key for key, node in prompt.items() if node.get("class_type") == class_type]
 
     drives = by_class("VRGDG_MiniMaxH3AudioDrive")
     if not drives:
-        raise ValueError("The MiniMax H3 two-pass template changed: built-in audio needs an audio drive node.")
-    h3_nodes = {
-        str(prompt[d]["inputs"]["av_latent"][0]) for d in drives
-        if isinstance(prompt[d]["inputs"].get("av_latent"), list) and prompt[d]["inputs"]["av_latent"][1] == 1
-    }
-    audio_vaes = [prompt[d]["inputs"].get("audio_vae") for d in drives if isinstance(prompt[d]["inputs"].get("audio_vae"), list)]
-    if len(h3_nodes) != 1 or not audio_vaes:
-        raise ValueError("The MiniMax H3 two-pass template changed: the audio drive must read one H3 node's latent and the audio VAE.")
-    h3 = h3_nodes.pop()
-    samplers = [
-        key for key in by_class("SamplerCustomAdvanced")
-        if isinstance(prompt[key]["inputs"].get("latent_image"), list)
-        and str(prompt[key]["inputs"]["latent_image"][0]) in drives
-    ]
-    if len(samplers) != 1:
-        raise ValueError(f"The MiniMax H3 two-pass template changed: expected one pass-1 sampler reading the audio drive, found {samplers}.")
-    loaders = {
-        str(prompt[d]["inputs"]["source_audio"][0]) for d in drives
-        if isinstance(prompt[d]["inputs"].get("source_audio"), list)
-    }
-    for name in [n for n in prompt[h3]["inputs"] if n.startswith("ref_audios.")]:
-        del prompt[h3]["inputs"][name]
+        raise ValueError("The MiniMax H3 template changed: built-in audio needs an audio drive node.")
+    h3_classes = {"MiniMaxH3ReferenceToVideo", "MiniMaxH3ImageToVideo", "VRGDG_MiniMaxH3ImageReferenceToVideo"}
+    samplers = []
+    for key in by_class("SamplerCustomAdvanced"):
+        source = prompt[key]["inputs"].get("latent_image")
+        if not isinstance(source, list):
+            continue
+        if str(source[0]) in drives:
+            source = prompt[str(source[0])]["inputs"].get("av_latent")
+        if (isinstance(source, list) and source[1] == 1
+                and prompt.get(str(source[0]), {}).get("class_type") in h3_classes):
+            samplers.append((key, str(source[0])))
+    audio_vaes = [prompt[d]["inputs"].get("audio_vae") for d in drives
+                  if isinstance(prompt[d]["inputs"].get("audio_vae"), list)]
+    if len(samplers) != 1 or not audio_vaes:
+        raise ValueError("The MiniMax H3 template changed: expected one pass-1 joint AV sampler and an audio VAE.")
+    sampler, h3 = samplers[0]
+    loaders = {str(prompt[d]["inputs"]["source_audio"][0]) for d in drives
+               if isinstance(prompt[d]["inputs"].get("source_audio"), list)}
+    # Remove supplied-audio references from every conditioning branch, including
+    # any separately encoded pass-2 keyframes, before replacing loader links.
     for node in prompt.values():
-        for name, value in node["inputs"].items():
-            if isinstance(value, list) and len(value) == 2 and str(value[0]) in drives and value[1] == 0:
-                node["inputs"][name] = [h3, 1]
-    for key in [*drives, *sorted(loaders)]:
-        prompt.pop(key, None)
+        for name in list(node["inputs"]):
+            if name.startswith("ref_audios."):
+                del node["inputs"][name]
     decode = str(max(int(key) for key in prompt if str(key).isdigit()) + 1)
     prompt[decode] = {
         "class_type": "LTXVAudioVAEDecode",
         "_meta": {"title": "Decode MiniMax H3 native audio (pass 1)"},
-        "inputs": {"samples": [samplers[0], 0], "audio_vae": list(audio_vaes[0])},
+        "inputs": {"samples": [sampler, 0], "audio_vae": list(audio_vaes[0])},
     }
+    for node in prompt.values():
+        for name, value in node["inputs"].items():
+            if not isinstance(value, list) or len(value) != 2:
+                continue
+            source = str(value[0])
+            if source in drives:
+                node["inputs"][name] = (list(prompt[source]["inputs"]["av_latent"])
+                                        if value[1] == 0 else [decode, 0])
+            elif source in loaders:
+                node["inputs"][name] = [decode, 0]
+    for key in [*drives, *sorted(loaders)]:
+        prompt.pop(key, None)
     for key in by_class("VHS_VideoCombine"):
         prompt[key]["inputs"]["audio"] = [decode, 0]
     dangling = [
@@ -347,8 +353,6 @@ def _build_minimax_h3_2pass_api_prompt(payload):
 
     raw_audio_mode = str(payload.get("audio_mode") or payload.get("audioMode") or "input_audio").strip().lower().replace("-", "_").replace(" ", "_")
     audio_mode = "built_in_audio" if raw_audio_mode in {"built_in_audio", "native_audio", "generated_audio"} else "input_audio"
-    if video_mode == "image_to_video" and audio_mode == "built_in_audio":
-        raise ValueError("MiniMax H3 Image to Video 2 Pass currently supports Input Audio only.")
     audio_path = ""
     if audio_mode == "input_audio":
         audio_path = str(_first_payload_value(payload, "audio_path", "source_audio_path", default="") or "").strip().strip('"')
@@ -914,12 +918,16 @@ def _build_minimax_h3_3pass_api_prompt(payload):
     video_prompt = str(_first_payload_value(payload, "prompt", "video_prompt", default="") or "").strip()
     if not video_prompt:
         raise ValueError("MiniMax H3 three-pass video prompt is empty.")
-    audio_path = str(_first_payload_value(payload, "audio_path", "source_audio_path", default="") or "").strip().strip('"')
-    if not audio_path:
-        raise ValueError("MiniMax H3 three-pass source audio path is empty.")
-    audio_path = os.path.abspath(audio_path)
-    if not os.path.isfile(audio_path):
-        raise FileNotFoundError(f"MiniMax H3 three-pass source audio was not found: {audio_path}")
+    raw_audio_mode = str(payload.get("audio_mode") or payload.get("audioMode") or "input_audio").strip().lower().replace("-", "_").replace(" ", "_")
+    audio_mode = "built_in_audio" if raw_audio_mode in {"built_in_audio", "native_audio", "generated_audio"} else "input_audio"
+    audio_path = ""
+    if audio_mode == "input_audio":
+        audio_path = str(_first_payload_value(payload, "audio_path", "source_audio_path", default="") or "").strip().strip('"')
+        if not audio_path:
+            raise ValueError("MiniMax H3 three-pass source audio path is empty.")
+        audio_path = os.path.abspath(audio_path)
+        if not os.path.isfile(audio_path):
+            raise FileNotFoundError(f"MiniMax H3 three-pass source audio was not found: {audio_path}")
     project_text = str(payload.get("project_folder", "") or "").strip().strip('"')
     if not project_text:
         raise ValueError("Project folder is empty.")
@@ -935,7 +943,7 @@ def _build_minimax_h3_3pass_api_prompt(payload):
             raise ValueError("MiniMax H3 three-pass needs timeline_end_seconds or scene_duration_seconds.")
         timeline_end = float(timeline_start) + float(duration)
     source_duration = _first_payload_value(payload, "source_duration_seconds", "audio_duration_seconds", default=None)
-    if source_duration is None:
+    if source_duration is None and audio_mode == "input_audio":
         source_duration = _probe_media_duration_seconds(audio_path)
     source_start = _first_payload_value(payload, "source_start_seconds", "audio_start_seconds", default=None)
     timing = calculate_minimax_h3_timing(
@@ -946,11 +954,11 @@ def _build_minimax_h3_3pass_api_prompt(payload):
         source_start_seconds=source_start,
         source_duration_seconds=source_duration,
         pad_warmup=(
-            _minimax_h3_is_latent_mode(_minimax_h3_latent_continuation_mode(payload))
-            and scene_number > 1
+            audio_mode == "built_in_audio"
+            or (_minimax_h3_is_latent_mode(_minimax_h3_latent_continuation_mode(payload)) and scene_number > 1)
         ),
     )
-    prepared_audio = _trim_minimax_h3_audio_context(audio_path, project_folder, scene_number, timing)
+    prepared_audio = _trim_minimax_h3_audio_context(audio_path, project_folder, scene_number, timing) if audio_mode == "input_audio" else None
     image_paths = _minimax_h3_image_paths(payload)
     video_references = _minimax_h3_video_references(payload)
     diffusion_model_name = str(payload.get("diffusion_model_name") or "minimax_h3_ref2va_pruned_int8_convrot.safetensors").strip()
@@ -968,9 +976,10 @@ def _build_minimax_h3_3pass_api_prompt(payload):
         raise ValueError(f"Unsupported MiniMax H3 three-pass aspect ratio: {aspect_ratio}")
     _set_api_input(prompt, "329", "text", video_prompt)
     _set_api_input(prompt, "84", "value", float(timing.workflow_duration_input_seconds))
-    _set_api_input(prompt, "9001", "audio_file", prepared_audio["audio_path"])
-    _set_api_input(prompt, "9001", "seek_seconds", 0)
-    _set_api_input(prompt, "9001", "duration", 0)
+    if prepared_audio:
+        _set_api_input(prompt, "9001", "audio_file", prepared_audio["audio_path"])
+        _set_api_input(prompt, "9001", "seek_seconds", 0)
+        _set_api_input(prompt, "9001", "duration", 0)
     _set_api_input(prompt, "9000", "image_paths", json.dumps(image_paths, ensure_ascii=False))
     _set_api_input(prompt, "9000", "video_references", json.dumps(video_references, ensure_ascii=False))
     ref_image_size = str(payload.get("ref_image_size") or "max").strip().lower()
@@ -1051,6 +1060,8 @@ def _build_minimax_h3_3pass_api_prompt(payload):
     _set_api_input(prompt, "91", "filename_prefix", f"{filename_prefix}_stage1")
     _set_api_input(prompt, "299", "filename_prefix", f"{filename_prefix}_stage2")
     _set_api_input(prompt, "353", "filename_prefix", f"{filename_prefix}_stage3")
+    if audio_mode == "built_in_audio":
+        _use_minimax_h3_native_audio(prompt)
     latent_continuation_settings = _patch_minimax_h3_latent_continuation(prompt, payload)
     save_latent_settings = _patch_minimax_h3_save_latent(prompt, payload, timing)
     return {
@@ -1060,7 +1071,7 @@ def _build_minimax_h3_3pass_api_prompt(payload):
         "latent_continuation_settings": latent_continuation_settings,
         "save_latent_settings": save_latent_settings,
         "used_seed": seed,
-        "audio_mode": "input_audio",
+        "audio_mode": audio_mode,
         "timing": timing.to_dict(),
         "prepared_audio": prepared_audio,
         "post_render_trim": {"start": timing.final_trim_start_seconds, "duration": timing.final_trim_duration_seconds, "frames": timing.final_frame_count},
