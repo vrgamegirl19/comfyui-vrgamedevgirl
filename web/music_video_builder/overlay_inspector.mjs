@@ -6,7 +6,7 @@
 import { makeButton } from "./controls.mjs";
 import { OVERLAY_BLEND_MODES, OVERLAY_GRAIN_SIZES, OVERLAY_SCALE_MODES, normalizeOverlayLayers } from "./overlay_layers.mjs";
 
-const BLEND_LABELS = { screen: "Screen (drops black)", add: "Add", lighten: "Lighten", overlay: "Overlay", softlight: "Soft light", multiply: "Multiply", normal: "Normal (covers)" };
+const BLEND_LABELS = { screen: "Screen (drops black)", add: "Add", lighten: "Lighten", darken: "Darken (drops white)", overlay: "Overlay", softlight: "Soft light", hardlight: "Hard light", colordodge: "Color dodge", colorburn: "Color burn", multiply: "Multiply", normal: "Normal (covers)" };
 const SCALE_LABELS = { cover: "Fill the frame", contain: "Fit inside", stretch: "Stretch" };
 const SIZE_LABELS = { fine: "Fine", medium: "Medium", coarse: "Coarse" };
 
