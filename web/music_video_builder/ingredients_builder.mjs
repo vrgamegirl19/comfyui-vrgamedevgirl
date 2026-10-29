@@ -1,4 +1,4 @@
-import { makeEditorImageUrl, postJson } from "./comfy_api.mjs";
+import { postJson, makeEditorThumbnailUrl } from "./comfy_api.mjs";
 import { LOCATION_MAPPER_GPT_URL } from "./constants.mjs";
 import { escapeHtml, makeButton, makeField, makeGptLinkButton, makeInput, makeSubTabs, toast } from "./controls.mjs";
 import { sceneConceptPromptText } from "./image_prompts.mjs";
@@ -544,7 +544,7 @@ export function createIngredientsBuilder({
         row.style.cssText = "border:1px solid #334155;border-radius:7px;background:linear-gradient(135deg,#0f172a,#111827);padding:10px;display:flex;flex-direction:column;gap:8px;";
         row.dataset.sheetId = sheet.id;
         const image = sheet.image || {};
-        const persistedSrc = image.data || (image.path ? makeEditorImageUrl(image.path) : "");
+        const persistedSrc = image.data || (image.path ? makeEditorThumbnailUrl(image.path) : "");
         const previewUrl = String(image.preview_url || "");
         const transientPreviewSrc = /^blob:/i.test(previewUrl) && !persistedSrc ? "" : previewUrl;
         const previewSrc = persistedSrc || transientPreviewSrc;
@@ -698,7 +698,7 @@ export function createIngredientsBuilder({
           return wrap;
         }
         const image = sheet.image || {};
-        const src = image.data || (image.path ? makeEditorImageUrl(image.path) : "") || String(image.preview_url || "");
+        const src = image.data || (image.path ? makeEditorThumbnailUrl(image.path) : "") || String(image.preview_url || "");
         const thumb = document.createElement("div");
         thumb.style.cssText = "width:54px;height:54px;border:1px solid #155e75;border-radius:6px;background:#061620;overflow:hidden;display:flex;align-items:center;justify-content:center;flex:0 0 auto;";
         if (src) {

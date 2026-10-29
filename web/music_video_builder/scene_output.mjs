@@ -13,6 +13,7 @@ import {
 } from "./constants.mjs";
 import { escapeHtml, normalizeProjectVideoEngine, normalizeVideoType, toast } from "./controls.mjs";
 import { normalizeI2VSigmasText } from "./image_panels.mjs";
+import { refmodCardFields } from "./refmod_labels.mjs";
 import {
   normalizeMiniMaxH3AudioMode,
   normalizeMiniMaxH3Mode,
@@ -396,7 +397,9 @@ export function createSceneOutput({
     const locationDescription = locationsCleared ? "" : String(locationRef?.description || segment?.location_description || "").trim();
     return {
       no_character_present: noCharacterPresent,
+      // A RefMod card keeps its RefMod, so the Storyboard shows the RefMod's preview and labels it.
       subject_refs: subjectRefs.map((subject) => ({
+        ...refmodCardFields(subject),
         id: subject.id,
         name: subject.name,
         description: subject.description,
@@ -409,6 +412,7 @@ export function createSceneOutput({
         image: { ...(subject.image || {}) },
       })),
       location_ref: !locationsCleared && locationRef ? {
+        ...refmodCardFields(locationRef),
         id: locationRef.id,
         name: locationRef.name,
         description: locationRef.description,

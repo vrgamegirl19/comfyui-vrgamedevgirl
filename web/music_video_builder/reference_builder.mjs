@@ -1,6 +1,6 @@
 import { normalizeElevenLabsDesignDraft } from "./elevenlabs_voice_design.mjs";
 import { normalizeElevenLabsVoice, isElevenLabsSpeaking } from "./elevenlabs.mjs";
-import { makeEditorImageUrl, postJson } from "./comfy_api.mjs";
+import { postJson, makeEditorThumbnailUrl } from "./comfy_api.mjs";
 import {
   makeButton,
   makeCheckbox,
@@ -409,7 +409,7 @@ export function createReferenceBuilder({
       return String(image?.name || image?.path || (image?.data ? "Custom image loaded" : ""));
     }
     function imageSrc(image) {
-      return image?.data || (image?.path ? makeEditorImageUrl(image.path) : "");
+      return image?.data || (image?.path ? makeEditorThumbnailUrl(image.path) : "");
     }
 
     const {
