@@ -10,6 +10,8 @@ import { DEFAULT_LTX_INGREDIENTS_HEIGHT, DEFAULT_LTX_INGREDIENTS_WIDTH } from ".
 import { makeButton, makeField, makeInput, normalizeProjectVideoEngine, toast } from "./controls.mjs";
 import { showFinalVideoReadyModal } from "./dialogs.mjs";
 import { applyOverlayAfterStitch } from "./overlay_render.mjs";
+import { transitionsForStitch } from "./transition_actions.mjs";
+import { looksForStitch } from "./look_actions.mjs";
 import { chooseBatchModeAction } from "./project_actions.mjs";
 import { audioMaskInUse } from "./audio_mask_store.mjs";
 import { prepareEditedAudio, prepareEmbeddedAudioWithClips, speakingAudioEditsActive } from "./audio_clip_editor.mjs";
@@ -1284,6 +1286,11 @@ export function createVideoRender({
         ? "Stitching rendered scene videos with scene audio clips..."
         : "Stitching rendered scene videos with original audio...";
     progress?.set(stitchAudioMessage, 94);
+    // The transition blocks that lie on the scenes being joined, on the clock of the scene timing (none in a build that cannot draw them).
+    const transitionItems = transitionsForStitch(state, baseSegments, frameAlignedOffset);
+    // The filters and effects, the same way.
+    const filterItems = looksForStitch(state, "filter", baseSegments, frameAlignedOffset);
+    const effectItems = looksForStitch(state, "effect", baseSegments, frameAlignedOffset);
     const data = await postJson("/vrgdg/workflow_runner/stitch_scene_videos", {
       scene_paths: paths,
       audio_path: embeddedSceneAudioMode ? "" : globalAudioPath,
@@ -1295,6 +1302,9 @@ export function createVideoRender({
       timeline_fps: miniMaxProject ? 24 : 0,
       use_embedded_scene_audio: embeddedSceneAudioMode,
       overlay_items: overlayItems,
+      ...(transitionItems.length ? { transitions: transitionItems } : {}),
+      ...(filterItems.length ? { filters: filterItems } : {}),
+      ...(effectItems.length ? { effects: effectItems } : {}),
       project_folder: projectInput.value,
       width: stitchWidth,
       height: stitchHeight,

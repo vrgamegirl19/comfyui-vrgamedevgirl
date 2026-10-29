@@ -152,6 +152,10 @@ import { wireExportVideo } from "./export_video.mjs";
 import { loadOverlayCapabilities } from "./overlay_render.mjs";
 import { createOverlayDeleteKey } from "./overlay_lane.mjs";
 import { createOverlayPreview } from "./overlay_preview.mjs";
+import { loadTransitionCapabilities } from "./transition_library.mjs";
+import { createTransitionPreview } from "./transition_preview.mjs";
+import { loadLookCapabilities } from "./look_library.mjs";
+import { createLookPreview } from "./look_preview.mjs";
 import { createBatchRender } from "./batch_render.mjs";
 import { createModelPickers } from "./model_pickers.mjs";
 import { createStoryBuilder } from "./story_builder.mjs";
@@ -963,6 +967,18 @@ export function openBuilder(node, options = {}) {
     overlayAvailable: false,
     activeOverlayId: "",
     overlayLaneOpen: false,
+    sceneTransitions: [],
+    transitionsAvailable: false,
+    transitionLaneOpen: false,
+    activeTransitionId: "",
+    videoEffects: [],
+    videoFilters: [],
+    effectsAvailable: false,
+    filtersAvailable: false,
+    effectLaneOpen: false,
+    filterLaneOpen: false,
+    activeEffectId: "",
+    activeFilterId: "",
     activeId: "",
     miniMaxH3PanelSegmentId: "",
     activeTrack: "base",
@@ -1124,6 +1140,10 @@ export function openBuilder(node, options = {}) {
   bindGlobalLlmKeys(state);
   // Whether this build can draw the overlays (the app can, a pack without the overlay render answers 404 and the overlays are left out).
   loadOverlayCapabilities(state).then((available) => { if (available) state.syncOverlayTabs?.(); });
+  // The same for transitions: the lane, the Post Process tab and the live preview wait until the build says it can draw them in the final video.
+  loadTransitionCapabilities(state).then((available) => { if (available) { state.syncOverlayTabs?.(); render(); } });
+  // And for effects and filters.
+  loadLookCapabilities(state).then((available) => { if (available) { state.syncOverlayTabs?.(); render(); } });
   // The overlays drawn over the player, in step with the timeline (it works in the pop-out player too, since it lives in the stage).
   createOverlayPreview({
     stage: previewStage, state,
@@ -1131,6 +1151,20 @@ export function openBuilder(node, options = {}) {
     currentGlobalTime: (...args) => currentGlobalTime(...args),
     isTimelinePlaying: (...args) => isTimelinePlaying(...args),
     projectFolder: () => projectInput.value || state.projectFolder || "",
+  }).start();
+  // The transition drawn over the player while the playhead is inside a transition block.
+  const transitionPreview = createTransitionPreview({
+    stage: previewStage, state,
+    visibleMedia: () => (previewVideo.style.display !== "none" ? previewVideo : previewImage.style.display !== "none" ? previewImage : null),
+    currentGlobalTime: (...args) => currentGlobalTime(...args),
+  });
+  transitionPreview.start();
+  // The filters and effects drawn over the player (and over the transition) while the playhead is inside one of their blocks.
+  createLookPreview({
+    stage: previewStage, state,
+    visibleMedia: () => (previewVideo.style.display !== "none" ? previewVideo : previewImage.style.display !== "none" ? previewImage : null),
+    currentGlobalTime: (...args) => currentGlobalTime(...args),
+    transitionCanvas: transitionPreview.canvas,
   }).start();
   getJson("/vrgdg/music_builder/model_defaults").then((data) => {
     rememberGlobalLlmKeys(data?.global_llm_keys, data?.global_llm_runner);
