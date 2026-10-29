@@ -184,3 +184,40 @@ test('a failed refresh keeps the list the picker already has', async () => {
   await flush();
   assert.deepEqual(choices(modSelect), ['background/safehouse_floors']);
 });
+
+test('syncRefmodCards brings cards in line with the library and leaves the rest alone', () => {
+  const library = [entry('identity/hero', { frames: 5, tokens: 2880 }), entry('background/stage', { kind: 'image', frames: 1, tokens: 576 })];
+  const cards = [
+    { id: 'hero', name: 'Hero', refmod: { name: 'identity/hero', kind: 'video', tokens: 3456, frames: 6, strength: 0.8 } },
+    { id: 'stage', refmod: { name: 'background/stage', kind: 'video', tokens: 900, frames: 4, strength: 1 } },
+    { id: 'gone', refmod: { name: 'identity/gone', kind: 'video', tokens: 700, frames: 2, strength: 1 } },
+    { id: 'plain', source: 'image' },
+    null,
+  ];
+  assert.equal(card.syncRefmodCards(cards, library), true);
+  assert.deepEqual(cards[0].refmod, { name: 'identity/hero', kind: 'video', tokens: 2880, frames: 5, strength: 0.8 });
+  assert.equal(cards[0].name, 'Hero');
+  assert.deepEqual(cards[1].refmod, { name: 'background/stage', kind: 'image', tokens: 576, frames: 1, strength: 1 });
+  assert.deepEqual(cards[2].refmod, { name: 'identity/gone', kind: 'video', tokens: 700, frames: 2, strength: 1 }, 'a RefMod missing from the library keeps its numbers');
+  assert.equal(card.syncRefmodCards(cards, library), false, 'a second call has nothing to change');
+  assert.equal(card.syncRefmodCards(undefined, undefined), false);
+});
+
+test('a card saved with old numbers takes the library\'s when its picker loads', async () => {
+  await reset([entry('identity/hero', { frames: 5, tokens: 2880 })]);
+  const item = {
+    id: 'hero', name: 'Hero', reference_type: 'character', source: 'refmod',
+    refmod: { name: 'identity/hero', folder: 'identity', type: 'identity', kind: 'video', tokens: 3456, frames: 6, strength: 0.8 },
+  };
+  const changes = [];
+  const panel = buildRefmodPicker({ item, kind: 'subject', onChange: (...args) => changes.push(args) });
+  await flush();
+  assert.deepEqual(item.refmod, { name: 'identity/hero', folder: 'identity', type: 'identity', kind: 'video', tokens: 2880, frames: 5, strength: 0.8 });
+  assert.deepEqual(changes, [[false]], 'the Builder is told once, without a redraw');
+
+  // Nothing changed in the library, so opening the dropdown does not tell the Builder again.
+  const selects = selectsIn(panel);
+  selects[selects.length - 1].dispatch('focus');
+  await flush();
+  assert.deepEqual(changes, [[false]]);
+});

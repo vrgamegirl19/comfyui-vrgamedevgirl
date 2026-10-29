@@ -32,9 +32,12 @@ test('typing a subject count adds blank cards, and one entry adds at most 100', 
 });
 
 // Scenes: at most 8 Reference Builder images or RefMods are sent, whatever the scene maps.
-function referencesContext({ pipeline = 'standard', continuity = false, cards }) {
+function referencesContext({ pipeline = 'standard', continuity = false, cards, library = [] }) {
   const c = vm.createContext({ console });
+  const libraryRequest = Promise.resolve(library);
+  const calls = { saves: [], status: 0, buttons: 0 };
   Object.assign(c, {
+    loadRefmodLibrary: () => libraryRequest,
     makeEditorImageUrl: () => '', escapeHtml: (v) => String(v), makeButton: () => ({}), toast: () => {},
     rtvReferenceImagePayload: (v) => v, hasReferenceImage: (image) => Boolean(image && (image.path || image.data)),
     normalizeMiniMaxH3Mode: (mode) => mode, normalizeMiniMaxH3Pipeline: (value) => value,
@@ -42,6 +45,7 @@ function referencesContext({ pipeline = 'standard', continuity = false, cards })
     normalizeFluxReferenceBuilder: (value) => value, mediaPathKey: (path) => path,
   });
   vm.runInContext(readBuilderModule('refmod_labels.mjs'), c);
+  vm.runInContext(functionSource(readBuilderModule('refmod_card.mjs'), 'syncRefmodCards'), c);
   vm.runInContext(readBuilderModule('minimax_references.mjs'), c);
   const state = {
     projectVideoEngine: 'minimax_h3', miniMaxH3Settings: { pipeline },
@@ -49,7 +53,7 @@ function referencesContext({ pipeline = 'standard', continuity = false, cards })
   };
   const segment = { id: 'seg_1', minimax_h3_reference_keys: pipeline === 'refmod' ? undefined : cards.map((card) => `subject:${card.id}`) };
   const factory = c.createMiniMaxReferences({
-    activeSegment: () => segment, autoSaveSessionQuiet: async () => {}, currentVideoMode: () => 'rtv',
+    activeSegment: () => segment, autoSaveSessionQuiet: async (reason) => { calls.saves.push(reason); }, currentVideoMode: () => 'rtv',
     firstLastFrameResolvedEndImageSource: () => ({}), logicalExtraSubjectsForScene: () => [],
     logicalReferenceSubjects: (refs) => refs.subjects, logicalSubjectIdsForScene: () => cards.map((card) => card.id),
     miniMaxH3ContinuityReferenceReserved: () => continuity, miniMaxH3ImageReferencePromptItems: () => [],
@@ -57,9 +61,10 @@ function referencesContext({ pipeline = 'standard', continuity = false, cards })
     miniMaxH3StartFrameCharacterInfluenceForSegment: () => 'full', openReferenceBuilderTargetChooser: () => {},
     pushHistory: () => {}, requireActiveSegment: () => segment, rtvReferenceBehaviorForSegment: () => '',
     rtvSceneImageAnchorPayload: () => null, sceneDisplayName: () => 'Scene 1', sceneReferenceMapValue: () => '',
-    segmentImageSource: () => ({}), segmentIndexInfo: () => ({ index: 0 }), state, syncMiniMaxReferenceButtons: () => {},
+    segmentImageSource: () => ({}), segmentIndexInfo: () => ({ index: 0 }), state, syncMiniMaxReferenceButtons: () => { calls.buttons += 1; },
+    updateMiniMaxPromptCharacterStatus: () => { calls.status += 1; },
   });
-  return { ...factory, segment, limit: vm.runInContext('MAX_SCENE_REFERENCES', c) };
+  return { ...factory, segment, state, calls, limit: vm.runInContext('MAX_SCENE_REFERENCES', c) };
 }
 
 const imageCards = (count) => Array.from({ length: count }, (_, n) => ({
@@ -113,4 +118,31 @@ test('a scene uses at most 8 RefMods and the token total only warns', () => {
   const nine = referencesContext({ pipeline: 'refmod', cards: refmodCards(9, 100) });
   assert.equal(nine.miniMaxH3ReferenceCapacityStatus(nine.segment).overflow, 1);
   assert.throws(() => nine.assertMiniMaxH3ReferenceCapacity(nine.segment), /uses 9 RefMods, but a scene can use at most 8/);
+});
+
+test('cards that kept old RefMod numbers take the saved ones once, and the false warning goes', async () => {
+  // Eight cards picked when each RefMod had 1,100 tokens. The RefMods were saved again with 900.
+  const library = Array.from({ length: 8 }, (_, n) => ({ name: `identity/p${n}`, kind: 'video', tokens: 900, frames: 5 }));
+  const c = referencesContext({ pipeline: 'refmod', cards: refmodCards(8, 1100), library });
+  assert.match(c.miniMaxH3ReferenceCapacityStatus(c.segment).tokenText, /8,800 tokens\. Over 8,192/);
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(c.miniMaxH3ReferenceCapacityStatus(c.segment).tokenText, 'RefMods: 7,200 tokens.');
+  const card = c.state.fluxReferenceBuilder.subjects[0].refmod;
+  assert.deepEqual(card, { name: 'identity/p0', kind: 'video', tokens: 900, frames: 5, strength: 1 });
+  assert.equal(c.calls.status, 1, 'the prompt status line is drawn again');
+  assert.equal(c.calls.buttons, 1, 'the reference buttons are drawn again');
+  assert.deepEqual(c.calls.saves, ['RefMod token counts'], 'the project is saved');
+
+  // The same library read is not applied twice.
+  c.miniMaxH3ReferenceCapacityStatus(c.segment);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(c.calls.saves, ['RefMod token counts']);
+});
+
+test('the standard pipeline leaves cards and the library alone', async () => {
+  const c = referencesContext({ cards: imageCards(2), library: [{ name: 'identity/p0', kind: 'video', tokens: 1, frames: 1 }] });
+  c.miniMaxH3ReferenceCapacityStatus(c.segment);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(c.calls, { saves: [], status: 0, buttons: 0 });
 });

@@ -2288,7 +2288,7 @@ export function openBuilder(node, options = {}) {
     miniMaxH3SceneImageIsPromptInspiration, miniMaxH3StartFrameCharacterInfluenceForSegment,
     openReferenceBuilderTargetChooser, pushHistory, requireActiveSegment, rtvReferenceBehaviorForSegment,
     rtvSceneImageAnchorPayload, sceneDisplayName, sceneReferenceMapValue, segmentImageSource,
-    segmentIndexInfo, state, syncMiniMaxReferenceButtons,
+    segmentIndexInfo, state, syncMiniMaxReferenceButtons, updateMiniMaxPromptCharacterStatus,
   });
 
   const { openPromptOptionsModal, runConceptPromptCreator, runMotionNoteCreator } = createPromptCreators({
