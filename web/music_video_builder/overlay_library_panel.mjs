@@ -7,7 +7,7 @@ import { postJson } from "./comfy_api.mjs";
 import { makeButton, makeCheckbox, toast } from "./controls.mjs";
 import { addOverlayLayer } from "./overlay_lane.mjs";
 import { normalizeOverlayLayers } from "./overlay_layers.mjs";
-import { OVERLAY_PRESETS, overlayPresetClips, renderOverlayInspector } from "./overlay_inspector.mjs";
+import { OVERLAY_PRESETS, appendOverlayOptions, overlayFontOptions, overlayPresetClips, renderOverlayInspector } from "./overlay_inspector.mjs";
 
 const IMPORT_TIMEOUT_MS = 15 * 60 * 1000;
 const FREE_SOURCES = [
@@ -120,8 +120,34 @@ function showOverlayFrame(image, caption) {
 const CHIP_STYLE = "border:1px solid #3f3f46;border-radius:999px;background:#18181b;color:#f4f4f5;font-size:11px;font-weight:700;padding:3px 9px;cursor:pointer;";
 const CHIP_ON_STYLE = "border:1px solid #22d3ee;border-radius:999px;background:#0e7490;color:#ecfeff;font-size:11px;font-weight:800;padding:3px 9px;cursor:pointer;";
 
+const OVERLAY_FONT_KEY = "vrgdg_overlay_font";
+
+// The font chosen for new text and for lyric captions is kept for the next time the page opens. A page that cannot keep it starts with Default.
+function savedOverlayFont() {
+  try {
+    return String(window.localStorage?.getItem(OVERLAY_FONT_KEY) || "");
+  } catch {
+    return "";
+  }
+}
+
+function saveOverlayFont(name) {
+  try {
+    window.localStorage?.setItem(OVERLAY_FONT_KEY, name);
+  } catch {
+    // The choice is just not remembered.
+  }
+}
+
+// The font a new text or caption gets: the chosen one when the fonts list has it, and "" (the default of each) when it does not (a font that was removed).
+export function overlayChosenFont(fonts, name) {
+  const wanted = String(name || "").trim().toLowerCase();
+  if (!wanted) return "";
+  return overlayFontOptions(fonts, "").find((option) => option.value.toLowerCase() === wanted)?.value || "";
+}
+
 export function createOverlayLibraryPanel({ state, pushHistory, playheadTime, timelineSeconds, projectFolder, commit, luts, lutsFolder, activeSceneRange, inspectorCommit, segmentAt, videoPathOf }) {
-  const captions = { style: "clean" };
+  const captions = { style: "clean", font: savedOverlayFont() };
   const element = document.createElement("div");
   element.style.cssText = "display:flex;flex-direction:column;gap:10px;";
   const panel = { items: [], filter: "all", busy: "", error: "", loaded: false, fonts: [], folder: "" };
@@ -133,7 +159,7 @@ export function createOverlayLibraryPanel({ state, pushHistory, playheadTime, ti
     try {
       const response = await api.fetchApi("/vrgdg/music_builder/overlay_layers/fonts", { timeoutMs: null });
       const data = await response.json().catch(() => ({}));
-      if (response.ok && data.ok !== false && Array.isArray(data.fonts)) panel.fonts = data.fonts.map((font) => font.name);
+      if (response.ok && data.ok !== false && Array.isArray(data.fonts)) panel.fonts = data.fonts;
     } catch {
       // The text still draws in the default font. The list is only for choosing.
     }
@@ -216,7 +242,8 @@ export function createOverlayLibraryPanel({ state, pushHistory, playheadTime, ti
     const total = Number(timelineSeconds?.()) || 0;
     const length = 3;
     const from = total > length ? Math.min(start, total - length) : start;
-    put({ kind: "text", text: "Your text", start: from, end: from + length }, "Overlay added");
+    const font = overlayChosenFont(panel.fonts, captions.font);
+    put({ kind: "text", text: "Your text", start: from, end: from + length, ...(font ? { font } : {}) }, "Overlay added");
   }
 
   // One text clip for each lyric line, with the time it is sung. A second run replaces the first one's captions (over the selected range, or all).
@@ -230,7 +257,8 @@ export function createOverlayLibraryPanel({ state, pushHistory, playheadTime, ti
     panel.busy = "Reading the lyrics...";
     render();
     try {
-      const reply = await postJson("/vrgdg/music_builder/overlay_layers/lyric_captions", { project_folder: folder, style: captions.style, from: span?.from, to: span?.to });
+      const font = overlayChosenFont(panel.fonts, captions.font);
+      const reply = await postJson("/vrgdg/music_builder/overlay_layers/lyric_captions", { project_folder: folder, style: captions.style, ...(font ? { font } : {}), from: span?.from, to: span?.to });
       pushHistory();
       const overlaps = (clip) => !span || (clip.end > span.from && clip.start < span.to);
       const kept = (Array.isArray(state.overlayLayers) ? state.overlayLayers : []).filter((clip) => !(clip.group === "lyric_captions" && overlaps(clip)));
@@ -429,6 +457,18 @@ export function createOverlayLibraryPanel({ state, pushHistory, playheadTime, ti
     lut.title = "Add a LUT look over the selected range of the timeline, or all of it.";
     lut.onclick = addLut;
     effects.append(grain, vignette, text, lut);
+    const fontRow = document.createElement("label");
+    fontRow.style.cssText = "display:flex;flex-direction:column;gap:4px;font-size:11px;font-weight:700;color:#d4d4d8;";
+    const fontSelect = document.createElement("select");
+    fontSelect.title = "The font of a new text and of the lyric captions. Default keeps the look of each. The fonts installed on this computer are in the list.";
+    fontSelect.style.cssText = "width:100%;min-width:0;box-sizing:border-box;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#fafafa;padding:6px;font-size:12px;";
+    appendOverlayOptions(fontSelect, [{ value: "", label: "Default" }, ...overlayFontOptions(panel.fonts, "")]);
+    fontSelect.value = overlayChosenFont(panel.fonts, captions.font);
+    fontSelect.onchange = () => {
+      captions.font = fontSelect.value;
+      saveOverlayFont(captions.font);
+    };
+    fontRow.append(document.createTextNode("Font for text and captions"), fontSelect);
     const captionRow = document.createElement("div");
     captionRow.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:6px;";
     const style = document.createElement("select");
@@ -466,7 +506,7 @@ export function createOverlayLibraryPanel({ state, pushHistory, playheadTime, ti
     frame.title = "Make the exact picture Export would make at the playhead, from the scene video under it, and show it. Use it to judge the look before a long render.";
     frame.onclick = checkFrame;
     frame.disabled = Boolean(panel.busy);
-    track.append(trackTitle, on.wrapper, effects, captionRow, presets, frame, trackNote);
+    track.append(trackTitle, on.wrapper, effects, fontRow, captionRow, presets, frame, trackNote);
     element.append(track);
     element.append(inspectorHost);
     renderSelected();

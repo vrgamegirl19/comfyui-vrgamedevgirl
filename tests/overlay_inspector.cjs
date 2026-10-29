@@ -96,6 +96,34 @@ test('a text clip has the words, font, look and position controls, and the font 
   assert.deepEqual(options(undefined, ''), []);
 });
 
+test('fonts that say where they come from are shown in groups, and the fonts installed on the computer are one of them', () => {
+  const options = (fonts, current) => plain(ov('overlayFontOptions')(fonts, current));
+  const list = [
+    { name: 'Anton', file: 'Anton-Regular.ttf', bundled: true, system: false },
+    { name: 'My Hand Font', file: 'My Hand Font.otf', bundled: false, system: false },
+    { name: 'Arial', file: 'arial.ttf', bundled: false, system: true },
+    { name: 'Arial Black', file: 'ariblk.ttf', bundled: false, system: true },
+    { name: '' },
+  ];
+  assert.deepEqual(options(list, 'Pacifico').map((o) => [o.value, o.group || '']), [
+    ['Anton', 'Included with the app'], ['My Hand Font', 'Your font files'], ['Arial', 'Installed on this computer'], ['Arial Black', 'Installed on this computer'], ['Pacifico', ''],
+  ]);
+  assert.deepEqual(options(['Anton', { name: 'Caveat' }], '').map((o) => o.group), [undefined, undefined], 'a list without sources has no groups');
+
+  // The select puts each group under its own heading and an option without a group after them.
+  const element = (tag) => ({ tag, children: [], append(...nodes) { this.children.push(...nodes); } });
+  context.document = { createElement: element };
+  const select = element('select');
+  ov('appendOverlayOptions')(select, options(list, 'Pacifico'));
+  const shape = (node) => (node.tag === 'optgroup' ? { group: node.label, options: node.children.map((o) => o.value) } : { option: node.value, label: node.textContent });
+  assert.deepEqual(plain(select.children.map(shape)), [
+    { group: 'Included with the app', options: ['Anton'] },
+    { group: 'Your font files', options: ['My Hand Font'] },
+    { group: 'Installed on this computer', options: ['Arial', 'Arial Black'] },
+    { option: 'Pacifico', label: 'Pacifico (not installed)' },
+  ]);
+});
+
 test('the words of a text clip are changed through the same path as every other setting', () => {
   const clips = norm([{ kind: 'text', id: 't', text: 'Hello', start: 2, end: 6 }]);
   const change = (key, value) => plain(ov('applyOverlayChange')(clips, 't', key, value))[0];

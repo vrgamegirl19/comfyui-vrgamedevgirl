@@ -13,13 +13,46 @@ const SIZE_LABELS = { fine: "Fine", medium: "Medium", coarse: "Coarse" };
 const percent = { toUi: (v) => Math.round(v * 100), fromUi: (v) => v / 100 };
 const plain = { toUi: (v) => v, fromUi: (v) => v };
 
-// The font choices: the installed fonts, and the clip's own font when it is not among them (a project from another computer), so the list
+const FONT_GROUPS = { bundled: "Included with the app", own: "Your font files", system: "Installed on this computer" };
+
+// A font of the fonts list: a name, or an entry that also says where the font comes from (the app's list does), which puts it in a group.
+function overlayFontChoice(font) {
+  if (typeof font === "string") return { name: font, group: "" };
+  const group = font?.system ? FONT_GROUPS.system : font?.bundled ? FONT_GROUPS.bundled : font?.bundled === false ? FONT_GROUPS.own : "";
+  return { name: String(font?.name || ""), group };
+}
+
+// The font choices: the fonts of the list, and the clip's own font when it is not among them (a project from another computer), so the list
 // never shows a different font than the clip uses.
 export function overlayFontOptions(fonts, current) {
-  const options = (Array.isArray(fonts) ? fonts : []).map((name) => ({ value: name, label: name }));
+  const options = (Array.isArray(fonts) ? fonts : [])
+    .map(overlayFontChoice)
+    .filter((font) => font.name)
+    .map(({ name, group }) => (group ? { value: name, label: name, group } : { value: name, label: name }));
   const wanted = String(current || "").trim();
   if (wanted && !options.some((option) => option.value.toLowerCase() === wanted.toLowerCase())) options.push({ value: wanted, label: `${wanted} (not installed)` });
   return options;
+}
+
+// The options of a select. Options that name a group are shown under a heading of that name, in the order the groups first appear.
+export function appendOverlayOptions(select, options) {
+  const groups = new Map();
+  for (const option of options) {
+    const element = document.createElement("option");
+    element.value = option.value;
+    element.textContent = option.label;
+    if (!option.group) {
+      select.append(element);
+      continue;
+    }
+    if (!groups.has(option.group)) {
+      const heading = document.createElement("optgroup");
+      heading.label = option.group;
+      groups.set(option.group, heading);
+      select.append(heading);
+    }
+    groups.get(option.group).append(element);
+  }
 }
 
 // The controls of a clip, in the order they are shown. `kind` is range (slider with a number), number (just a number box), select, check or
@@ -196,12 +229,7 @@ export function renderOverlayInspector(container, env) {
       label.style.cssText = LABEL_STYLE;
       const select = document.createElement("select");
       select.style.cssText = FIELD_STYLE;
-      for (const option of control.options) {
-        const element = document.createElement("option");
-        element.value = option.value;
-        element.textContent = option.label;
-        select.append(element);
-      }
+      appendOverlayOptions(select, control.options);
       select.value = value ?? "";
       select.onchange = () => {
         apply(control.key, select.value, redraw);
