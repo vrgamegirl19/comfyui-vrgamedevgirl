@@ -15,6 +15,7 @@ function fixture() {
     } },
     window: { alert() {}, confirm: () => confirmations.shift(), dispatchEvent() {}, addEventListener() {}, removeEventListener() {} },
     CustomEvent: class {},
+    prepareLlmRequest: async (_url, payload) => payload,
     document: {
       createElement: tag => { const node = { tag, style: {}, children: [], append(...items) { this.children.push(...items); }, remove() {} }; nodes.push(node); return node; },
       body: { append() {}, appendChild() {} },
