@@ -6,7 +6,8 @@ import { api } from "../../../scripts/api.js";
 import { postJson } from "./comfy_api.mjs";
 import { makeButton, makeCheckbox, toast } from "./controls.mjs";
 import { addOverlayLayer } from "./overlay_lane.mjs";
-import { normalizeOverlayLayers } from "./overlay_layers.mjs";
+import { OVERLAY_BLEND_MODES, normalizeOverlayLayers } from "./overlay_layers.mjs";
+import { openPackImport } from "./overlay_pack_import.mjs";
 import { OVERLAY_PRESETS, appendOverlayOptions, overlayFontOptions, overlayPresetClips, renderOverlayInspector } from "./overlay_inspector.mjs";
 
 const IMPORT_TIMEOUT_MS = 15 * 60 * 1000;
@@ -191,6 +192,11 @@ export function createOverlayLibraryPanel({ state, pushHistory, playheadTime, ti
       return;
     }
     if (!path) return;
+    if (kind === "folder") {
+      // A folder is read first and the person chooses what to import from it.
+      await openPackImport({ folder: path, onImported: (items) => { panel.items = items; render(); } });
+      return;
+    }
     panel.busy = "Importing, checking and making a preview. A 4K clip can take a few seconds...";
     panel.error = "";
     render();
@@ -341,7 +347,7 @@ export function createOverlayLibraryPanel({ state, pushHistory, playheadTime, ti
     }
     try {
       const used = await postJson("/vrgdg/music_builder/overlay_library/use", { id: item.id, project_folder: folder });
-      put({ kind: "media", path: used.path, blend_mode: item.suggested_blend === "normal" ? "normal" : "screen", ...placement("media", item.duration) }, "Overlay added");
+      put({ kind: "media", path: used.path, blend_mode: OVERLAY_BLEND_MODES.includes(item.suggested_blend) ? item.suggested_blend : "screen", ...placement("media", item.duration) }, "Overlay added");
     } catch (error) {
       toast(String(error?.message || error), true);
     }
@@ -420,7 +426,7 @@ export function createOverlayLibraryPanel({ state, pushHistory, playheadTime, ti
     importClip.title = "Choose a .mov, .mp4, .webm, .mkv or .avi clip to add to the library.";
     importClip.onclick = () => importFrom("video");
     const importFolder = makeButton("Import folder...");
-    importFolder.title = "Choose a download folder, such as an unzipped FX Elements pack. The video inside is added.";
+    importFolder.title = "Choose a folder, such as an unzipped FX Elements download or a folder of effect packs. You then choose which of what it holds to import.";
     importFolder.onclick = () => importFrom("folder");
     importClip.disabled = importFolder.disabled = Boolean(panel.busy);
     buttons.append(importClip, importFolder);
