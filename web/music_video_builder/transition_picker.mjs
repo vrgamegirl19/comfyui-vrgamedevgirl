@@ -288,7 +288,6 @@ export async function openTransitionPicker({ state, pushHistory, commit, mode = 
       return;
     }
     const entry = { id: freshTransitionId(current), ...made(), start: spot.start, seconds: spot.seconds };
-    state.transitionLaneOpen = true;
     state.activeTransitionId = entry.id;
     pushHistory?.();
     state.sceneTransitions = normalizeTransitionEntries([...current, entry], segments);
@@ -307,7 +306,6 @@ export async function openTransitionPicker({ state, pushHistory, commit, mode = 
       const block = { id: freshTransitionId([...kept, ...added]), ...made(), start };
       if ([...kept, ...added].every((item) => block.start >= transitionEnd(item) - 0.0005 || transitionEnd(block) <= item.start + 0.0005)) added.push(block);
     });
-    state.transitionLaneOpen = true;
     pushHistory?.();
     state.sceneTransitions = normalizeTransitionEntries([...kept, ...added], segments);
     finish("Transitions added");

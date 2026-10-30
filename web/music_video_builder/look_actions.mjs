@@ -54,10 +54,9 @@ export function looksForSession(state, kind) {
   return list.length || !Array.isArray(state[listKey]) ? list : state[listKey];
 }
 
-// Whether the lane shows: in a build that can draw the kind, once the project has a block or the tab has been opened.
+// Whether the lane shows: in a build that can draw the kind, while the project has a block of it. An empty lane is not drawn.
 export function lookLaneVisible(state, kind) {
-  const config = LOOK_KINDS[kind];
-  return Boolean(state[config.availableKey]) && (lookEntries(state, kind).length > 0 || Boolean(state[config.openKey]));
+  return Boolean(state[LOOK_KINDS[kind].availableKey]) && lookEntries(state, kind).length > 0;
 }
 
 // The height of the lane for its blocks, 0 while it is not shown.

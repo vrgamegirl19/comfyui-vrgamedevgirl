@@ -50,12 +50,17 @@ test('overlapping blocks take a row each', () => {
   assert.equal(act('lookLaneHeight')(state, 'filter'), 2 * 26 + 4);
 });
 
-test('the lane shows once the project has a block or the tab was opened', () => {
+test('a lane shows only while the project has a block of its kind, whatever tab was opened', () => {
   const empty = { segments, videoEffects: [], videoFilters: [], effectsAvailable: true, filtersAvailable: true };
-  assert.equal(act('lookLaneVisible')(empty, 'effect'), false);
-  assert.equal(act('lookLaneVisible')({ ...empty, effectLaneOpen: true }, 'effect'), true);
-  assert.equal(act('lookLaneVisible')({ ...empty, effectLaneOpen: true }, 'filter'), false, 'the other lane stays shut');
-  assert.equal(act('lookLaneVisible')({ ...empty, effectLaneOpen: true, effectsAvailable: false }, 'effect'), false);
+  for (const kind of ['effect', 'filter']) {
+    assert.equal(act('lookLaneVisible')(empty, kind), false, 'an empty lane is not drawn');
+    assert.equal(act('lookLaneHeight')(empty, kind), 0);
+  }
+  const one = { ...empty, videoEffects: [{ look: 'Glow', start: 0, seconds: 1 }] };
+  assert.equal(act('lookLaneVisible')(one, 'effect'), true);
+  assert.equal(act('lookLaneVisible')(one, 'filter'), false, 'the other lane stays out');
+  assert.equal(act('lookLaneVisible')({ ...one, effectsAvailable: false }, 'effect'), false, 'a build that cannot draw effects shows no lane');
+  assert.equal(act('lookLaneVisible')({ ...one, videoEffects: [] }, 'effect'), false, 'the lane goes when its last block is removed');
 });
 
 test('a change asks for an undo step first, saves a new sorted list and then tells the page', () => {

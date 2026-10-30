@@ -22,7 +22,7 @@ test('the kinds name their session keys, state keys and ids', () => {
   assert.equal(kinds.filter.sessionKey, 'video_filters');
   assert.equal(kinds.effect.sessionKey, 'video_effects');
   assert.deepEqual(plain(lm('LOOK_ORDER')), ['filter', 'effect'], 'filters are drawn first');
-  const keys = Object.values(kinds).flatMap((k) => [k.listKey, k.availableKey, k.openKey, k.activeKey]);
+  const keys = Object.values(kinds).flatMap((k) => [k.listKey, k.availableKey, k.activeKey]);
   assert.equal(new Set(keys).size, keys.length, 'no state key is shared by the two lanes');
 });
 

@@ -179,7 +179,6 @@ export function createPostProcess({
       tabBar, pane: fxPane.parentElement, state, pushHistory,
       open: () => { state.postProcessTab = "transitions"; syncPostProcessTabs(); },
       commit: (reason) => { render(); autoSaveSessionQuiet(reason).catch(() => null); },
-      redraw: () => render(),
     }) : null;
     // And an Effects tab and a Filters tab, in a build that draws those.
     const looks = {};
@@ -189,7 +188,6 @@ export function createPostProcess({
         tabBar, pane: fxPane.parentElement, state, pushHistory,
         open: () => { state.postProcessTab = LOOK_KINDS[kind].plural; syncPostProcessTabs(); },
         commit: (reason) => { render(); autoSaveSessionQuiet(reason).catch(() => null); },
-        redraw: () => render(),
       });
     }
     if (tabBar) tabBar.style.gridTemplateColumns = `repeat(${(overlayOnly ? 1 : 3) + (transitions ? 1 : 0) + Object.keys(looks).length},minmax(0,1fr))`;

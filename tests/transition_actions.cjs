@@ -37,10 +37,14 @@ test('a build that can draw them reads an earlier per-cut entry as a block, and 
   assert.equal(act('transitionLaneHeight')(state), 2 * 30 + 4, 'two overlapping blocks take two rows');
 });
 
-test('the lane shows once the project has a block or the tab was opened', () => {
-  assert.equal(act('transitionLaneVisible')({ segments, sceneTransitions: [], transitionsAvailable: true }), false);
-  assert.equal(act('transitionLaneVisible')({ segments, sceneTransitions: [], transitionsAvailable: true, transitionLaneOpen: true }), true);
-  assert.equal(act('transitionLaneVisible')({ segments, sceneTransitions: [], transitionsAvailable: false, transitionLaneOpen: true }), false);
+test('the lane shows only while the project has a transition, whatever tab was opened', () => {
+  const empty = { segments, sceneTransitions: [], transitionsAvailable: true };
+  assert.equal(act('transitionLaneVisible')(empty), false, 'an empty lane is not drawn');
+  assert.equal(act('transitionLaneHeight')(empty), 0);
+  const one = { ...empty, sceneTransitions: [{ transition: 'Fade', start: 1.5, seconds: 0.5 }] };
+  assert.equal(act('transitionLaneVisible')(one), true);
+  assert.equal(act('transitionLaneVisible')({ ...one, transitionsAvailable: false }), false, 'a build that cannot draw transitions shows no lane');
+  assert.equal(act('transitionLaneVisible')({ ...one, sceneTransitions: [] }), false, 'the lane goes when its last block is removed');
 });
 
 test('an earlier per-cut entry waits for the scenes, and is saved as it was until they are loaded', () => {

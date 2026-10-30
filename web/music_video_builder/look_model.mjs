@@ -9,12 +9,12 @@
 export const LOOK_KINDS = {
   filter: {
     kind: "filter", plural: "filters", singular: "filter", label: "Filters", laneLabel: "FILTERS", sessionKey: "video_filters", listKey: "videoFilters", availableKey: "filtersAvailable",
-    openKey: "filterLaneOpen", activeKey: "activeFilterId", idPrefix: "f", color: "#047857", border: "#6ee7b7", text: "#a7f3d0", defaultSeconds: 3,
+    activeKey: "activeFilterId", idPrefix: "f", color: "#047857", border: "#6ee7b7", text: "#a7f3d0", defaultSeconds: 3,
     blurb: "A filter grades the colours of the video where its block lies: a look such as teal and orange, black and white or faded film, with the settings of a grade.",
   },
   effect: {
     kind: "effect", plural: "effects", singular: "effect", label: "Effects", laneLabel: "EFFECTS", sessionKey: "video_effects", listKey: "videoEffects", availableKey: "effectsAvailable",
-    openKey: "effectLaneOpen", activeKey: "activeEffectId", idPrefix: "e", color: "#c2410c", border: "#fdba74", text: "#fed7aa", defaultSeconds: 2,
+    activeKey: "activeEffectId", idPrefix: "e", color: "#c2410c", border: "#fdba74", text: "#fed7aa", defaultSeconds: 2,
     blurb: "An effect adds or bends something where its block lies: a glitch, a shake, a blur, a flash, a zoom pulse.",
   },
 };

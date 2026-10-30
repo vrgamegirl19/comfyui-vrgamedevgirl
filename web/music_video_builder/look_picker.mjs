@@ -287,7 +287,6 @@ export async function openLookPicker(kind, { state, pushHistory, commit, mode = 
       ? placeNewLook({ total, span: { start: 0, end: total } })
       : placeNewLook({ playhead, seconds: made().seconds, total, range: at === null ? lookSelectedRange(state) : null });
     const entry = { id: freshLookId(current, kind), ...made(), start: spot.start, seconds: spot.seconds };
-    state[config.openKey] = true;
     state[config.activeKey] = entry.id;
     pushHistory?.();
     state[config.listKey] = normalizeLookEntries([...current, entry], kind);

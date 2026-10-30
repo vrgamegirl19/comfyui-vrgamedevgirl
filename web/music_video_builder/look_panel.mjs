@@ -156,7 +156,7 @@ function renderLookInspector(kind, entry, context, button) {
 
 // The Builder's Post Process tabs call this while they draw. The tab of `kind` and its pane are made on the first call, beside the tabs that are there already, and
 // the Builder styles and shows them like its own.
-export function createLookTab(kind, { tabBar, pane, state, pushHistory, open, commit, redraw }) {
+export function createLookTab(kind, { tabBar, pane, state, pushHistory, open, commit }) {
   const config = LOOK_KINDS[kind];
   if (!lookPanels[kind]) {
     const sibling = [...tabBar.children].find((child) => child.tagName === "BUTTON");
@@ -169,14 +169,8 @@ export function createLookTab(kind, { tabBar, pane, state, pushHistory, open, co
     pane.append(content);
     lookPanels[kind] = { tab, pane: content, ctx: {} };
     lookShared.panels[kind] = () => refreshLookPanel(kind);
-    tab.onclick = () => {
-      const { state: current, redraw: draw } = lookPanels[kind].ctx;
-      const opened = current[config.openKey];
-      current[config.openKey] = true;
-      lookPanels[kind].ctx.open();
-      if (!opened) draw?.();
-    };
+    tab.onclick = () => lookPanels[kind].ctx.open();
   }
-  Object.assign(lookPanels[kind].ctx, { state, pushHistory, open, commit, redraw });
+  Object.assign(lookPanels[kind].ctx, { state, pushHistory, open, commit });
   return { tab: lookPanels[kind].tab, pane: lookPanels[kind].pane, render: () => renderLookPanel(kind) };
 }

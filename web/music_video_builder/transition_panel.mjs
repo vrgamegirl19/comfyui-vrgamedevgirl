@@ -142,7 +142,7 @@ function renderTransitionInspector(entry, context) {
 
 // The Builder's Post Process tabs call this while they draw. The Transitions tab and its pane are made on the first call, beside the tab that is
 // there already, and the Builder styles and shows them like its own.
-export function createTransitionTab({ tabBar, pane, state, pushHistory, open, commit, redraw }) {
+export function createTransitionTab({ tabBar, pane, state, pushHistory, open, commit }) {
   if (!transitionPanel) {
     const sibling = [...tabBar.children].find((child) => child.tagName === "BUTTON");
     const tab = sibling ? sibling.cloneNode(false) : transitionElement("button", "", { type: "button" });
@@ -154,14 +154,8 @@ export function createTransitionTab({ tabBar, pane, state, pushHistory, open, co
     pane.append(content);
     transitionPanel = { tab, pane: content, ctx: {} };
     transitionShared.refreshPanel = refreshTransitionPanel;
-    tab.onclick = () => {
-      const { state: current, redraw: draw } = transitionPanel.ctx;
-      const opened = current.transitionLaneOpen;
-      current.transitionLaneOpen = true;
-      transitionPanel.ctx.open();
-      if (!opened) draw?.();
-    };
+    tab.onclick = () => transitionPanel.ctx.open();
   }
-  Object.assign(transitionPanel.ctx, { state, pushHistory, open, commit, redraw });
+  Object.assign(transitionPanel.ctx, { state, pushHistory, open, commit });
   return { tab: transitionPanel.tab, pane: transitionPanel.pane, render: renderTransitionPanel };
 }

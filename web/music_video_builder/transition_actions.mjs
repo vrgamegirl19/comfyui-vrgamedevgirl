@@ -69,9 +69,9 @@ export function transitionsForSession(state) {
   return list.length || !Array.isArray(state.sceneTransitions) ? list : state.sceneTransitions;
 }
 
-// Whether the lane shows: in a build that can draw transitions, once the project has one or the Transitions tab has been opened.
+// Whether the lane shows: in a build that can draw transitions, while the project has one. An empty lane is not drawn.
 export function transitionLaneVisible(state) {
-  return Boolean(state.transitionsAvailable) && (transitionEntries(state).length > 0 || Boolean(state.transitionLaneOpen));
+  return Boolean(state.transitionsAvailable) && transitionEntries(state).length > 0;
 }
 
 // The height of the lane for its blocks, 0 while it is not shown.
