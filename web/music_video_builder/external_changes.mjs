@@ -3,7 +3,8 @@
 // agent_api/project_events.py broadcasts "vrgdg.project_changed" after every API save. Scene-card and
 // Timeline Note edits name the scenes, fields and notes they changed; those are merged into the open
 // project field by field against the last saved state, so unsaved local edits are kept (a field edited on
-// both sides keeps the local value and is reported). Any other change reloads the project. A reload waits
+// both sides keeps the local value and is reported). The blocks of the transition, effect and filter lanes
+// (`change.lists`) are merged the same way, list by list, with no reload. Any other change reloads the project. A reload waits
 // while a text field is focused or a render runs, then happens by itself, and the scene fields the user
 // edited and has not saved are put back on the reloaded project. The server keeps rejecting this window's
 // older snapshot until it has caught up, so nothing the agent saved is overwritten.
@@ -17,6 +18,9 @@ export const STORYBOARD_EXTERNAL_CHANGE_EVENT = "vrgdg:storyboard-external-chang
 const MERGEABLE_KINDS = new Set(["scene_fields", "timeline_markers"]);
 const REFERENCE_MAP_KEYS = { subjects: "subject_scene_map", locations: "scene_map" };
 const REFERENCE_SWITCHES = { subjects: "use_subject_reference", locations: "use_location_references" };
+// The blocks of the timeline lanes: the session key the server names in `change.lists` and the Builder state that holds the list. A list is replaced as a whole.
+export const LANE_LISTS = { scene_transitions: "sceneTransitions", video_effects: "videoEffects", video_filters: "videoFilters" };
+const LANE_LABELS = { scene_transitions: "Transitions", video_effects: "Effects", video_filters: "Filters" };
 // Scene fields the Builder works out from the scene's video, its backups and thumbnails. The server writes a shorter history
 // than the Builder derives, so they differ after every render without anyone having edited anything.
 const DERIVED_KEYS = new Set(["video_history", "video_thumbnail_history", "video_history_index"]);
@@ -77,6 +81,11 @@ export function sectionsKey(session = {}) {
   return JSON.stringify(sectionParts(session));
 }
 
+// The lane lists of a session payload, by session key. A missing list is an empty one.
+function laneListsOf(session = {}) {
+  return Object.fromEntries(Object.keys(LANE_LISTS).map((key) => [key, clone(Array.isArray(session[key]) ? session[key] : [])]));
+}
+
 // The saved state the merge compares against, from a session payload (currentSessionData() or a save).
 export function savedStateFromSession(session = {}) {
   const refs = session.flux_reference_builder && typeof session.flux_reference_builder === "object" ? session.flux_reference_builder : {};
@@ -84,6 +93,7 @@ export function savedStateFromSession(session = {}) {
   return {
     key: unsavedKey(session),
     sections: sectionsKey(session),
+    lists: laneListsOf(session),
     order: scenes.map((segment) => String(segment.id)),
     segments: Object.fromEntries(scenes.map((segment) => [String(segment.id), clone(durableSegment(segment))])),
     markers: Object.fromEntries((Array.isArray(session.timeline_markers) ? session.timeline_markers : [])
@@ -209,6 +219,27 @@ export function mergeReferenceMaps({ liveRefs, freshRefs = {}, saved, scenes = {
   return result;
 }
 
+// Merge the lane lists an external edit changed (`keys` are session keys). A list the window has not edited since the last save takes the server's copy.
+// One it has edited keeps its own blocks and is reported. `saved` is brought up to the server's copy. Returns { take: {key: list}, applied, conflicts }.
+export function mergeLaneLists({ live = {}, fresh = {}, saved, keys = [] }) {
+  const result = { take: {}, applied: [], conflicts: [] };
+  const base = saved.lists || (saved.lists = {});
+  for (const key of keys.filter((name) => LANE_LISTS[name])) {
+    const mine = Array.isArray(live[key]) ? live[key] : [];
+    const server = Array.isArray(fresh[key]) ? fresh[key] : [];
+    if (!sameValue(mine, server)) {
+      if (sameValue(mine, base[key] ?? [])) {
+        result.take[key] = clone(server);
+        result.applied.push(key);
+      } else {
+        result.conflicts.push(key);
+      }
+    }
+    base[key] = clone(server);
+  }
+  return result;
+}
+
 // Merge external Timeline Note edits (create, change, delete) by note id.
 export function mergeTimelineMarkers({ liveMarkers = [], freshMarkers = [], saved, markerIds = [] }) {
   const result = { markers: liveMarkers.slice(), applied: [], conflicts: [] };
@@ -285,6 +316,7 @@ export function createExternalChangeSync({
     saved.order = scenes.map((segment) => String(segment.id));
     for (const segment of scenes) saved.segments[String(segment.id)] = clone(durableSegment(segment));
     saved.sections = sectionsKey(session);
+    saved.lists = laneListsOf(session);
     saved.key = unsavedKey(session);
     return true;
   };
@@ -452,6 +484,14 @@ export function createExternalChangeSync({
         state.timelineMarkers = normalizeTimelineMarkers(markers.markers);
         if (state.activeTimelineMarkerId && !state.timelineMarkers.some((marker) => marker.id === state.activeTimelineMarkerId)) state.activeTimelineMarkerId = "";
       }
+      // The transition, effect and filter lanes. No reload: a render in this window or a focused field cannot hold them back.
+      const lanes = mergeLaneLists({ live: currentSessionData(), fresh, saved, keys: [...new Set(plan.covered.flatMap((event) => event.change?.lists || []))] });
+      for (const [key, list] of Object.entries(lanes.take)) state[LANE_LISTS[key]] = list;
+      if (lanes.applied.length) {
+        // What the window holds is what the next save sends, so that is the saved state the next merge compares against.
+        const held = currentSessionData();
+        for (const key of lanes.applied) saved.lists[key] = clone(held[key]);
+      }
       // The window fills in values of its own when a scene changes (a video's history from its backups, for one). Every scene is
       // then brought up to the server's copy, so a field an API save did not announce (the render's video history) arrives too,
       // and nothing the server and the window agree on counts as unsaved.
@@ -470,12 +510,13 @@ export function createExternalChangeSync({
         ...scenes.conflicts.map((item) => `${item.sceneId}: ${item.key}`),
         ...references.conflicts.map((item) => `${item.sceneId}: ${item.key}`),
         ...markers.conflicts.map((id) => `Timeline Note ${id}`),
+        ...lanes.conflicts.map((key) => LANE_LABELS[key]),
       ];
       // Values the window derives itself (a video's history) are put back by the redraw, so they are not changes the user sees.
       const liveById = new Map((state.segments || []).map((segment) => [String(segment?.id), segment]));
       const shown = rebased.applied.filter((item) => !sameish(liveById.get(item.sceneId)?.[item.key], item.was));
       const appliedCount = new Set([...scenes.applied, ...shown].map((item) => `${item.sceneId}:${item.key}`)).size
-        + references.applied.length + markers.applied.length;
+        + references.applied.length + markers.applied.length + lanes.applied.length;
       if (conflicts.length) {
         toast(`Agent API / MCP edits arrived for fields you also changed here. Your unsaved values were kept (saving will replace the API values):\n${conflicts.join("\n")}`, true);
       } else if (appliedCount) {
