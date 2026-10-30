@@ -1,13 +1,16 @@
 // The screen that lists what a folder holds and lets the person choose what to import (Post Process, Overlays, Import folder). The app reads the
 // folder first: a folder of effect packs gives the overlay packs it can use, a plain folder gives its video files. Nothing is copied until the
-// person chooses and presses Import. What was imported before is not listed again. The rules at the top are plain functions so they can be tested
-// without a page.
+// person chooses and presses Import. What was imported before is not listed again. Each entry is a tile (the pack's picture and its name, four across)
+// that plays a live preview while the pointer is over it. The rules at the top are plain functions so they can be tested without a page.
 
 import { api } from "../../../scripts/api.js";
 import { postJson } from "./comfy_api.mjs";
 import { makeButton, toast } from "./controls.mjs";
 
 const PACK_IMPORT_TIMEOUT_MS = 15 * 60 * 1000;
+export const PACK_TILE_COLUMNS = 4;
+// The pointer has to rest on a tile this long before its preview is asked for, so moving across the grid does not start a preview for every tile.
+export const PACK_PREVIEW_DELAY_MS = 120;
 
 // "12.3 MB", "850 KB", "1.4 GB".
 export function packImportBytes(bytes) {
@@ -25,8 +28,8 @@ export function packImportEntries(scan) {
     name: String(entry.name || entry.id),
     folder: String(entry.folder || ""),
     size: Number(entry.size_bytes) || 0,
-    note: String(entry.note || ""),
     image: entry.image_url ? String(entry.image_url) : "",
+    preview: entry.preview_url ? String(entry.preview_url) : "",
   }));
 }
 
@@ -78,12 +81,13 @@ export async function openPackImport({ folder, onImported }) {
   const overlay = document.createElement("div");
   overlay.style.cssText = "position:fixed;inset:0;z-index:100020;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:24px;";
   const card = document.createElement("div");
-  card.style.cssText = "display:flex;flex-direction:column;gap:10px;width:min(860px,100%);max-height:100%;box-sizing:border-box;padding:16px;border:1px solid #3f3f46;border-radius:10px;background:#18181b;color:#f4f4f5;";
+  card.style.cssText = "display:flex;flex-direction:column;gap:10px;width:min(1120px,100%);max-height:100%;box-sizing:border-box;padding:16px;border:1px solid #3f3f46;border-radius:10px;background:#18181b;color:#f4f4f5;";
   overlay.append(card);
   const onKey = (event) => {
     if (event.key === "Escape" && !state.busy) close();
   };
   const close = () => {
+    state.stopPreview?.();
     window.removeEventListener("keydown", onKey, true);
     overlay.remove();
   };
@@ -93,7 +97,8 @@ export async function openPackImport({ folder, onImported }) {
   window.addEventListener("keydown", onKey, true);
   document.body.append(overlay);
 
-  const state = { scan: null, entries: [], selected: new Set(), query: "", busy: "", message: "", failures: [] };
+  // `stopPreview` ends the preview that is playing, if any. Only one tile plays at a time.
+  const state = { scan: null, entries: [], selected: new Set(), query: "", busy: "", message: "", failures: [], stopPreview: null };
 
   const title = document.createElement("div");
   title.style.cssText = "font-size:15px;font-weight:900;color:#cffafe;";
@@ -112,7 +117,7 @@ export async function openPackImport({ folder, onImported }) {
   const none = makeButton("Clear all shown");
   tools.append(search, all, none);
   const list = document.createElement("div");
-  list.style.cssText = "display:flex;flex-direction:column;gap:4px;overflow:auto;min-height:160px;max-height:52vh;border:1px solid #27272a;border-radius:6px;padding:4px;background:#0b0b0d;";
+  list.style.cssText = `display:grid;grid-template-columns:repeat(${PACK_TILE_COLUMNS},minmax(0,1fr));gap:8px;align-content:start;overflow:auto;min-height:200px;max-height:60vh;border:1px solid #27272a;border-radius:6px;padding:8px;background:#0b0b0d;`;
   const status = document.createElement("div");
   status.style.cssText = "font-size:11px;line-height:1.45;color:#67e8f9;white-space:pre-wrap;overflow-wrap:anywhere;";
   const footer = document.createElement("div");
@@ -127,20 +132,14 @@ export async function openPackImport({ folder, onImported }) {
   footer.append(chosen, buttons);
   card.append(title, where, summary, tools, list, status, footer);
 
-  function row(entry) {
+  // One tile: the picture of the pack with a check box on it, and its name. While the pointer is on it, a preview of the pack plays over the picture.
+  function tile(entry) {
     const item = document.createElement("label");
-    item.style.cssText = "display:flex;align-items:center;gap:10px;padding:5px 6px;border-radius:5px;cursor:pointer;background:#18181b;";
-    const box = document.createElement("input");
-    box.type = "checkbox";
-    box.checked = state.selected.has(entry.id);
-    box.disabled = Boolean(state.busy);
-    box.onchange = () => {
-      if (box.checked) state.selected.add(entry.id);
-      else state.selected.delete(entry.id);
-      redrawFooter();
-    };
-    const picture = document.createElement("div");
-    picture.style.cssText = "width:64px;height:36px;flex:none;border-radius:3px;background:#27272a;overflow:hidden;";
+    item.dataset.packTile = entry.id;
+    const border = (picked) => (picked ? "#22d3ee" : "#27272a");
+    item.style.cssText = `display:flex;flex-direction:column;gap:5px;min-width:0;padding:4px;border:2px solid ${border(state.selected.has(entry.id))};border-radius:8px;background:#18181b;cursor:pointer;`;
+    const view = document.createElement("div");
+    view.style.cssText = "position:relative;aspect-ratio:16/9;border-radius:5px;background:#27272a;overflow:hidden;";
     if (entry.image) {
       const image = document.createElement("img");
       image.loading = "lazy";
@@ -148,19 +147,78 @@ export async function openPackImport({ folder, onImported }) {
       image.alt = "";
       image.style.cssText = "width:100%;height:100%;object-fit:cover;";
       image.onerror = () => image.remove();
-      picture.append(image);
+      view.append(image);
+    } else if (entry.preview) {
+      const idle = document.createElement("div");
+      idle.textContent = "Point to preview";
+      idle.style.cssText = "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:#71717a;";
+      view.append(idle);
     }
-    const text = document.createElement("div");
-    text.style.cssText = "min-width:0;flex:1;display:flex;flex-direction:column;gap:1px;";
+    const hint = document.createElement("div");
+    hint.style.cssText = "position:absolute;left:6px;bottom:5px;z-index:1;font-size:10px;color:#e4e4e7;text-shadow:0 1px 2px #000;pointer-events:none;";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = state.selected.has(entry.id);
+    box.disabled = Boolean(state.busy);
+    box.style.cssText = "position:absolute;top:6px;left:6px;z-index:2;width:18px;height:18px;margin:0;accent-color:#06b6d4;";
+    box.onchange = () => {
+      if (box.checked) state.selected.add(entry.id);
+      else state.selected.delete(entry.id);
+      item.style.borderColor = border(box.checked);
+      redrawFooter();
+    };
+    view.append(hint, box);
     const name = document.createElement("div");
+    name.dataset.packName = "";
     name.textContent = entry.name;
-    name.style.cssText = "font-size:12px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-    const meta = document.createElement("div");
-    meta.textContent = [entry.folder, packImportBytes(entry.size), entry.note].filter(Boolean).join(" · ");
-    meta.style.cssText = "font-size:10px;color:#a1a1aa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-    meta.title = meta.textContent;
-    text.append(name, meta);
-    item.append(box, picture, text);
+    name.title = entry.name;
+    name.style.cssText = "padding:0 2px 2px;font-size:12px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+    item.append(view, name);
+
+    let timer = 0;
+    let player = null;
+    let turn = 0;
+    const stop = () => {
+      clearTimeout(timer);
+      turn += 1;
+      if (player) {
+        player.pause();
+        player.removeAttribute("src");
+        player.load();
+        player.remove();
+        player = null;
+      }
+      hint.textContent = "";
+      if (state.stopPreview === stop) state.stopPreview = null;
+    };
+    item.onmouseenter = () => {
+      if (!entry.preview) return;
+      state.stopPreview?.();
+      state.stopPreview = stop;
+      timer = setTimeout(() => {
+        const mine = ++turn;
+        hint.textContent = "Loading preview...";
+        const video = document.createElement("video");
+        video.muted = true;
+        video.loop = true;
+        video.autoplay = true;
+        video.playsInline = true;
+        video.dataset.packPreview = "";
+        video.style.cssText = "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .12s;";
+        video.onplaying = () => {
+          if (mine !== turn) return;
+          video.style.opacity = "1";
+          hint.textContent = "";
+        };
+        video.onerror = () => {
+          if (mine === turn) hint.textContent = "No preview";
+        };
+        video.src = api.apiURL(entry.preview);
+        player = video;
+        view.insertBefore(video, hint);
+      }, PACK_PREVIEW_DELAY_MS);
+    };
+    item.onmouseleave = stop;
     return item;
   }
 
@@ -173,6 +231,7 @@ export async function openPackImport({ folder, onImported }) {
   }
 
   function redraw() {
+    state.stopPreview?.();
     title.textContent = state.scan?.mode === "files" ? "Import videos" : "Import overlays";
     summary.textContent = state.scan ? packImportSummary(state.scan, state.entries.length) : "Reading the folder...";
     status.textContent = state.busy || [state.message, ...state.failures].filter(Boolean).join("\n");
@@ -181,11 +240,11 @@ export async function openPackImport({ folder, onImported }) {
     list.replaceChildren();
     if (!shown.length) {
       const empty = document.createElement("div");
-      empty.style.cssText = "padding:16px;font-size:11px;color:#a1a1aa;text-align:center;";
+      empty.style.cssText = `grid-column:1 / ${PACK_TILE_COLUMNS + 1};padding:16px;font-size:11px;color:#a1a1aa;text-align:center;`;
       empty.textContent = !state.scan ? "" : state.entries.length ? "Nothing matches the search." : "There is nothing new to import in this folder.";
       list.append(empty);
     }
-    for (const entry of shown) list.append(row(entry));
+    for (const entry of shown) list.append(tile(entry));
     redrawFooter();
   }
 
