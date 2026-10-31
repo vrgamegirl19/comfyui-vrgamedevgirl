@@ -7,6 +7,9 @@ const test = require("node:test");
 
 const root = path.join(__dirname, "..");
 const project = process.env.STORYBOARD_TEST_PROJECT;
+// The tests that save and load a storyboard run the Python storyboard code. tests/test_storyboard_persistence.py starts this
+// file with the two variables set. Started on its own, those tests are skipped instead of failing.
+const needsPython = project && process.env.STORYBOARD_TEST_PYTHON ? {} : { skip: "run through tests/test_storyboard_persistence.py" };
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
 function fixture(state, parentSave = async () => {}) {
@@ -96,7 +99,7 @@ function stateFor(folder) {
   };
 }
 
-test("Save captures controls, writes disk, awaits the project, and restores edits", async () => {
+test("Save captures controls, writes disk, awaits the project, and restores edits", needsPython, async () => {
   const state = stateFor(project);
   let release;
   let parentScenes;
@@ -183,7 +186,7 @@ test("Explicit saves apply live scene edits and cleared prompts; exports preserv
   assert.equal(segment.timeline_note, "Edited director note");
 });
 
-test("Story Mode data from the Video Builder survives an older storyboard file and a save", async () => {
+test("Story Mode data from the Video Builder survives an older storyboard file and a save", needsPython, async () => {
   const folder = path.join(project, "storymode");
   await fixture(stateFor(folder)).saveStoryboard({ throwOnError: true });
   const state = stateFor(folder);
@@ -198,7 +201,7 @@ test("Story Mode data from the Video Builder survives an older storyboard file a
   assert.equal(saved.story_layer.story_acts[0].id, "act_1");
 });
 
-test("New projects retain current settings when no storyboard file exists", async () => {
+test("New projects retain current settings when no storyboard file exists", needsPython, async () => {
   const state = stateFor(path.join(project, "new"));
   const api = fixture(state);
   assert.equal(await api.loadExisting(), true, JSON.stringify(api.messages));
@@ -206,7 +209,7 @@ test("New projects retain current settings when no storyboard file exists", asyn
   assert.equal(state.scenes[0].lyrics, "Edited dialogue");
 });
 
-test("Timeline prompt and note edits replace stale storyboard values on reopen, including clearing", async () => {
+test("Timeline prompt and note edits replace stale storyboard values on reopen, including clearing", needsPython, async () => {
   const folder = path.join(project, "timeline-edits");
   const saved = stateFor(folder);
   Object.assign(saved.scenes[0], { timeline_note: "Old director note", notes: "Old planning notes",
@@ -223,7 +226,7 @@ test("Timeline prompt and note edits replace stale storyboard values on reopen, 
   }
 });
 
-test("Reopening shows the current Reference Builder card of a scene, not the saved copy", async () => {
+test("Reopening shows the current Reference Builder card of a scene, not the saved copy", needsPython, async () => {
   const folder = path.join(project, "live-cards");
   const location = (image, extra = {}) => ({ id: "street", name: "Street", description: "A street at dawn",
     image: { path: image, data: "", name: "street.png" }, ...extra });
@@ -461,7 +464,7 @@ test("MiniMax scene-card framing overrides stale automatic telephoto rotation", 
   assert.deepEqual(scene.minimax_h3_framing_shot_ids, ["music_video_telephoto"]);
 });
 
-test("Reopening retains added cards and deleted cards without losing new timeline scenes", async () => {
+test("Reopening retains added cards and deleted cards without losing new timeline scenes", needsPython, async () => {
   const folder = path.join(project, "structure");
   const state = stateFor(folder);
   const api = fixture(state);
@@ -479,7 +482,7 @@ test("Reopening retains added cards and deleted cards without losing new timelin
   assert.equal(empty.scenes.length, 0);
 });
 
-test("A failed parent project save reports failure and releases the Save button", async () => {
+test("A failed parent project save reports failure and releases the Save button", needsPython, async () => {
   const state = stateFor(path.join(project, "failure"));
   const api = fixture(state, async () => { throw new Error("Disk full"); });
   await assert.rejects(api.saveStoryboard({ throwOnError: true }), /Disk full/);

@@ -7,6 +7,7 @@ const test = require("node:test");
 const root = path.join(__dirname, "..", "web", "music_video_builder");
 const actionsSource = fs.readFileSync(path.join(root, "project_actions.mjs"), "utf8");
 const settingsSource = fs.readFileSync(path.join(root, "model_settings.mjs"), "utf8");
+const storyModeSource = fs.readFileSync(path.join(root, "story_mode_data.mjs"), "utf8");
 const start = settingsSource.indexOf("export function normalizeBuilderStoryLayer(");
 const normalizer = settingsSource.slice(start, settingsSource.indexOf("export function ", start + 1)).replace("export ", "");
 
@@ -14,6 +15,7 @@ function fixture(state) {
   const context = vm.createContext({ console, DEFAULT_KREA2_REFERENCE_SETTINGS: {},
     setWidgetValue() {}, newSegment: () => ({ id: "starter" }) });
   vm.runInContext(normalizer, context);
+  vm.runInContext(storyModeSource.replace(/^import [\s\S]*?;\r?\n/gm, "").replace(/^export /gm, ""), context);
   for (const name of ["defaultErnieImageSettings", "defaultFlowGptBrowserSettings", "defaultFluxKleinSettings",
     "defaultI2VVideoSettings", "defaultKrea2TwoPassSettings", "defaultZEnhanceSettings", "defaultZImageSettings",
     "defaultFluxReferenceBuilder", "defaultIdLoraReferenceBuilder", "defaultLyricMapper", "cloneMiniMaxH3Settings"]) {

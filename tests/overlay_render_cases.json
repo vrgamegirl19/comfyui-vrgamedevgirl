@@ -348,6 +348,78 @@
       }
     },
     {
+      "name": "media blend modes darken, hard light, color dodge and color burn",
+      "clips": [
+        {
+          "kind": "media",
+          "id": "a",
+          "start": 0,
+          "end": 2,
+          "path": "C:/overlay/dust.mov",
+          "blend_mode": "darken"
+        },
+        {
+          "kind": "media",
+          "id": "b",
+          "start": 0,
+          "end": 2,
+          "path": "C:/overlay/dust.mov",
+          "blend_mode": "hardlight"
+        },
+        {
+          "kind": "media",
+          "id": "c",
+          "start": 0,
+          "end": 2,
+          "path": "C:/overlay/dust.mov",
+          "blend_mode": "colordodge"
+        },
+        {
+          "kind": "media",
+          "id": "d",
+          "start": 0,
+          "end": 2,
+          "path": "C:/overlay/dust.mov",
+          "blend_mode": "colorburn"
+        }
+      ],
+      "return": {
+        "graph": "[0:v]format=gbrp[v0];\n[1:v]setpts=(PTS-STARTPTS)/1,fps=24,scale=1504:832:force_original_aspect_ratio=increase,crop=1504:832,eq=contrast='clip(min((t-0)/0.3,(2-t)/0.3),0,1)':saturation='clip(min((t-0)/0.3,(2-t)/0.3),0,1)':brightness='0.5*(1-clip(min((t-0)/0.3,(2-t)/0.3),0,1))':eval=frame,format=gbrp[l1];\n[v0][l1]blend=all_mode=darken:all_opacity=0.9:enable='between(t,0,2)'[v1];\n[2:v]setpts=(PTS-STARTPTS)/1,fps=24,scale=1504:832:force_original_aspect_ratio=increase,crop=1504:832,eq=contrast='clip(min((t-0)/0.3,(2-t)/0.3),0,1)':saturation='clip(min((t-0)/0.3,(2-t)/0.3),0,1)':brightness='0':eval=frame,format=gbrp[l2];\n[v1][l2]blend=all_mode=hardlight:all_opacity=0.9:enable='between(t,0,2)'[v2];\n[3:v]setpts=(PTS-STARTPTS)/1,fps=24,scale=1504:832:force_original_aspect_ratio=increase,crop=1504:832,eq=contrast='clip(min((t-0)/0.3,(2-t)/0.3),0,1)':saturation='clip(min((t-0)/0.3,(2-t)/0.3),0,1)':brightness='-0.5*(1-clip(min((t-0)/0.3,(2-t)/0.3),0,1))':eval=frame,format=gbrp[l3];\n[v2][l3]blend=all_expr='A+(if(eq(A,0),0,if(eq(B,255),255,min(255,A*255/(255-B))))-A)*0.9':enable='between(t,0,2)'[v3];\n[4:v]setpts=(PTS-STARTPTS)/1,fps=24,scale=1504:832:force_original_aspect_ratio=increase,crop=1504:832,eq=contrast='clip(min((t-0)/0.3,(2-t)/0.3),0,1)':saturation='clip(min((t-0)/0.3,(2-t)/0.3),0,1)':brightness='0.5*(1-clip(min((t-0)/0.3,(2-t)/0.3),0,1))':eval=frame,format=gbrp[l4];\n[v3][l4]blend=all_expr='A+(if(eq(A,255),255,if(eq(B,0),0,max(0,255-(255-A)*255/B)))-A)*0.9':enable='between(t,0,2)'[v4];\n[v4]format=yuv420p[v]",
+        "media": [
+          {
+            "path": "C:/overlay/dust.mov",
+            "looped": true,
+            "seek": 0.0
+          },
+          {
+            "path": "C:/overlay/dust.mov",
+            "looped": true,
+            "seek": 0.0
+          },
+          {
+            "path": "C:/overlay/dust.mov",
+            "looped": true,
+            "seek": 0.0
+          },
+          {
+            "path": "C:/overlay/dust.mov",
+            "looped": true,
+            "seek": 0.0
+          }
+        ],
+        "luts": [],
+        "fonts": [],
+        "texts": [],
+        "applied": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ],
+        "skipped": []
+      }
+    },
+    {
       "name": "fade in only and fade out only",
       "clips": [
         {

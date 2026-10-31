@@ -3,6 +3,7 @@ import { escapeHtml, makeButton, normalizeProjectVideoEngine, toast } from "./co
 import { rtvReferenceImagePayload } from "./image_references.mjs";
 import { hasReferenceImage } from "./llm_runner.mjs";
 import { normalizeMiniMaxH3Mode, normalizeMiniMaxH3Pipeline } from "./minimax_h3.mjs";
+import { loadRefmodLibrary, syncRefmodCards } from "./refmod_card.mjs";
 import { applySceneItemUsers, assignLabels, clothingChoices, composeRefmodItems, sceneSubjectCards, tokenStatusText } from "./refmod_labels.mjs";
 import { expandSubjectReferencesForRender, normalizeFluxReferenceBuilder } from "./reference_data.mjs";
 import { mediaPathKey } from "./timeline_state.mjs";
@@ -23,7 +24,7 @@ export function createMiniMaxReferences({
   miniMaxH3SceneImageIsPromptInspiration, miniMaxH3StartFrameCharacterInfluenceForSegment,
   openReferenceBuilderTargetChooser, pushHistory, requireActiveSegment, rtvReferenceBehaviorForSegment,
   rtvSceneImageAnchorPayload, sceneDisplayName, sceneReferenceMapValue, segmentImageSource, segmentIndexInfo,
-  state, syncMiniMaxReferenceButtons,
+  state, syncMiniMaxReferenceButtons, updateMiniMaxPromptCharacterStatus,
 }) {
   function referenceBuilderSubjectItemsForSegment(refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder), segment = activeSegment()) {
     const normalizedRefs = normalizeFluxReferenceBuilder(refs);
@@ -169,6 +170,23 @@ export function createMiniMaxReferences({
       && normalizeMiniMaxH3Pipeline(state.miniMaxH3Settings?.pipeline) === "refmod";
   }
 
+  // The cards keep the token count their RefMod had when it was picked. Once per read of the library, bring them in line
+  // with the RefMods on disk, so a RefMod saved again with fewer frames does not keep an old total and a false warning.
+  let syncedLibrary = null;
+  function syncRefmodCardsWithLibrary() {
+    const request = loadRefmodLibrary();
+    if (request === syncedLibrary) return;
+    syncedLibrary = request;
+    request.then((library) => {
+      const refs = state.fluxReferenceBuilder || {};
+      const cards = [refs.subjects, refs.locations, refs.extra_subjects].flatMap((list) => (Array.isArray(list) ? list : []));
+      if (!syncRefmodCards(cards, library)) return;
+      updateMiniMaxPromptCharacterStatus?.();
+      syncMiniMaxReferenceButtons?.();
+      autoSaveSessionQuiet?.("RefMod token counts");
+    });
+  }
+
   // The scene's RefMods in render order, labelled the way Text Encode with RefMods will number them. Items with
   // strength 0 are left out. Twin of refmod_items_for_scene in minimax/refmod_scene.py.
   function miniMaxRefmodItemsForSegment(segment) {
@@ -299,6 +317,7 @@ export function createMiniMaxReferences({
     const normalizedMode = normalizeMiniMaxH3Mode(mode);
     if (isRefmodPipeline()) {
       // A scene sends at most MAX_SCENE_REFERENCES RefMods. The token total only warns, it never blocks.
+      syncRefmodCardsWithLibrary();
       const items = miniMaxRefmodItemsForSegment(segment);
       const allSubjects = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder).subjects || [];
       return {

@@ -9,6 +9,7 @@ const section = (start, end) => source.slice(source.indexOf(start), source.index
 function fixture() {
   const c = vm.createContext({ state: { miniMaxH3Settings: { video_mode: 'text_to_video', render_pass: 'single' } } });
   vm.runInContext(readBuilderModule('minimax_h3.mjs'), c);
+  vm.runInContext(functionSource(source, 'editableMiniMaxH3Settings'), c);
   vm.runInContext(functionSource(source, 'miniMaxH3SettingsForSegment'), c);
   return c;
 }

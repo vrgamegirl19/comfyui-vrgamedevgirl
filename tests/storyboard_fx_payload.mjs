@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { register } from "node:module";
 import { test } from "node:test";
-// Run with --experimental-loader ./tests/stub_comfy_loader.mjs for browser API imports.
-import { storyboardGptPayload } from "../web/storyboard_builder/gpt_payload.mjs";
+
+// gpt_payload.mjs imports ComfyUI's scripts/api.js, which only exists in the browser. The loader stubs it.
+register("./stub_comfy_loader.mjs", import.meta.url);
+const { storyboardGptPayload } = await import("../web/storyboard_builder/gpt_payload.mjs");
 
 test("storyboard LLM payload carries temporal and per-shot FX writing guidance", () => {
   const payload = storyboardGptPayload({

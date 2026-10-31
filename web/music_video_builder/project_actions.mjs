@@ -261,6 +261,12 @@ export function createProjectActions({
     state.elevenLabsApiKeyProject = "";
     state.segments = [newSegment(0, 4)];
     state.overlaySegments = [];
+    state.sceneTransitions = [];
+    state.activeTransitionId = "";
+    state.videoEffects = [];
+    state.videoFilters = [];
+    state.activeEffectId = "";
+    state.activeFilterId = "";
     state.activeTrack = "base";
     state.activeId = state.segments[0]?.id || "";
     state.sceneAudioMode = false;

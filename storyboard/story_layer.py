@@ -379,7 +379,18 @@ def _normalize_story_arc_output(text, required_labels, maximum_words=100, runner
     # Local runners may put the section body on the same line as the heading.
     # Keep the line-start anchor so ordinary colons inside prose are not treated
     # as headings, while accepting inline and standalone heading formats.
-    heading_pattern = re.compile(r"(?m)^[ \t]*([^\n:]{1,80}):[ \t]*")
+    # A lyric tag such as [Verse 1: Male Rap] gives a required heading with its
+    # own colon. Match those whole, longest first, before the first-colon rule.
+    colon_labels = sorted(
+        {re.sub(r"\s+", " ", str(label)).strip() for label in required_labels or [] if ":" in str(label)},
+        key=len,
+        reverse=True,
+    )
+    whole_labels = "".join(
+        r"\[?(?i:" + r"[ \t]+".join(re.escape(word) for word in label.split(" ")) + r")\]?|"
+        for label in colon_labels
+    )
+    heading_pattern = re.compile(r"(?m)^[ \t]*(" + whole_labels + r"[^\n:]{1,80}):[ \t]*")
     matches = list(heading_pattern.finditer(raw))
     if not matches:
         if required_labels:

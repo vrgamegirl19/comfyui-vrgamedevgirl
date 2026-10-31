@@ -1,5 +1,7 @@
 import { normalizeOverlayClip, normalizeOverlayTrackState } from "../VRGDG_OverlayTrack.js";
 import { normalizeOverlayLayers, normalizeOverlayLayerTrack } from "./overlay_layers.mjs";
+import { transitionsForSession } from "./transition_actions.mjs";
+import { looksForSession } from "./look_actions.mjs";
 import {
   announceBuilderEvent,
   audioUrl,
@@ -408,6 +410,12 @@ export function createSession({
       state.srtPath = "";
       state.segments = [newSegment(0, 4)];
       state.overlaySegments = [];
+      state.sceneTransitions = [];
+      state.activeTransitionId = "";
+      state.videoEffects = [];
+      state.videoFilters = [];
+      state.activeEffectId = "";
+      state.activeFilterId = "";
       state.activeId = state.segments[0]?.id || "";
     }
     const projectsLoader = getJson(projectListUrl())
@@ -775,6 +783,9 @@ export function createSession({
       overlay_track: normalizeOverlayTrackState(state.overlayTrack),
       overlay_layer_track: normalizeOverlayLayerTrack(state.overlayLayerTrack),
       overlay_layers: normalizeOverlayLayers(state.overlayLayers),
+      scene_transitions: transitionsForSession(state),
+      video_effects: looksForSession(state, "effect"),
+      video_filters: looksForSession(state, "filter"),
       active_track: state.activeTrack,
       active_scene_id: state.activeId || "",
       timing_frozen: state.timingFrozen,
@@ -1068,6 +1079,9 @@ export function createSession({
         state.overlayTrack = normalizeOverlayTrackState(data.session.overlay_track || state.overlayTrack);
         state.overlayLayerTrack = normalizeOverlayLayerTrack(data.session.overlay_layer_track ?? data.session.fx_track ?? state.overlayLayerTrack);
         state.overlayLayers = normalizeOverlayLayers(data.session.overlay_layers ?? data.session.fx_clips ?? state.overlayLayers);
+        state.sceneTransitions = Array.isArray(data.session.scene_transitions) ? data.session.scene_transitions : (state.sceneTransitions || []);
+        state.videoEffects = Array.isArray(data.session.video_effects) ? data.session.video_effects : (state.videoEffects || []);
+        state.videoFilters = Array.isArray(data.session.video_filters) ? data.session.video_filters : (state.videoFilters || []);
         ensureAllSegmentRuntimeFields();
         state.activeTrack = data.session.active_track || state.activeTrack || "base";
         state.audioClips = Array.isArray(data.session.audio_clips) ? data.session.audio_clips : null;
@@ -1351,6 +1365,9 @@ export function createSession({
       // fx_track and fx_clips are what the first builds saved these under, before they were called overlays. They are read once and saved under the new names.
       state.overlayLayerTrack = normalizeOverlayLayerTrack(session.overlay_layer_track ?? session.fx_track);
       state.overlayLayers = normalizeOverlayLayers(session.overlay_layers ?? session.fx_clips);
+      state.sceneTransitions = Array.isArray(session.scene_transitions) ? session.scene_transitions : [];
+      state.videoEffects = Array.isArray(session.video_effects) ? session.video_effects : [];
+      state.videoFilters = Array.isArray(session.video_filters) ? session.video_filters : [];
       // Nothing is rendering when a session loads, so a saved "running" status is left over from a closed render.
       for (const item of [...state.segments, ...state.overlaySegments]) {
         if (item?.video_status === "running") item.video_status = item.video_path ? "done" : "none";

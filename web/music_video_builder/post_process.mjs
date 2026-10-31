@@ -3,6 +3,9 @@ import { postJson } from "./comfy_api.mjs";
 import { escapeHtml, makeButton, makeCheckbox, makeMiniButton, toast } from "./controls.mjs";
 import { showInfoModal, showLargeTextModal, showTextInputModal } from "./dialogs.mjs";
 import { createOverlayLibraryPanel } from "./overlay_library_panel.mjs";
+import { createTransitionTab } from "./transition_panel.mjs";
+import { createLookTab } from "./look_panel.mjs";
+import { LOOK_KINDS } from "./look_model.mjs";
 import { selectedSegmentVideoPath } from "./selection_preview.mjs";
 import { activateSegmentVideoPath, mediaPathKey, normalizeSegmentVideoHistory } from "./timeline_state.mjs";
 
@@ -171,13 +174,30 @@ export function createPostProcess({
     postProcessLutsTab.style.display = overlayOnly ? "none" : "";
     postProcessGrainTab.style.display = overlayOnly ? "none" : "";
     const tabBar = postProcessFxTab.parentElement;
-    if (tabBar) tabBar.style.gridTemplateColumns = overlayOnly ? "1fr" : "repeat(3,minmax(0,1fr))";
+    // A build that draws transitions has a Transitions tab beside the Overlays tab.
+    const transitions = state.transitionsAvailable ? createTransitionTab({
+      tabBar, pane: fxPane.parentElement, state, pushHistory,
+      open: () => { state.postProcessTab = "transitions"; syncPostProcessTabs(); },
+      commit: (reason) => { render(); autoSaveSessionQuiet(reason).catch(() => null); },
+    }) : null;
+    // And an Effects tab and a Filters tab, in a build that draws those.
+    const looks = {};
+    for (const kind of ["effect", "filter"]) {
+      if (!state[LOOK_KINDS[kind].availableKey]) continue;
+      looks[kind] = createLookTab(kind, {
+        tabBar, pane: fxPane.parentElement, state, pushHistory,
+        open: () => { state.postProcessTab = LOOK_KINDS[kind].plural; syncPostProcessTabs(); },
+        commit: (reason) => { render(); autoSaveSessionQuiet(reason).catch(() => null); },
+      });
+    }
+    if (tabBar) tabBar.style.gridTemplateColumns = `repeat(${(overlayOnly ? 1 : 3) + (transitions ? 1 : 0) + Object.keys(looks).length},minmax(0,1fr))`;
     // The pack's FX tab holds an Overlays sub-tab. When overlays can be drawn, the tab is the Overlays tab and the sub-tab bar is not needed.
     postProcessFxTab.textContent = overlayOnly ? "Overlays" : "FX";
     postProcessFxTab.title = overlayOnly ? "Grain, vignette, text, lyric captions, LUTs and clips such as dust and light leaks, laid over the finished video." : "Browse overlay and visual FX packs.";
     const subTabBar = fxOverlaysTab.parentElement;
     if (subTabBar) subTabBar.style.display = overlayOnly ? "none" : "grid";
-    const active = overlayOnly ? "fx" : ["film_grain", "fx"].includes(state.postProcessTab) ? state.postProcessTab : "luts";
+    const lookTab = Object.keys(looks).find((kind) => state.postProcessTab === LOOK_KINDS[kind].plural);
+    const active = lookTab ? LOOK_KINDS[lookTab].plural : transitions && state.postProcessTab === "transitions" ? "transitions" : overlayOnly ? "fx" : ["film_grain", "fx"].includes(state.postProcessTab) ? state.postProcessTab : "luts";
     state.postProcessTab = active;
     const styleTab = (button, selected) => {
       button.style.background = selected ? "#0e7490" : "#18181b";
@@ -188,6 +208,14 @@ export function createPostProcess({
     styleTab(postProcessLutsTab, active === "luts");
     styleTab(postProcessGrainTab, active === "film_grain");
     styleTab(postProcessFxTab, active === "fx");
+    if (transitions) {
+      styleTab(transitions.tab, active === "transitions");
+      transitions.pane.style.display = active === "transitions" ? "flex" : "none";
+    }
+    for (const [kind, tabParts] of Object.entries(looks)) {
+      styleTab(tabParts.tab, active === LOOK_KINDS[kind].plural);
+      tabParts.pane.style.display = active === LOOK_KINDS[kind].plural ? "flex" : "none";
+    }
     lutsTools.element.style.display = active === "luts" ? "block" : "none";
     filmGrainPane.style.display = active === "film_grain" ? "flex" : "none";
     fxPane.style.display = active === "fx" ? "flex" : "none";
@@ -196,6 +224,10 @@ export function createPostProcess({
       lutsTools.render();
     } else if (active === "film_grain") {
       renderFilmGrainPostProcessPanel();
+    } else if (active === "transitions") {
+      transitions.render();
+    } else if (lookTab) {
+      looks[lookTab].render();
     } else {
       // The LUT clips choose from the installed LUTs, which the LUTS tab used to load.
       if (overlayOnly) lutsTools.loadLuts(true).then(() => overlayLibraryPanel.renderSelected()).catch(() => null);
