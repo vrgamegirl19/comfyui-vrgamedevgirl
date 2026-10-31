@@ -152,9 +152,14 @@ export function createOverlayLibraryPanel({ state, pushHistory, playheadTime, ti
   const element = document.createElement("div");
   element.style.cssText = "display:flex;flex-direction:column;gap:10px;";
   const panel = { items: [], filter: "all", busy: "", error: "", loaded: false, fonts: [], folder: "" };
+  // The scene that holds a second of the timeline, as { start, end }.
+  const sceneRangeAt = (time) => {
+    const segment = segmentAt?.(time) || null;
+    return segment ? { start: Number(segment.start) || 0, end: Number(segment.end) || 0 } : null;
+  };
   // The settings of the selected clip have a place of their own that is redrawn alone, so a click on the lane does not rebuild the library.
   const inspectorHost = document.createElement("div");
-  const renderSelected = () => renderOverlayInspector(inspectorHost, { state, pushHistory, commit: inspectorCommit, luts: () => luts?.() || [], fonts: () => panel.fonts, activeSceneRange: () => activeSceneRange?.() || null, total: () => Number(timelineSeconds?.()) || 0 });
+  const renderSelected = () => renderOverlayInspector(inspectorHost, { state, pushHistory, commit: inspectorCommit, luts: () => luts?.() || [], fonts: () => panel.fonts, activeSceneRange: () => activeSceneRange?.() || null, sceneRangeAt, total: () => Number(timelineSeconds?.()) || 0 });
 
   async function loadFonts() {
     try {

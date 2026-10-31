@@ -124,6 +124,37 @@ test('fonts that say where they come from are shown in groups, and the fonts ins
   ]);
 });
 
+test('one font can be set on every text clip, or on those that overlap a scene, and on nothing else', () => {
+  const clips = norm([
+    { kind: 'text', id: 'a', text: 'One', start: 0, end: 4, font: 'Anton' },
+    { kind: 'text', id: 'b', text: 'Two', start: 4, end: 9, font: 'Anton' },
+    { kind: 'text', id: 'c', text: 'Three', start: 9, end: 12, font: 'Caveat' },
+    { kind: 'grain', id: 'g', start: 0, end: 12 },
+  ]);
+  const apply = (range) => plain(ov('applyOverlayFontToText')(clips, 'Pacifico', range));
+  const fonts = (result) => result.clips.filter((c) => c.kind === 'text').map((c) => c.font);
+
+  const all = apply(null);
+  assert.equal(all.count, 3);
+  assert.deepEqual(fonts(all), ['Pacifico', 'Pacifico', 'Pacifico']);
+  assert.deepEqual(all.clips.map((c) => c.id), ['a', 'b', 'c', 'g'], 'no clip is added, removed or moved');
+  assert.deepEqual(all.clips.map((c) => [c.start, c.end]), [[0, 4], [4, 9], [9, 12], [0, 12]]);
+  assert.deepEqual(all.clips.map((c) => c.text).slice(0, 3), ['One', 'Two', 'Three'], 'the words stay');
+
+  // A clip that only touches the scene's edge is not in it.
+  const scene = apply({ start: 4, end: 9 });
+  assert.equal(scene.count, 1);
+  assert.deepEqual(fonts(scene), ['Anton', 'Pacifico', 'Caveat']);
+  const wide = apply({ start: 3, end: 10 });
+  assert.equal(wide.count, 3, 'a caption that runs across the scene edge is in it');
+
+  assert.equal(apply({ start: 20, end: 30 }).count, 0, 'a range with no text changes nothing');
+  assert.deepEqual(fonts(apply({ start: 5, end: 5 })), ['Anton', 'Pacifico', 'Caveat'], 'a range with no length reaches only the clip it falls inside, never everything');
+  assert.equal(plain(ov('applyOverlayFontToText')(clips, 'Pacifico', { start: 0, end: 12 })).clips.find((c) => c.id === 'g').kind, 'grain');
+  assert.deepEqual(plain(ov('applyOverlayFontToText')(null, 'Pacifico')), { clips: [], count: 0 });
+  assert.deepEqual(plain(clips.filter((c) => c.kind === 'text').map((c) => c.font)), ['Anton', 'Anton', 'Caveat'], 'the list it was given is not changed');
+});
+
 test('the words of a text clip are changed through the same path as every other setting', () => {
   const clips = norm([{ kind: 'text', id: 't', text: 'Hello', start: 2, end: 6 }]);
   const change = (key, value) => plain(ov('applyOverlayChange')(clips, 't', key, value))[0];

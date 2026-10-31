@@ -3,7 +3,7 @@
 // can be tested without a page. The panel that draws them follows. Every change goes through `applyOverlayChange`, which lets the clip's
 // normalizer clamp it, so a slider can never leave a clip in a state the render does not accept.
 
-import { makeButton } from "./controls.mjs";
+import { makeButton, toast } from "./controls.mjs";
 import { OVERLAY_BLEND_MODES, OVERLAY_GRAIN_SIZES, OVERLAY_SCALE_MODES, normalizeOverlayLayers } from "./overlay_layers.mjs";
 
 const BLEND_LABELS = { screen: "Screen (drops black)", add: "Add", lighten: "Lighten", darken: "Darken (drops white)", overlay: "Overlay", softlight: "Soft light", hardlight: "Hard light", colordodge: "Color dodge", colorburn: "Color burn", multiply: "Multiply", normal: "Normal (covers)" };
@@ -123,6 +123,15 @@ export function applyOverlayChange(clips, id, key, value) {
   return normalizeOverlayLayers(changed);
 }
 
+// One font set on the text clips (titles and lyric captions) that overlap a range of the timeline, or on all of them without a range. A range
+// that is given never means all: one with no text in it matches nothing. `count` is how many text clips that is.
+export function applyOverlayFontToText(clips, font, range = null) {
+  const list = Array.isArray(clips) ? clips : [];
+  const inRange = (clip) => !range || (clip.end > Number(range.start) && clip.start < Number(range.end));
+  const ids = new Set(list.filter((clip) => clip?.kind === "text" && inRange(clip)).map((clip) => clip.id));
+  return { clips: normalizeOverlayLayers(list.map((clip) => (ids.has(clip.id) ? { ...clip, font } : clip))), count: ids.size };
+}
+
 // A clip put back to its defaults: it keeps what it is and where it is (id, kind, times, file, LUT) and loses every setting.
 export function resetOverlayLayer(clips, id) {
   const keep = ["id", "kind", "start", "end", "path", "lut", "text", "source_start"];
@@ -155,7 +164,8 @@ const LABEL_STYLE = "font-size:11px;font-weight:700;color:#d4d4d8;display:flex;j
 const FIELD_STYLE = "box-sizing:border-box;border:1px solid #3f3f46;border-radius:5px;background:#09090b;color:#fafafa;padding:4px 6px;font-size:12px;";
 
 // Draws the settings of the selected clip into `container`. `env` gives it the page:
-//   state, pushHistory(), commit(reason, redrawTimeline), luts() (names), activeSceneRange() ({start, end} or null), total()
+//   state, pushHistory(), commit(reason, redrawTimeline), luts() (names), activeSceneRange() ({start, end} or null), sceneRangeAt(time) (the
+//   scene that holds that second), total()
 export function renderOverlayInspector(container, env) {
   const { state } = env;
   container.textContent = "";
@@ -193,6 +203,41 @@ export function renderOverlayInspector(container, env) {
     return (raw && normalizeOverlayLayers([raw])[0]) || clip;
   };
   const redrawKeys = new Set(["start", "end", "enabled", "locked"]);
+
+  // This clip's font on the other text clips: those of the scene it lies in, or all of them. A lyric caption is a clip of its own for each line,
+  // so the font of one does not reach the rest until it is copied here.
+  const copyFont = (everywhere) => {
+    const now = current();
+    const scene = everywhere ? null : env.sceneRangeAt?.((now.start + now.end) / 2) || null;
+    if (!everywhere && !scene) {
+      toast("This clip does not lie in a scene.", true);
+      return;
+    }
+    const result = applyOverlayFontToText(state.overlayLayers, now.font, scene);
+    if (result.count < 2) {
+      toast(everywhere ? "This is the only text clip." : "This is the only text clip in its scene.", true);
+      return;
+    }
+    env.pushHistory();
+    state.overlayLayers = result.clips;
+    env.commit("Overlay font changed", true, true);
+    toast(`${now.font} is now the font of ${result.count} text clips.`);
+  };
+  const fontActions = () => {
+    const line = document.createElement("div");
+    line.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:6px;";
+    for (const [text, title, everywhere] of [
+      ["Use for this scene", "Set this font on every text clip (titles and lyric captions) in the scene this clip lies in.", false],
+      ["Use for all text", "Set this font on every text clip on the timeline, titles and lyric captions.", true],
+    ]) {
+      const button = makeButton(text);
+      button.title = title;
+      button.style.cssText += "padding:5px 6px;font-size:11px;";
+      button.onclick = () => copyFont(everywhere);
+      line.append(button);
+    }
+    return line;
+  };
 
   for (const control of overlayControlsFor(clip, { luts: env.luts(), fonts: env.fonts?.() || [] })) {
     const row = document.createElement("div");
@@ -309,6 +354,7 @@ export function renderOverlayInspector(container, env) {
       number.onchange = () => finish(redraw);
     }
     card.append(row);
+    if (control.key === "font") card.append(fontActions());
   }
 
   const actions = document.createElement("div");
