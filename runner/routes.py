@@ -213,7 +213,8 @@ def _ensure_workflow_runner_routes():
     async def vrgdg_workflow_runner_build_minimax_h3_finalize_prompt(request):
         try:
             payload = await request.json()
-            result = await asyncio.to_thread(_build_minimax_finalize, payload)
+            # A draft keeps the Turbo LoRA names it was made with, so finishing it uses the installed release.
+            result = await asyncio.to_thread(lambda: _build_minimax_finalize(payload, _lora_choices()))
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

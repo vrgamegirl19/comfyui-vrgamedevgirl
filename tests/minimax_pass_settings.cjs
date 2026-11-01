@@ -403,6 +403,26 @@ test('I2V LoRA presets skip reference-to-video adapters', () => {
   assert.equal(c.miniMaxInstalledPass2Lora(4, [ref, i2v], 'reference_to_video'), ref);
 });
 
+test('LoRA presets find newer Turbo releases by family and step count', () => {
+  const c = fixture();
+  const fl2v4 = 'minimax_h3_fl2v_turbo_4step_v1.3_768p_comfyui_bf16.safetensors';
+  const fl2v8 = 'minimax_h3_fl2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors';
+  const ref4 = 'minimax_h3_ref2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors';
+  const ref8 = 'minimax_h3_ref2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors';
+  const installed = [fl2v4, fl2v8, ref4, ref8];
+  assert.deepEqual([4, 8].map(steps => c.miniMaxInstalledPass2Lora(steps, installed, 'reference_to_video')), [ref4, ref8]);
+  assert.deepEqual([4, 8].map(steps => c.miniMaxInstalledPass2Lora(steps, installed, 'image_to_video')), [fl2v4, fl2v8]);
+  // The newest version wins (1.10 is newer than 1.3) and original-format files without "comfy" never load in ComfyUI.
+  const newer = 'minimax_h3_fl2v_turbo_4step_v1.10_768p_comfyui_bf16.safetensors';
+  const original = 'minimax_h3_fl2v_turbo_4step_v1.11_768p_bf16.safetensors';
+  assert.equal(c.miniMaxInstalledPass2Lora(4, [fl2v4, newer, original], 'image_to_video'), newer);
+  assert.equal(c.miniMaxInstalledPass2Lora(4, [original], 'image_to_video'), '');
+  // A full LoRA is preferred over LightX2V, which is still found when it is the only one.
+  const lightx = 'minimax_h3_fl2v_lightx2v_turbo_4step_v1.0_768p_resized_avg_rank_31_bf16.safetensors';
+  assert.equal(c.miniMaxInstalledPass2Lora(4, [lightx, fl2v4], 'image_to_video'), fl2v4);
+  assert.equal(c.miniMaxInstalledPass2Lora(4, [lightx], 'image_to_video'), lightx);
+});
+
 
 test('actual pass-button handlers keep global and locked-scene T2V/I2V settings in their mode', async () => {
   for (const mode of ['text_to_video', 'image_to_video']) {

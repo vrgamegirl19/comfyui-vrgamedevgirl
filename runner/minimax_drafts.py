@@ -3,6 +3,7 @@
 import copy
 import json
 import os
+import re
 import uuid
 
 
@@ -85,7 +86,57 @@ def _draft_diffusion_models(prompt):
     })
 
 
-def _build_minimax_finalize(payload):
+# The names the MiniMax H3 Turbo LoRAs are released under: minimax_h3_{fl2v|ref2v}_[lightx2v_]turbo_{N}step_v{X.Y}...
+_TURBO_LORA = re.compile(r"^minimax_h3_(fl2v|ref2v)_(lightx2v_)?turbo_(\d+)step_v(\d+(?:\.\d+)*)", re.IGNORECASE)
+
+
+def _turbo_lora(name):
+    """Return the family, kind, step count and version of a Turbo LoRA file name, or None for any other LoRA."""
+    match = _TURBO_LORA.match(re.split(r"[\\/]", str(name or ""))[-1])
+    if not match:
+        return None
+    return {
+        "family": match.group(1).lower(), "lightx": bool(match.group(2)), "steps": int(match.group(3)),
+        "version": tuple(int(part) for part in match.group(4).split(".")),
+    }
+
+
+def _installed_turbo_lora(wanted, installed):
+    """Return the newest installed Turbo LoRA of the same family, kind and step count.
+
+    Full LoRAs without "comfy" in the name are the original-format files, which ComfyUI does not load.
+    """
+    found = []
+    for name in installed:
+        lora = _turbo_lora(name)
+        if lora and all(lora[key] == wanted[key] for key in ("family", "lightx", "steps")) and (lora["lightx"] or "comfy" in name.lower()):
+            found.append((lora["version"], name))
+    return max(found, key=lambda item: item[0])[1] if found else None
+
+
+def _replace_missing_turbo_loras(result, installed):
+    """Point every LoRA loader whose Turbo LoRA is no longer installed at the newest installed one.
+
+    A draft keeps the Turbo LoRA names it was made with and a newer release replaces the old file, so finishing
+    it would fail with "Value not in list". The replacement keeps the family, kind and step count. Other LoRAs, and
+    Turbo LoRAs with no installed match, stay as saved. Returns the names it changed, old and new.
+    """
+    installed = [name for name in installed or [] if isinstance(name, str)]
+    changed = []
+    for node in result["prompt"].values():
+        inputs = node.get("inputs")
+        name = inputs.get("lora_name") if isinstance(inputs, dict) else None
+        if not isinstance(name, str) or not name or name in installed:
+            continue
+        wanted = _turbo_lora(name)
+        replacement = _installed_turbo_lora(wanted, installed) if wanted else None
+        if replacement:
+            inputs["lora_name"] = replacement
+            changed.append((name, replacement))
+    return changed
+
+
+def _build_minimax_finalize(payload, installed_loras=None):
     folder = _draft_folder(payload["project_folder"], payload["draft_id"])
     checkpoint = os.path.join(folder, "pass1.pt")
     if not os.path.isfile(checkpoint):
@@ -108,4 +159,5 @@ def _build_minimax_finalize(payload):
     prompt["125"] = {"class_type": "VRGDG_MiniMaxH3LoadDraft", "inputs": {"checkpoint_path": checkpoint}}
     prompt["142"]["inputs"]["filename_prefix"] += "_finalized"
     result["prompt"] = _prune_draft_graph(prompt)
+    _replace_missing_turbo_loras(result, installed_loras)
     return result
