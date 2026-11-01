@@ -560,7 +560,7 @@ export function buildMiniMaxPanel({
   miniMaxTwoPassLoraStatus.setAttribute("role", "status");
   miniMaxTwoPassLoraStatus.style.cssText = "font-size:11px;color:#facc15;";
   const miniMaxTwoPassLoraDownload = document.createElement("a");
-  miniMaxTwoPassLoraDownload.href = "https://huggingface.co/Kijai/MiniMax-H3_comfy/tree/main/loras";
+  miniMaxTwoPassLoraDownload.href = "https://huggingface.co/lightx2v/Minimax-h3-Turbo/tree/main";
   miniMaxTwoPassLoraDownload.target = "_blank";
   miniMaxTwoPassLoraDownload.rel = "noopener noreferrer";
   miniMaxTwoPassLoraDownload.textContent = "Download MiniMax Turbo LoRAs";
