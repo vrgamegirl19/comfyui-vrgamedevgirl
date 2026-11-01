@@ -424,7 +424,6 @@ export function createReferenceSubjects({
     subjectDrop.style.display = "none";
     subjectButtons.style.display = "none";
     subjectsList.style.display = "flex";
-    subjectsList.style.maxHeight = "min(62vh, 720px)";
     if (!multi) {
       syncSingleSubjectInputsFromFirstSubject();
       updateSubjectDrop();
