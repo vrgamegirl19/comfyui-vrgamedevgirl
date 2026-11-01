@@ -3238,12 +3238,18 @@ export function openBuilder(node, options = {}) {
   });
   // Stem tracks under a scene appear, change and disappear as the Audio Mask window works on them. Several scenes can
   // change within a moment (the tracks load one scene at a time), so the redraws are combined into one, and none happens
-  // while the timeline is playing: a full redraw in the middle of playback stalls the video.
+  // while the timeline is playing: a full redraw in the middle of playback stalls the video. None happens while a field
+  // is being edited either: the redraw rebuilds the timeline text boxes and would throw the user out of the one in use.
   let stemRedrawTimer = 0;
+  const isEditingField = () => {
+    const active = document.activeElement;
+    if (!active || !overlay?.contains?.(active)) return false;
+    return active.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName);
+  };
   const redrawStemTracks = () => {
     window.clearTimeout(stemRedrawTimer);
     stemRedrawTimer = window.setTimeout(() => {
-      if (isTimelinePlaying()) {
+      if (isTimelinePlaying() || isEditingField()) {
         redrawStemTracks();
         return;
       }
