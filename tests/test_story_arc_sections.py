@@ -217,6 +217,25 @@ class StoryArcSectionTests(unittest.TestCase):
         self.assertTrue(normalized.startswith("Verse 1:"))
         self.assertIn("Chorus:\nScene 3 (Overlook)", normalized)
 
+    def test_a_required_heading_with_its_own_colon_is_read_whole(self):
+        lyrics = (
+            "[Intro]\n[Male Voice] Windows open\n[Verse 1: Male Rap]\nline one\n[Chorus: Female Vocals]\nline two\n"
+            "[Verse 2: Male Rap]\nline three\n[Chorus: Female Vocals]\nline four\n[Outro: Male Voice]\nline five"
+        )
+        labels = [label for label, _body in parse_sections(lyrics)]
+        self.assertIn("Verse 1: Male Rap", labels)
+        # Both reply forms: "Label:" then the body, and "[Label]: body" on one line.
+        reply = "\n\n".join(
+            f"{label}:\nMara crosses the street {index}." if index % 2 == 0 else f"[{label}]: Mara crosses the street {index}."
+            for index, label in enumerate(labels)
+        )
+
+        sections = split_sections(normalize_output(reply, labels, 40, "LM Studio"), labels)
+
+        self.assertEqual(list(sections), labels)
+        for index, body in enumerate(sections.values()):
+            self.assertEqual(body, f"Mara crosses the street {index}.")
+
     def test_feeling_words_need_two_hits(self):
         self.assertEqual(feeling_hits("She feels grief and longing."), ["feels", "grief", "longing"])
         self.assertEqual(feeling_hits("She feels the rail and turns."), [])

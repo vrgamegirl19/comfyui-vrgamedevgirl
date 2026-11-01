@@ -87,6 +87,9 @@ export function createHistory({
       overlayTrack: normalizeOverlayTrackState(state.overlayTrack),
       overlayLayerTrack: normalizeOverlayLayerTrack(state.overlayLayerTrack),
       overlayLayers: state.overlayLayers,
+      sceneTransitions: state.sceneTransitions,
+      videoEffects: state.videoEffects,
+      videoFilters: state.videoFilters,
       activeId: state.activeId,
       activeTrack: state.activeTrack,
       timingFrozen: state.timingFrozen,
@@ -190,6 +193,9 @@ export function createHistory({
     state.overlayTrack = normalizeOverlayTrackState(data.overlayTrack || data.overlay_track || state.overlayTrack);
     state.overlayLayerTrack = normalizeOverlayLayerTrack(data.overlayLayerTrack ?? state.overlayLayerTrack);
     state.overlayLayers = normalizeOverlayLayers(data.overlayLayers ?? state.overlayLayers);
+    state.sceneTransitions = Array.isArray(data.sceneTransitions) ? data.sceneTransitions : [];
+    state.videoEffects = Array.isArray(data.videoEffects) ? data.videoEffects : [];
+    state.videoFilters = Array.isArray(data.videoFilters) ? data.videoFilters : [];
     ensureAllSegmentRuntimeFields();
     state.activeId = data.activeId || state.segments[0]?.id || "";
     state.activeTrack = data.activeTrack || data.active_track || segmentTrack(activeSegment()) || "base";

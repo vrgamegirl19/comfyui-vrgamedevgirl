@@ -64,6 +64,24 @@ export function refmodLibraryChanged() {
   libraryInFlight = null;
 }
 
+// A card copies its RefMod's kind, tokens and frames when the RefMod is picked. A RefMod saved again under the same name
+// (fewer frames, another quality) changes them, so bring the cards in line with the library. Cards whose RefMod is not
+// in the library keep what they have. Returns true when a card changed.
+export function syncRefmodCards(cards, library) {
+  const byName = new Map((library || []).map((entry) => [entry.name, entry]));
+  let changed = false;
+  for (const card of cards || []) {
+    const refmod = card?.refmod;
+    const entry = refmod && typeof refmod === "object" ? byName.get(refmod.name) : null;
+    if (!entry) continue;
+    const kind = entry.kind === "image" ? "image" : "video";
+    if (refmod.kind === kind && refmod.tokens === entry.tokens && refmod.frames === entry.frames) continue;
+    Object.assign(refmod, { kind, tokens: entry.tokens, frames: entry.frames });
+    changed = true;
+  }
+  return changed;
+}
+
 export function refmodPreviewUrl(name) {
   return api.apiURL(`/vrgdg/refmod/preview?name=${encodeURIComponent(name)}`);
 }
@@ -388,6 +406,7 @@ Replace it?`)) return;
     }
     modSelect.value = item.refmod?.name || "";
     refreshInfo();
+    if (syncRefmodCards([item], library)) onChange(false);
   };
   loadRefmodLibrary().then(showLibrary);
   // Opening the dropdown reads the folders again, so RefMods made in RefMods Studio, another tab or the API (and

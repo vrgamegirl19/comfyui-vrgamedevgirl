@@ -20,6 +20,7 @@ export const MINIMAX_H3_MODEL_DOWNLOADS = [
   { label: "Video VAE", url: "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_video_vae_fp16.safetensors" },
   { label: "Audio VAE", url: "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_audio_vae_fp32.safetensors" },
   { label: "Kijai MiniMax H3 LoRAs", url: "https://huggingface.co/Kijai/MiniMax-H3_comfy/tree/main/loras" },
+  { label: "LightX2V MiniMax H3 Turbo LoRAs", url: "https://huggingface.co/lightx2v/Minimax-h3-Turbo/tree/main" },
   { label: "MMH3 Ultimate Upscale custom nodes", url: "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale" },
   { label: "MiniMax H3 latent upscaler models", url: "https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler" },
 ];

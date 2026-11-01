@@ -79,6 +79,47 @@ class MiniMaxDraftTests(unittest.TestCase):
                 final = drafts._build_minimax_finalize({**request, **extra})
                 self.assertEqual(final["prompt"]["125"]["class_type"], "VRGDG_MiniMaxH3LoadDraft")
 
+    def test_draft_whose_turbo_lora_was_replaced_finishes_with_the_installed_release(self):
+        old = "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors"
+        installed = [
+            "minimax_h3_fl2v_turbo_8step_v1.1_768p_bf16.safetensors",
+            "H3/minimax_h3_fl2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors",
+            "H3/minimax_h3_fl2v_turbo_8step_v1.10_768p_comfyui_bf16.safetensors",
+            "minimax_h3_fl2v_turbo_4step_v1.3_768p_comfyui_bf16.safetensors",
+            "minimax_h3_ref2v_turbo_8step_v1.2_768p_comfyui_bf16.safetensors",
+        ]
+        with tempfile.TemporaryDirectory() as folder:
+            payload = {"project_folder": folder, "scene_number": 1, "timeline_start_seconds": 0, "timeline_end_seconds": 10}
+            draft = drafts._build_minimax_draft(self.result(image=True), payload)
+            Path(draft["prompt"]["draft_save"]["inputs"]["checkpoint_path"]).touch()
+            request = {**payload, "draft_id": draft["draft_id"]}
+            lora = lambda final: final["prompt"]["207"]["inputs"]["lora_name"]
+            # Without ComfyUI's list, or while the saved file is still installed, the draft is finished as saved.
+            self.assertEqual(lora(drafts._build_minimax_finalize(request)), old)
+            self.assertEqual(lora(drafts._build_minimax_finalize(request, installed + [old])), old)
+            # The newest installed ComfyUI release of the same family and step count replaces it.
+            self.assertEqual(lora(drafts._build_minimax_finalize(request, installed)), "H3/minimax_h3_fl2v_turbo_8step_v1.10_768p_comfyui_bf16.safetensors")
+            # No installed 8 step fl2v Turbo LoRA: it stays as saved for ComfyUI to report.
+            self.assertEqual(lora(drafts._build_minimax_finalize(request, installed[3:])), old)
+
+    def test_only_missing_turbo_loras_are_replaced(self):
+        installed = ["minimax_h3_fl2v_lightx2v_turbo_4step_v1.0_resized_rank_31_bf16.safetensors", "minimax_h3_ref2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors"]
+        result = {"prompt": {
+            "1": {"inputs": {"lora_name": "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors"}},
+            "2": {"inputs": {"lora_name": "style.safetensors"}},
+            "3": {"inputs": {"lora_name": "minimax_h3_ref2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors"}},
+            "4": {"inputs": {"lora_name": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors"}},
+            "5": {"inputs": {"value": 4}},
+            "6": {"class_type": "NoInputs"},
+        }}
+        changed = drafts._replace_missing_turbo_loras(result, installed)
+        self.assertEqual(changed, [
+            ("minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors", installed[0]),
+            ("minimax_h3_ref2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors", installed[1]),
+        ])
+        self.assertEqual(result["prompt"]["2"]["inputs"]["lora_name"], "style.safetensors")
+        self.assertEqual(result["prompt"]["4"]["inputs"]["lora_name"], "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors")
+
     def test_checkpoint_round_trip_preserves_audio_video_and_masks(self):
         import torch
         class Nested:

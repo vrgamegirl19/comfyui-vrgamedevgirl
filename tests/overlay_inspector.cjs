@@ -96,6 +96,65 @@ test('a text clip has the words, font, look and position controls, and the font 
   assert.deepEqual(options(undefined, ''), []);
 });
 
+test('fonts that say where they come from are shown in groups, and the fonts installed on the computer are one of them', () => {
+  const options = (fonts, current) => plain(ov('overlayFontOptions')(fonts, current));
+  const list = [
+    { name: 'Anton', file: 'Anton-Regular.ttf', bundled: true, system: false },
+    { name: 'My Hand Font', file: 'My Hand Font.otf', bundled: false, system: false },
+    { name: 'Arial', file: 'arial.ttf', bundled: false, system: true },
+    { name: 'Arial Black', file: 'ariblk.ttf', bundled: false, system: true },
+    { name: '' },
+  ];
+  assert.deepEqual(options(list, 'Pacifico').map((o) => [o.value, o.group || '']), [
+    ['Anton', 'Included with the app'], ['My Hand Font', 'Your font files'], ['Arial', 'Installed on this computer'], ['Arial Black', 'Installed on this computer'], ['Pacifico', ''],
+  ]);
+  assert.deepEqual(options(['Anton', { name: 'Caveat' }], '').map((o) => o.group), [undefined, undefined], 'a list without sources has no groups');
+
+  // The select puts each group under its own heading and an option without a group after them.
+  const element = (tag) => ({ tag, children: [], append(...nodes) { this.children.push(...nodes); } });
+  context.document = { createElement: element };
+  const select = element('select');
+  ov('appendOverlayOptions')(select, options(list, 'Pacifico'));
+  const shape = (node) => (node.tag === 'optgroup' ? { group: node.label, options: node.children.map((o) => o.value) } : { option: node.value, label: node.textContent });
+  assert.deepEqual(plain(select.children.map(shape)), [
+    { group: 'Included with the app', options: ['Anton'] },
+    { group: 'Your font files', options: ['My Hand Font'] },
+    { group: 'Installed on this computer', options: ['Arial', 'Arial Black'] },
+    { option: 'Pacifico', label: 'Pacifico (not installed)' },
+  ]);
+});
+
+test('one font can be set on every text clip, or on those that overlap a scene, and on nothing else', () => {
+  const clips = norm([
+    { kind: 'text', id: 'a', text: 'One', start: 0, end: 4, font: 'Anton' },
+    { kind: 'text', id: 'b', text: 'Two', start: 4, end: 9, font: 'Anton' },
+    { kind: 'text', id: 'c', text: 'Three', start: 9, end: 12, font: 'Caveat' },
+    { kind: 'grain', id: 'g', start: 0, end: 12 },
+  ]);
+  const apply = (range) => plain(ov('applyOverlayFontToText')(clips, 'Pacifico', range));
+  const fonts = (result) => result.clips.filter((c) => c.kind === 'text').map((c) => c.font);
+
+  const all = apply(null);
+  assert.equal(all.count, 3);
+  assert.deepEqual(fonts(all), ['Pacifico', 'Pacifico', 'Pacifico']);
+  assert.deepEqual(all.clips.map((c) => c.id), ['a', 'b', 'c', 'g'], 'no clip is added, removed or moved');
+  assert.deepEqual(all.clips.map((c) => [c.start, c.end]), [[0, 4], [4, 9], [9, 12], [0, 12]]);
+  assert.deepEqual(all.clips.map((c) => c.text).slice(0, 3), ['One', 'Two', 'Three'], 'the words stay');
+
+  // A clip that only touches the scene's edge is not in it.
+  const scene = apply({ start: 4, end: 9 });
+  assert.equal(scene.count, 1);
+  assert.deepEqual(fonts(scene), ['Anton', 'Pacifico', 'Caveat']);
+  const wide = apply({ start: 3, end: 10 });
+  assert.equal(wide.count, 3, 'a caption that runs across the scene edge is in it');
+
+  assert.equal(apply({ start: 20, end: 30 }).count, 0, 'a range with no text changes nothing');
+  assert.deepEqual(fonts(apply({ start: 5, end: 5 })), ['Anton', 'Pacifico', 'Caveat'], 'a range with no length reaches only the clip it falls inside, never everything');
+  assert.equal(plain(ov('applyOverlayFontToText')(clips, 'Pacifico', { start: 0, end: 12 })).clips.find((c) => c.id === 'g').kind, 'grain');
+  assert.deepEqual(plain(ov('applyOverlayFontToText')(null, 'Pacifico')), { clips: [], count: 0 });
+  assert.deepEqual(plain(clips.filter((c) => c.kind === 'text').map((c) => c.font)), ['Anton', 'Anton', 'Caveat'], 'the list it was given is not changed');
+});
+
 test('the words of a text clip are changed through the same path as every other setting', () => {
   const clips = norm([{ kind: 'text', id: 't', text: 'Hello', start: 2, end: 6 }]);
   const change = (key, value) => plain(ov('applyOverlayChange')(clips, 't', key, value))[0];

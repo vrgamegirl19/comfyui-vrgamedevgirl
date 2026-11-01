@@ -29,6 +29,8 @@ Use it to:
 - 💾 Save, branch, export, import, and continue portable Builder projects.
 - 🤖 Use built-in LLM, local LM Studio, API, and Browser AI options where supported.
 
+> **Overlays, transitions, effects and filters** (grain, vignette, text, LUTs, clips such as dust and light leaks, and the transitions, effects and filters on the timeline) belong to the **H3 Studio** desktop app, which draws them into the exported video. This ComfyUI Builder does not show them. A project made in H3 Studio keeps them when you open it here.
+
 📖 **New here? Start with the full [AI Video Builder Guide](Workflows/LTX-2_Workflows/Video_Builder/readme.md).**
 
 ✨ **Or chat with a GPT and ask any question about the video builder. [HERE](https://chatgpt.com/g/g-6a6b4799d0e48191acf5a97fb2132ba9-ltx-2-3-music-video-builder-guide)** 

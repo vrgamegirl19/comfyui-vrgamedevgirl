@@ -22,6 +22,7 @@ _VRGDG_SUBMODULES = (
     ".minimax.refmod_picker",
     ".minimax.refmod_studio",
     ".minimax.refmod_library",
+    ".minimax.refmod_server",
     ".minimax.latent_upscaler",
     ".browser.nodes",
     ".core.system_routes",

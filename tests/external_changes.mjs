@@ -68,11 +68,54 @@ test("reference maps follow the API's scene mapping", () => {
   assert.equal(liveRefs.use_location_references, true);
 });
 
+const block = (id, extra = {}) => ({ id, transition: "BlockDissolve", start: 1, seconds: 1, ...extra });
+const lanesFrom = (lists) => builder.savedStateFromSession({ segments: [], ...lists });
+
+test("lane lists: a list the window has not edited takes the agent's blocks, an empty one included", () => {
+  const saved = lanesFrom({ scene_transitions: [block("t1")] });
+  const live = { scene_transitions: [block("t1")], video_effects: [], video_filters: [] };
+  const fresh = { scene_transitions: [block("t1"), block("t2", { start: 3 })], video_effects: [{ id: "e1", look: "BeatBounce", start: 0, seconds: 2 }] };
+  const result = builder.mergeLaneLists({ live, fresh, saved, keys: ["scene_transitions", "video_effects"] });
+  assert.deepEqual(result.applied, ["scene_transitions", "video_effects"]);
+  assert.deepEqual(result.take.scene_transitions.map((item) => item.id), ["t1", "t2"]);
+  assert.equal(result.take.video_effects[0].look, "BeatBounce");
+  assert.deepEqual(result.conflicts, []);
+  assert.deepEqual(saved.lists.scene_transitions.map((item) => item.id), ["t1", "t2"], "the saved state now holds the server's list");
+  // The agent clears a lane.
+  const cleared = builder.mergeLaneLists({ live: { scene_transitions: result.take.scene_transitions }, fresh: { scene_transitions: [] }, saved, keys: ["scene_transitions"] });
+  assert.deepEqual(cleared.take, { scene_transitions: [] });
+});
+
+test("lane lists: blocks the person added and has not saved are kept, and reported", () => {
+  const saved = lanesFrom({ video_filters: [] });
+  const live = { video_filters: [{ id: "f9", look: "Adjust", start: 0, seconds: 1 }] };
+  const result = builder.mergeLaneLists({ live, fresh: { video_filters: [{ id: "f1", look: "Adjust", start: 2, seconds: 1 }] }, saved, keys: ["video_filters"] });
+  assert.deepEqual(result.take, {});
+  assert.deepEqual(result.conflicts, ["video_filters"]);
+  assert.equal(saved.lists.video_filters[0].id, "f1", "the window now counts as holding an unsaved edit against the server's list");
+});
+
+test("lane lists: only the lists named are touched, and what is already the same is not a change", () => {
+  const saved = lanesFrom({ scene_transitions: [block("t1")], video_effects: [{ id: "e1" }] });
+  const live = { scene_transitions: [block("t1")], video_effects: [{ id: "e1" }] };
+  const result = builder.mergeLaneLists({ live, fresh: { scene_transitions: [block("t1")], video_effects: [] }, saved, keys: ["scene_transitions", "not_a_lane"] });
+  assert.deepEqual(result, { take: {}, applied: [], conflicts: [] });
+  assert.deepEqual(saved.lists.video_effects, [{ id: "e1" }], "a list that was not named keeps its saved state");
+  assert.deepEqual(Object.keys(builder.LANE_LISTS), ["scene_transitions", "video_effects", "video_filters"]);
+});
+
+test("a saved state and a drift absorb both carry the lane lists, a missing list as an empty one", () => {
+  assert.deepEqual(builder.savedStateFromSession({ segments: [] }).lists, { scene_transitions: [], video_effects: [], video_filters: [] });
+  assert.deepEqual(lanesFrom({ video_effects: [{ id: "e1" }] }).lists.video_effects, [{ id: "e1" }]);
+});
+
 test("only a contiguous run of scene and note edits is merged; anything else reloads", () => {
   const sceneEvent = (revision) => ({ revision, change: { kind: "scene_fields", scenes: {} } });
   assert.equal(builder.planExternalChanges([sceneEvent(5), sceneEvent(6)], 4, 6).mergeable, true);
   assert.equal(builder.planExternalChanges([sceneEvent(6)], 4, 6).contiguous, false, "revision 5 was missed");
   assert.equal(builder.planExternalChanges([{ revision: 5, change: { kind: "project" } }], 4, 5).mergeable, false);
+  const laneEvent = { revision: 5, change: { kind: "scene_fields", scenes: {}, lists: ["scene_transitions"] } };
+  assert.equal(builder.planExternalChanges([laneEvent], 4, 5).mergeable, true, "a lane change needs no reload");
 });
 
 test("unsaved-edit detection ignores runtime-only keys", () => {

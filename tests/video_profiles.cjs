@@ -301,7 +301,7 @@ test('the profile row sits above the video type buttons with + and - buttons', (
   assert.ok(source.includes('makeButton("+")'));
   assert.ok(source.includes('Save current video settings as a profile'));
   assert.ok(source.includes('Delete selected video profile'));
-  assert.ok(source.includes('miniMaxEnginePanel.append(miniMaxBanner, miniMaxVideoProfileRow, miniMaxPipelineChooser, miniMaxRefmodNote, miniMaxRefmodClothing, miniMaxModeChooser'));
+  assert.ok(source.includes('miniMaxEnginePanel.append(miniMaxBanner, miniMaxVideoProfileRow, miniMaxPipelineChooser, miniMaxRefmodNote, miniMaxModeChooser'));
   assert.ok(source.includes('videoProfiles.wire();'));
   assert.ok(source.includes('"/vrgdg/music_builder/save_video_profile"'));
 });

@@ -36,6 +36,7 @@ test('transition survives pass switching and project reload independently of sam
 test('effective settings inherit global transitions unless the existing scene lock is checked', () => {
   const c = fixture();
   Object.assign(c,{state:{miniMaxH3Settings:{i2v_transition_style:'surreal_morph',i2v_transition_direction:'global'}},videoSettingsSegment:()=>null});
+  vm.runInContext(functionSource(readBuilderModule('minimax_panel.mjs'),'editableMiniMaxH3Settings'),c);
   vm.runInContext(functionSource(readBuilderModule('minimax_panel.mjs'),'miniMaxH3SettingsForSegment'),c);
   const scene = {minimax_h3_settings:{i2v_transition_style:'camera_reveal',i2v_transition_direction:'local'}};
   assert.equal(c.miniMaxH3SettingsForSegment(scene).i2v_transition_direction,'global');

@@ -40,7 +40,7 @@ export function groupByType(refmods, typeOrder = []) {
 }
 
 const searchText = (item) => [
-  item?.name, prettyRefmodName(item?.name), item?.type, item?.description, ...(Array.isArray(item?.tags) ? item.tags : []),
+  item?.name, prettyRefmodName(item?.name), item?.type, item?.description, item?.uploader, ...(Array.isArray(item?.tags) ? item.tags : []),
 ].join(" ").toLowerCase();
 
 // `type` "" means every category. `query` matches name, type, description and tags; every word has to match.
@@ -78,6 +78,50 @@ export function formatCanvas(canvas) {
 
 export function formatTokens(tokens) {
   return Number(tokens || 0).toLocaleString("en-US");
+}
+
+// "https://aidigitalcreations.com/" -> "aidigitalcreations.com", for the line under the title.
+export function serverHost(url) {
+  return String(url || "").replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
+}
+
+// What to tell the user after sending a RefMod to the server. `result` is the answer of POST /vrgdg/refmod/server/upload.
+// A new account's RefMods wait for the owner of the server to approve them before anyone else sees them.
+export function sharedMessage(result, name) {
+  const label = prettyRefmodName(name);
+  if (result?.duplicate) return `${label} is already on the server.`;
+  const waiting = result?.status === "pending" ? " Others see it once the owner of the server approves it." : "";
+  if (result?.replaced) return `Replaced your earlier ${label} on the server.${waiting}`;
+  return `Shared ${label} with the server.${waiting}`;
+}
+
+// The status a shared RefMod can be in for its own uploader: approved ones need no note.
+export function statusLabel(status) {
+  if (status === "pending") return "Waiting for approval";
+  if (status === "hidden") return "Hidden";
+  return "";
+}
+
+// The name of a way to sign in, as the server lists it.
+export function providerLabel(provider) {
+  const labels = { github: "GitHub", discord: "Discord", dev: "Test sign-in (this computer only)" };
+  return labels[provider] || prettyTypeName(provider);
+}
+
+// A sign-in address from the server is opened in a browser, so only a web page is accepted (never javascript: or file:).
+export function isWebAddress(text) {
+  return /^https?:\/\/[^\s]+$/i.test(String(text || ""));
+}
+
+// The server wants a sign-in (the Video Builder's route passes on its `code`).
+export const isSignInRequired = (error) => error?.code === "signin_required";
+
+// What to tell the user after adding a shared RefMod to the library. `result` is the answer of POST /vrgdg/refmod/server/download.
+export function addedMessage(result) {
+  const label = prettyRefmodName(result?.name);
+  if (result?.already) return `${label} is already in your library.`;
+  if (result?.renamed) return `Added to your library as ${label}, because you already have one with that name.`;
+  return `Added ${label} to your library.`;
 }
 
 // The detail lines of the card, label and value, without the empty ones.

@@ -8,6 +8,7 @@ function fixture(state) {
   const c = vm.createContext({ state, toast: (...args) => messages.push(args) });
   vm.runInContext(readBuilderModule('minimax_h3.mjs'), c);
   vm.runInContext(readBuilderModule('timeline_video_settings.mjs'), c);
+  vm.runInContext(functionSource(readBuilderModule('minimax_panel.mjs'), 'editableMiniMaxH3Settings'), c);
   vm.runInContext(functionSource(readBuilderModule('minimax_panel.mjs'), 'miniMaxH3SettingsForSegment'), c);
   return { c, messages };
 }

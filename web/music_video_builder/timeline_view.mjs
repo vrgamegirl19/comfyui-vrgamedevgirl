@@ -39,6 +39,11 @@ import { STORY_CHAPTER_COLORS, storySceneIndex } from "./story_mode_data.mjs";
 import { wireLatentContinuationOffAll } from "./timeline_continuity.mjs";
 import { syncExportButton } from "./export_video.mjs";
 import { overlayLaneHeight, overlayLaneVisible, renderOverlayLane } from "./overlay_lane.mjs";
+import { deselectTransition, transitionLaneHeight } from "./transition_actions.mjs";
+import { renderTransitionLane } from "./transition_lane.mjs";
+import { deselectLooks, lookLaneHeight } from "./look_actions.mjs";
+import { renderLookLane } from "./look_lane.mjs";
+import { LOOK_ORDER } from "./look_model.mjs";
 import { wireUnlockAllScenes } from "./timeline_video_settings.mjs";
 import { createTimelineToolWindows } from "./timeline_tool_windows.mjs";
 import { createTimelineEmotionNote, timelineEmotionNotesVisible } from "./timeline_emotion_notes.mjs";
@@ -95,6 +100,8 @@ let stemBandHeight = 0;
 let additionalAudioHeight = 0;
 let overlayLaneShown = false;
 let overlayLaneBoxHeight = 0;
+let transitionLaneBoxHeight = 0;
+let lookLaneBoxHeights = {};
 const SCENE_DRAG_LOCK_KEY = "vrgdg_timeline_scenes_locked";
 
 // Whether timeline scenes start locked against dragging: on unless this browser last turned it off.
@@ -130,7 +137,8 @@ function timelineOverlayTop() {
 }
 
 function overlayLaneRoom() {
-  return overlayLaneShown ? overlayLaneBoxHeight + TIMELINE_NOTE_GAP : 0;
+  return (overlayLaneShown ? overlayLaneBoxHeight + TIMELINE_NOTE_GAP : 0) + (transitionLaneBoxHeight ? transitionLaneBoxHeight + TIMELINE_NOTE_GAP : 0)
+    + LOOK_ORDER.reduce((sum, kind) => sum + (lookLaneBoxHeights[kind] ? lookLaneBoxHeights[kind] + TIMELINE_NOTE_GAP : 0), 0);
 }
 
 function timelineNoteTop() {
@@ -734,6 +742,8 @@ export function createTimelineView({
   function refreshStemBand() {
     overlayLaneShown = overlayLaneVisible(state);
     overlayLaneBoxHeight = overlayLaneShown ? overlayLaneHeight(state.overlayLayers) : 0;
+    transitionLaneBoxHeight = transitionLaneHeight(state);
+    lookLaneBoxHeights = Object.fromEntries(LOOK_ORDER.map((kind) => [kind, lookLaneHeight(state, kind)]));
     additionalAudioHeight = (speakingAudioLaneCount(state) - 1) * (TIMELINE_SCENE_AUDIO_HEIGHT + 4);
     const names = state.showTimelineStems !== false ? stemRowNames(state.segments.map((segment) => segment.id)) : [];
     stemRowList = names.length ? [...names, "mix"] : [];
@@ -1694,8 +1704,26 @@ export function createTimelineView({
         edges: state.segments.flatMap((segment) => [Number(segment.start) || 0, Number(segment.end) || 0]),
         playheadTime: () => currentGlobalTime(), pushHistory,
         commit: (reason) => { render(); autoSaveSessionQuiet(reason).catch(() => null); state.refreshOverlayInspector?.(); },
-        select: (id) => { state.activeOverlayId = id; state.showOverlayInspector?.(); },
+        select: (id) => { state.activeOverlayId = id; if (id) { deselectTransition(state); deselectLooks(state); } state.showOverlayInspector?.(); },
       });
+    }
+    const transitionTop = timelineOverlayTop() + (overlayLaneShown ? overlayLaneBoxHeight + TIMELINE_NOTE_GAP : 0);
+    renderTransitionLane({
+      layer: segmentLayer, state, top: transitionTop, total: timelineDuration(),
+      edges: state.segments.flatMap((segment) => [Number(segment.start) || 0, Number(segment.end) || 0]),
+      playheadTime: () => currentGlobalTime(), pushHistory,
+      commit: (reason) => { render(); autoSaveSessionQuiet(reason).catch(() => null); },
+    });
+    // The filter lane and the effect lane follow, each under the one before.
+    let lookTop = transitionTop + (transitionLaneBoxHeight ? transitionLaneBoxHeight + TIMELINE_NOTE_GAP : 0);
+    for (const kind of LOOK_ORDER) {
+      renderLookLane(kind, {
+        layer: segmentLayer, state, top: lookTop, total: timelineDuration(),
+        edges: state.segments.flatMap((segment) => [Number(segment.start) || 0, Number(segment.end) || 0]),
+        playheadTime: () => currentGlobalTime(), pushHistory,
+        commit: (reason) => { render(); autoSaveSessionQuiet(reason).catch(() => null); },
+      });
+      if (lookLaneBoxHeights[kind]) lookTop += lookLaneBoxHeights[kind] + TIMELINE_NOTE_GAP;
     }
   }
 

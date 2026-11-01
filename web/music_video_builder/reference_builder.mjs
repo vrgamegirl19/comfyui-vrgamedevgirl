@@ -105,7 +105,8 @@ export function createReferenceBuilder({
     const tabBar = document.createElement("div");
     tabBar.style.cssText = `display:grid;grid-template-columns:repeat(${miniMaxProject ? 4 : 3},minmax(0,1fr));border-bottom:1px solid #1e3a5f;background:#0f172a;`;
     const tabContent = document.createElement("div");
-    tabContent.style.cssText = "padding:12px;min-height:0;overflow:auto;box-sizing:border-box;";
+    // The open tab's card stretches to the bottom of the box (see setReferenceTab), and its subject and mapping lists take the height that is left.
+    tabContent.style.cssText = "padding:12px;flex:1 1 auto;min-height:0;overflow:auto;box-sizing:border-box;display:flex;flex-direction:column;";
     const cardStyle = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;display:flex;flex-direction:column;gap:10px;";
 
     function modalDragGuard(event) {
@@ -199,7 +200,7 @@ export function createReferenceBuilder({
     describeSubjectImage.title = "Use vision Gemma to write the reference description from this image.";
     subjectButtons.append(createSubjectZImage, describeSubjectImage, uploadSubject, clearSubject);
     const subjectsList = document.createElement("div");
-    subjectsList.style.cssText = "display:none;flex-direction:column;gap:10px;max-height:560px;overflow:auto;padding-right:4px;";
+    subjectsList.style.cssText = "display:none;flex-direction:column;gap:10px;flex:1 1 0;min-height:240px;overflow:auto;padding-right:4px;";
     subjectCard.append(subjectHeader, makeField("Reference count", subjectCountInput), makeField("Extract subjects from", subjectSourceSelect), makeField("Reference label", subjectNameInput), makeField("Reference type", subjectTypeSelect), makeField("Reference description", subjectDescription), subjectDrop, subjectButtons, subjectsList);
 
     const extrasToggle = makeCheckbox("Add non-singing/speaking background characters", refs.extras_enabled);
@@ -339,7 +340,7 @@ export function createReferenceBuilder({
     const globalPerformanceControls = document.createElement("div");
     globalPerformanceControls.style.cssText = "border:1px solid #155e75;border-radius:7px;background:#071422;padding:9px;display:flex;flex-direction:column;gap:7px;";
     const mappingList = document.createElement("div");
-    mappingList.style.cssText = "display:flex;flex-direction:column;gap:8px;max-height:560px;overflow:auto;padding-right:4px;";
+    mappingList.style.cssText = "display:flex;flex-direction:column;gap:8px;flex:1 1 0;min-height:240px;overflow:auto;padding-right:4px;";
     mappingCard.append(mappingHeader, mappingNote, globalPerformanceControls, mappingList);
     openAdvancedLineMapping.onclick = () => launchAdvancedLineMapping();
 
@@ -365,6 +366,7 @@ export function createReferenceBuilder({
           button.style.borderBottom = tab.id === active ? "3px solid #06b6d4" : "3px solid transparent";
         }
         tab.node.style.display = tab.id === active ? "flex" : "none";
+        tab.node.style.flex = "1 0 auto";
         if (tab.id === active) tabContent.append(tab.node);
       }
     }

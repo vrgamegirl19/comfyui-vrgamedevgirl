@@ -5,6 +5,7 @@ const { readBuilderModule } = require('./builder_source.cjs');
 
 // The pure helpers of the overlay library panel (web/music_video_builder/overlay_library_panel.mjs). The panel itself is checked in the app.
 const context = vm.createContext({});
+vm.runInContext(readBuilderModule('overlay_inspector.mjs'), context);
 vm.runInContext(readBuilderModule('overlay_library_panel.mjs'), context);
 const helper = (name) => vm.runInContext(name, context);
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -36,6 +37,17 @@ test('categories are counted in the order the library lists them, with readable 
     { category: 'custom', count: 1, label: 'custom' },
   ]);
   assert.deepEqual(plain(helper('overlayCategoryCounts')(undefined)), []);
+});
+
+test('the font chosen for new text and captions is used when the fonts list has it, and the default of each is used when it does not', () => {
+  const chosen = (fonts, name) => helper('overlayChosenFont')(fonts, name);
+  const fonts = [{ name: 'Anton', bundled: true }, { name: 'Arial Black', bundled: false, system: true }];
+  assert.equal(chosen(fonts, 'Arial Black'), 'Arial Black');
+  assert.equal(chosen(fonts, ' arial black '), 'Arial Black', 'the name of the list is used, whatever the case');
+  assert.equal(chosen(fonts, ''), '', 'no choice is the default');
+  assert.equal(chosen(fonts, 'Removed Font'), '', 'a font that is gone falls back to the default');
+  assert.equal(chosen(['Anton'], 'Anton'), 'Anton', 'a list of plain names works too');
+  assert.equal(chosen(undefined, 'Anton'), '');
 });
 
 test('a new clip is placed where the person is looking', () => {

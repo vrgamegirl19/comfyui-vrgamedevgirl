@@ -4,6 +4,7 @@ const vm = require('node:vm');
 const { functionSource, readBuilderModule } = require('./builder_source.cjs');
 
 const openMenuSource = functionSource(readBuilderModule('timeline_edit.mjs'), 'openSegmentContextMenu');
+const normalizeEngineSource = functionSource(readBuilderModule('controls.mjs'), 'normalizeProjectVideoEngine');
 
 function openFor(segment) {
   const calls = [];
@@ -38,6 +39,7 @@ function openFor(segment) {
     captureSelectedVideoFrameAsImage(scene) { calls.push(['frame', scene]); },
     toast() {},
   });
+  vm.runInContext(normalizeEngineSource, context);
   vm.runInContext(`${openMenuSource}\nglobalThis.openMenu = openSegmentContextMenu;`, context);
   context.openMenu({ preventDefault() {}, stopPropagation() {}, clientX: 200, clientY: 300, currentTarget: { getBoundingClientRect: () => ({ left: 100, width: 200 }) } }, segment);
   return { labels: menu.children.map((button) => button.label), click: (label) => menu.children.find((button) => button.label === label).onclick(), calls };

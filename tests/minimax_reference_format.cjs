@@ -25,6 +25,7 @@ function fixture(audioMode = 'input_audio', pipeline = 'standard', structured = 
       { kind: 'location', label: 'warehouse', description: 'Rusted machinery and broken windows.', image: { path: 'warehouse.png' } },
     ],
     miniMaxH3SettingsForSegment: () => ({ audio_mode: audioMode }),
+    miniMaxSceneDefaults: segment => ({ ...c.state.builderStoryboardDefaults, ...segment?.scene_defaults }),
     miniMaxH3ModeForSegment: () => 'reference_to_video',
     miniMaxH3CutPlanForSegment: () => ({ cut_times_seconds: [] }),
     miniMaxOrderedImageReferenceItemsForSegment: () => c.items,

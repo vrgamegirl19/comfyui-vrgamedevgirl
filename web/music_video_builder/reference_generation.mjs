@@ -600,11 +600,12 @@ export function createReferenceGeneration({
     const useKrea2 = workflow === "krea2";
     const useMoss = workflow === "moss_image";
     const useFlowGpt = workflow === "flow_gpt";
-    const useZImage = !useKrea2 && !useMoss && !useFlowGpt;
+    const useOwnServer = workflow === "own_server";
+    const useZImage = !useKrea2 && !useMoss && !useFlowGpt && !useOwnServer;
     const browserSettings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
     const workflowLabel = useFlowGpt
       ? browserImageProviderLabel(browserSettings.provider)
-      : useKrea2 ? "Krea2 + ZImage enhancer" : useMoss ? "MOSS-Image" : "ZImage";
+      : useOwnServer ? "Custom Server" : useKrea2 ? "Krea2 + ZImage enhancer" : useMoss ? "MOSS-Image" : "ZImage";
     const missingLocations = refs.locations
       .map((location, index) => ({ location, index }))
       .filter(({ location }) => {
@@ -616,6 +617,7 @@ export function createReferenceGeneration({
       toast("All listed locations already have images, or no usable locations were found.");
       return;
     }
+    if (useOwnServer && ownServerRunnerMissing()) return;
     const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
     const progress = createProgressWindow("Creating location references", { zIndex: 100008 });
     createAllMissingLocationZImages.disabled = true;
@@ -646,12 +648,28 @@ export function createReferenceGeneration({
         promptJobs.push({ location, prompt: promptData.prompt });
       }
 
+      const applyLocationImage = async (location, index, saved, prompt) => {
+        if (!location.image) location.image = { path: "", data: "", name: "" };
+        location.image.path = saved.saved_path || "";
+        location.image.data = "";
+        location.image.name = `${location.name || `location_${index + 1}`}.png`;
+        await describeGeneratedReference("location", location, prompt);
+        await persistGeneratedReferenceImage("location", location);
+      };
       let zSettings = generatorSettings?.zimage ? cloneZImageSettings({ ...currentZImageReferenceSettings(), ...generatorSettings.zimage }) : currentZImageReferenceSettings();
       const kreaSettings = generatorSettings?.krea2 || {};
       for (let index = 0; index < promptJobs.length; index += 1) {
         const { location, prompt } = promptJobs[index];
         const label = location.name || `Location ${index + 1}`;
         const basePercent = 42 + Math.round((index / Math.max(1, promptJobs.length)) * 50);
+        if (useOwnServer) {
+          setInlineProgress(`Generating the image on the Custom Server...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent);
+          progress.set(`Generating the image on the Custom Server...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent);
+          const saved = await ownServerReferenceImage("location", prompt, location.name || `location_${index + 1}`, generatorSettings);
+          await applyLocationImage(location, index, saved, prompt);
+          renderAll();
+          continue;
+        }
         setInlineProgress(`Building ${workflowLabel} location workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent);
         progress.set(`Building ${workflowLabel} location workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent);
         const built = useFlowGpt
@@ -690,12 +708,7 @@ export function createReferenceGeneration({
           name: location.name || `location_${index + 1}`,
           image,
         });
-        if (!location.image) location.image = { path: "", data: "", name: "" };
-        location.image.path = saved.saved_path || "";
-        location.image.data = "";
-        location.image.name = `${location.name || `location_${index + 1}`}.png`;
-        await describeGeneratedReference("location", location, prompt);
-        await persistGeneratedReferenceImage("location", location);
+        await applyLocationImage(location, index, saved, prompt);
         if (useZImage) {
           advanceZImageSeedAfterRun(zSettings);
           zSettings = cloneZImageSettings(state.zimageSettings);
@@ -705,7 +718,7 @@ export function createReferenceGeneration({
       }
       refs.use_location_references = true;
       useLocations.input.checked = true;
-      if (!useFlowGpt) {
+      if (!useFlowGpt && !useOwnServer) {
         setInlineProgress("Cleaning memory after location references...", 94);
         await runImageMemoryCleanupQuiet(progress, "location references", 94);
       }
@@ -741,11 +754,12 @@ export function createReferenceGeneration({
     const useKrea2 = workflow === "krea2";
     const useMoss = workflow === "moss_image";
     const useFlowGpt = workflow === "flow_gpt";
-    const useZImage = !useKrea2 && !useMoss && !useFlowGpt;
+    const useOwnServer = workflow === "own_server";
+    const useZImage = !useKrea2 && !useMoss && !useFlowGpt && !useOwnServer;
     const browserSettings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
     const workflowLabel = useFlowGpt
       ? browserImageProviderLabel(browserSettings.provider)
-      : useKrea2 ? "Krea2 + ZImage enhancer" : useMoss ? "MOSS-Image" : "ZImage";
+      : useOwnServer ? "Custom Server" : useKrea2 ? "Krea2 + ZImage enhancer" : useMoss ? "MOSS-Image" : "ZImage";
     const missingSubjects = refs.subjects
       .map((subject, index) => ({ subject, index }))
       .filter(({ subject }) => {
@@ -757,6 +771,7 @@ export function createReferenceGeneration({
       toast("All listed subjects already have images, or no usable subjects were found.");
       return;
     }
+    if (useOwnServer && ownServerRunnerMissing()) return;
     const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
     const progress = createProgressWindow("Creating subject references", { zIndex: 100008 });
     createAllMissingSubjectImages.disabled = true;
@@ -784,12 +799,31 @@ export function createReferenceGeneration({
         promptJobs.push({ subject, prompt: promptData.prompt });
       }
 
+      const applySubjectImage = async (subject, index, saved, prompt) => {
+        if (!subject.image) subject.image = { path: "", data: "", name: "" };
+        subject.image.path = saved.saved_path || "";
+        subject.image.data = "";
+        subject.image.name = `${subject.name || `subject_${index + 1}`}.png`;
+        await describeGeneratedReference("subject", subject, prompt);
+        await persistGeneratedReferenceImage("subject", subject);
+        if (refs.subject_count === 1 && refs.subjects[0]?.id === subject.id) {
+          refs.subject.image = subject.image;
+        }
+      };
       let zSettings = generatorSettings?.zimage ? cloneZImageSettings({ ...currentZImageReferenceSettings(), ...generatorSettings.zimage }) : currentZImageReferenceSettings();
       const kreaSettings = generatorSettings?.krea2 || {};
       for (let index = 0; index < promptJobs.length; index += 1) {
         const { subject, prompt } = promptJobs[index];
         const label = subject.name || `Subject ${index + 1}`;
         const basePercent = 42 + Math.round((index / Math.max(1, promptJobs.length)) * 50);
+        if (useOwnServer) {
+          setInlineProgress(`Generating the image on the Custom Server...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent);
+          progress.set(`Generating the image on the Custom Server...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent);
+          const saved = await ownServerReferenceImage("subject", prompt, subject.name || `subject_${index + 1}`, generatorSettings);
+          await applySubjectImage(subject, index, saved, prompt);
+          renderAll();
+          continue;
+        }
         setInlineProgress(`Building ${workflowLabel} subject workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent);
         progress.set(`Building ${workflowLabel} subject workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent);
         const built = useFlowGpt
@@ -828,15 +862,7 @@ export function createReferenceGeneration({
           name: subject.name || `subject_${index + 1}`,
           image,
         });
-        if (!subject.image) subject.image = { path: "", data: "", name: "" };
-        subject.image.path = saved.saved_path || "";
-        subject.image.data = "";
-        subject.image.name = `${subject.name || `subject_${index + 1}`}.png`;
-        await describeGeneratedReference("subject", subject, prompt);
-        await persistGeneratedReferenceImage("subject", subject);
-        if (refs.subject_count === 1 && refs.subjects[0]?.id === subject.id) {
-          refs.subject.image = subject.image;
-        }
+        await applySubjectImage(subject, index, saved, prompt);
         if (useZImage) {
           advanceZImageSeedAfterRun(zSettings);
           zSettings = cloneZImageSettings(state.zimageSettings);
@@ -846,7 +872,7 @@ export function createReferenceGeneration({
       }
       refs.use_subject_reference = true;
       useSubject.input.checked = true;
-      if (!useFlowGpt) {
+      if (!useFlowGpt && !useOwnServer) {
         setInlineProgress("Cleaning memory after subject references...", 94);
         await runImageMemoryCleanupQuiet(progress, "subject references", 94);
       }
@@ -1051,16 +1077,83 @@ export function createReferenceGeneration({
     }
   }
 
+  // The Custom Server card of the single and the batch generate dialogs. Its settings are the image request fields.
+  function ownServerEngineCard({ batch = false } = {}) {
+    const ownSaved = loadOwnServerImageSettings();
+    const ownImageModel = makeInput(String(ownSaved.image_model || ""));
+    const ownImageWidth = makeInput(String(ownSaved.width || 1024), "number");
+    const ownImageHeight = makeInput(String(ownSaved.height || 1024), "number");
+    const ownImageSteps = makeInput(String(ownSaved.steps || 0), "number");
+    const ownImageSeed = makeInput(String(ownSaved.seed ?? ""), "number");
+    for (const input of [ownImageWidth, ownImageHeight]) {
+      input.min = "256";
+      input.max = "2048";
+      input.step = "32";
+    }
+    ownImageSteps.min = "0";
+    ownImageSeed.min = "0";
+    const readOwnImage = () => {
+      const settings = {
+        image_model: ownImageModel.value.trim(),
+        width: Number(ownImageWidth.value) || 1024,
+        height: Number(ownImageHeight.value) || 1024,
+        steps: Math.max(0, Math.floor(Number(ownImageSteps.value) || 0)),
+        seed: ownImageSeed.value.trim() === "" ? "" : Math.max(0, Math.floor(Number(ownImageSeed.value) || 0)),
+      };
+      saveOwnServerImageSettings(settings);
+      return settings;
+    };
+    const ownServerHelp = document.createElement("div");
+    ownServerHelp.textContent = "Calls /v1/images/generations with the LLM Runner's Custom Server URL and API key. Set the LLM Runner to Custom Server first.";
+    ownServerHelp.style.cssText = "font-size:12px;color:#94a3b8;line-height:1.4;";
+    const pair = (...fields) => {
+      const row = document.createElement("div");
+      row.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;";
+      row.append(...fields);
+      return row;
+    };
+    return {
+      key: "own_server", heading: "Custom Server", tagline: "Any OpenAI-compatible image endpoint.",
+      actionLabel: `Use Custom Server${batch ? " For All Missing" : ""}`,
+      body: [
+        ownServerHelp,
+        makeField("Image model (optional)", ownImageModel),
+        pair(makeField("Width", ownImageWidth), makeField("Height", ownImageHeight)),
+        pair(makeField("Steps (0 = default)", ownImageSteps), makeField("Seed (blank = random)", ownImageSeed)),
+      ],
+      settings: readOwnImage,
+    };
+  }
+
+  function ownServerRunnerMissing() {
+    if (state.textGemmaRunner === "own_server") return false;
+    toast("Set the LLM Runner to Custom Server first. Image generation uses its URL, API key and model.", true);
+    return true;
+  }
+
+  // One picture from the Custom Server's image endpoint, saved in the project. Answers like save_flux_reference_image.
+  function ownServerReferenceImage(referenceType, prompt, name, imageSettings = {}) {
+    return postJson("/vrgdg/music_builder/own_server_reference_image", {
+      ...textGemmaRunnerPayload(),
+      prompt,
+      image_model: imageSettings.image_model || "",
+      width: imageSettings.width,
+      height: imageSettings.height,
+      steps: imageSettings.steps,
+      seed: imageSettings.seed,
+      project_folder: projectInput.value || state.projectFolder,
+      reference_type: referenceType,
+      name,
+    }, 12 * 60 * 1000);
+  }
+
   async function runFluxReferenceWithOwnServer(referenceType, target, sourceText, name = "", imageSettings = {}) {
     const text = String(sourceText || "").trim();
     if (!text) {
       toast(referenceType === "subject" ? "Enter a subject description first." : "Enter a location description first.", true);
       return;
     }
-    if (state.textGemmaRunner !== "own_server") {
-      toast("Set the LLM Runner to Custom Server first. Image generation uses its URL, API key and model.", true);
-      return;
-    }
+    if (ownServerRunnerMissing()) return;
     let progress = null;
     try {
       setInlineProgress(referenceType === "subject" ? "Creating subject prompt with Custom Server..." : "Creating location prompt with Custom Server...", 8);
@@ -1077,18 +1170,7 @@ export function createReferenceGeneration({
       }, 3 * 60 * 1000);
       setInlineProgress("Generating the image on the Custom Server...", 40);
       progress.set("Generating the image on the Custom Server...", 40);
-      const saved = await postJson("/vrgdg/music_builder/own_server_reference_image", {
-        ...textGemmaRunnerPayload(),
-        prompt: promptData.prompt,
-        image_model: imageSettings.image_model || "",
-        width: imageSettings.width,
-        height: imageSettings.height,
-        steps: imageSettings.steps,
-        seed: imageSettings.seed,
-        project_folder: projectInput.value || state.projectFolder,
-        reference_type: referenceType,
-        name: name || text.slice(0, 48) || referenceType,
-      }, 12 * 60 * 1000);
+      const saved = await ownServerReferenceImage(referenceType, promptData.prompt, name || text.slice(0, 48) || referenceType, imageSettings);
       if (!target.image) target.image = { path: "", data: "", name: "" };
       target.image.path = saved.saved_path || "";
       target.image.data = "";
@@ -1224,40 +1306,6 @@ export function createReferenceGeneration({
       return parts.join("\n\n");
     };
 
-    const ownSaved = loadOwnServerImageSettings();
-    const ownImageModel = makeInput(String(ownSaved.image_model || ""));
-    const ownImageWidth = makeInput(String(ownSaved.width || 1024), "number");
-    const ownImageHeight = makeInput(String(ownSaved.height || 1024), "number");
-    const ownImageSteps = makeInput(String(ownSaved.steps || 0), "number");
-    const ownImageSeed = makeInput(String(ownSaved.seed ?? ""), "number");
-    for (const input of [ownImageWidth, ownImageHeight]) {
-      input.min = "256";
-      input.max = "2048";
-      input.step = "32";
-    }
-    ownImageSteps.min = "0";
-    ownImageSeed.min = "0";
-    const readOwnImage = () => {
-      const settings = {
-        image_model: ownImageModel.value.trim(),
-        width: Number(ownImageWidth.value) || 1024,
-        height: Number(ownImageHeight.value) || 1024,
-        steps: Math.max(0, Math.floor(Number(ownImageSteps.value) || 0)),
-        seed: ownImageSeed.value.trim() === "" ? "" : Math.max(0, Math.floor(Number(ownImageSeed.value) || 0)),
-      };
-      saveOwnServerImageSettings(settings);
-      return settings;
-    };
-    const ownServerHelp = document.createElement("div");
-    ownServerHelp.textContent = "Calls /v1/images/generations with the LLM Runner's Custom Server URL and API key. Set the LLM Runner to Custom Server first.";
-    ownServerHelp.style.cssText = "font-size:12px;color:#94a3b8;line-height:1.4;";
-    const pair = (...fields) => {
-      const row = document.createElement("div");
-      row.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;";
-      row.append(...fields);
-      return row;
-    };
-
     let runText = "";
     const runners = {
       zimage: (settings) => runFluxReferenceWithZImage(referenceType, target, runText, name, settings),
@@ -1266,17 +1314,7 @@ export function createReferenceGeneration({
       flow_gpt: () => runFluxReferenceWithFlowGpt(referenceType, target, runText, name),
     };
     const cards = referenceEngineCards(generatorControls).map((card) => ({ ...card, run: runners[card.key] }));
-    cards.push({
-      key: "own_server", heading: "Custom Server", tagline: "Any OpenAI-compatible image endpoint.", actionLabel: "Use Custom Server",
-      body: [
-        ownServerHelp,
-        makeField("Image model (optional)", ownImageModel),
-        pair(makeField("Width", ownImageWidth), makeField("Height", ownImageHeight)),
-        pair(makeField("Steps (0 = default)", ownImageSteps), makeField("Seed (blank = random)", ownImageSeed)),
-      ],
-      settings: readOwnImage,
-      run: (settings) => runFluxReferenceWithOwnServer(referenceType, target, runText, name, settings),
-    });
+    cards.push({ ...ownServerEngineCard(), run: (settings) => runFluxReferenceWithOwnServer(referenceType, target, runText, name, settings) });
     openReferenceGeneratorShell({
       title: `Generate ${referenceType === "subject" ? "Subject" : "Location"} Reference`,
       subtitle: referenceType === "subject"
@@ -1319,6 +1357,7 @@ export function createReferenceGeneration({
       return;
     }
     const cards = referenceEngineCards(buildReferenceGeneratorControls(), { batch: true })
+      .concat(ownServerEngineCard({ batch: true }))
       .map((card) => ({ ...card, run: (settings) => createMissingSubjectReferencesWithImageWorkflow(card.key, settings) }));
     openReferenceGeneratorShell({
       title: "Generate Missing Subject Images",
@@ -1339,6 +1378,7 @@ export function createReferenceGeneration({
       return;
     }
     const cards = referenceEngineCards(buildReferenceGeneratorControls(), { batch: true })
+      .concat(ownServerEngineCard({ batch: true }))
       .map((card) => ({ ...card, run: (settings) => createMissingLocationReferencesWithZImage(card.key, settings) }));
     openReferenceGeneratorShell({
       title: "Generate Missing Location Images",

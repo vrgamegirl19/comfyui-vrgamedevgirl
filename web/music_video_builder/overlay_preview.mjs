@@ -11,7 +11,7 @@
 import { api } from "../../../scripts/api.js";
 import { normalizeOverlayLayers, normalizeOverlayLayerTrack } from "./overlay_layers.mjs";
 
-export const OVERLAY_CSS_BLEND = { screen: "screen", add: "plus-lighter", lighten: "lighten", overlay: "overlay", softlight: "soft-light", multiply: "multiply", normal: "normal" };
+export const OVERLAY_CSS_BLEND = { screen: "screen", add: "plus-lighter", lighten: "lighten", darken: "darken", overlay: "overlay", softlight: "soft-light", hardlight: "hard-light", colordodge: "color-dodge", colorburn: "color-burn", multiply: "multiply", normal: "normal" };
 const OVERLAY_FIT = { cover: "cover", contain: "contain", stretch: "fill" };
 const GRAIN_CANVAS = { fine: [480, 270], medium: [320, 180], coarse: [240, 135] };
 const GRAIN_STEP_MS = 70;

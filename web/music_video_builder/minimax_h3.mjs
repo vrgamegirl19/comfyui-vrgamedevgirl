@@ -460,24 +460,39 @@ export function normalizeMiniMaxH3VideoPurpose(value) {
   return MINIMAX_H3_VIDEO_REFERENCE_PURPOSES.some((item) => item.value === clean) ? clean : "continuation";
 }
 
-export function miniMaxInstalledPass2Lora(preset, installed, mode = "reference_to_video") {
-  const candidates = Number(preset) === 8 ? [
-    "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
-    "minimax_h3_fl2v_lightx2v_turbo_8step_v1.0_resized_avg_rank_24_bf16.safetensors",
-  ] : [
-    DEFAULT_MINIMAX_H3_SETTINGS.two_pass_lora_name,
-    "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors",
-    "minimax_h3_ref2v_lightx2v_turbo_4step_v0.1_resized_avg_rank_20_bf16.safetensors",
-    "minimax_h3_fl2v_lightx2v_turbo_4step_v1.0_768p_resized_avg_rank_31_bf16.safetensors",
-    "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors",
-    "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
-  ];
-  for (const candidate of candidates) {
-    if (mode === "image_to_video" && candidate.includes("ref2v")) continue;
-    const match = installed.find((name) => name.split(/[\\/]/).pop().toLowerCase() === candidate.toLowerCase());
-    if (match) return match;
+const MINIMAX_PASS2_LORA_PATTERN = /^minimax_h3_(fl2v|ref2v)_(lightx2v_)?turbo_(\d+)step_v(\d+(?:\.\d+)*)/i;
+
+function compareLoraVersions(a, b) {
+  const left = a.split(".").map(Number);
+  const right = b.split(".").map(Number);
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const diff = (left[index] || 0) - (right[index] || 0);
+    if (diff) return diff;
   }
-  return "";
+  return 0;
+}
+
+// Turbo LoRAs are released under new version numbers, so match by family and step count
+// instead of exact file names. Prefer the family made for the mode, then the full (non
+// LightX2V) LoRA, then the newest version. Full LoRAs without "comfy" in the name are the
+// original-format files from the same repository and do not load in ComfyUI.
+export function miniMaxInstalledPass2Lora(preset, installed, mode = "reference_to_video") {
+  const steps = Number(preset) === 8 ? 8 : 4;
+  const preferredFamily = mode === "image_to_video" ? "fl2v" : "ref2v";
+  const candidates = [];
+  for (const name of installed) {
+    const match = String(name).split(/[\\/]/).pop().match(MINIMAX_PASS2_LORA_PATTERN);
+    if (!match || Number(match[3]) !== steps) continue;
+    const family = match[1].toLowerCase();
+    if (mode === "image_to_video" && family === "ref2v") continue;
+    if (!match[2] && !/comfy/i.test(name)) continue;
+    candidates.push({ name, family, lightx: Boolean(match[2]), version: match[4] });
+  }
+  candidates.sort((a, b) =>
+    Number(b.family === preferredFamily) - Number(a.family === preferredFamily)
+    || Number(a.lightx) - Number(b.lightx)
+    || compareLoraVersions(b.version, a.version));
+  return candidates[0]?.name || "";
 }
 
 export function selectMiniMaxH3PassSettings(settings, passMode) {

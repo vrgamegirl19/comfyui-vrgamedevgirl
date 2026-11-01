@@ -81,6 +81,10 @@ test('every blend mode a clip can ask for has a CSS blend mode', () => {
   for (const mode of plain(ov('OVERLAY_BLEND_MODES'))) assert.ok(css[mode], mode);
   assert.equal(css.add, 'plus-lighter');
   assert.equal(css.softlight, 'soft-light');
+  assert.equal(css.darken, 'darken');
+  assert.equal(css.hardlight, 'hard-light');
+  assert.equal(css.colordodge, 'color-dodge');
+  assert.equal(css.colorburn, 'color-burn');
 });
 
 test('text is sized from a 1080 pixel tall picture, centered on x and y, and slides up while it fades in', () => {
