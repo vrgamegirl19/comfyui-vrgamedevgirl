@@ -38,6 +38,7 @@ class MiniMaxI2VTwoPassTests(unittest.TestCase):
             handle.setframerate(44100)
             handle.writeframes(b"\0\0\0\0" * 44100 * 2)
         self.payload = {
+            "scene_number": 1, "timeline_start_seconds": 0, "timeline_end_seconds": 1,
             "video_mode": "image_to_video",
             "prompt": "The subject turns toward the camera.",
             "project_folder": str(self.project),
@@ -68,12 +69,68 @@ class MiniMaxI2VTwoPassTests(unittest.TestCase):
             "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors",
             "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
             "character.safetensors",
+            "H3\\dmad_minimax_h3_4step_full_critic_comfyui.safetensors",
+            "H3/minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors",
         ])
         registry = self.registry.start()
         self.addCleanup(self.registry.stop)
         lora_registry = patch.object(models, "_lora_choices", return_value=registry.return_value)
         lora_registry.start()
         self.addCleanup(lora_registry.stop)
+        compiler_loras = patch.object(workflows, "_lora_choices", return_value=registry.return_value)
+        compiler_loras.start()
+        self.addCleanup(compiler_loras.stop)
+
+    def test_enhancer_overrides_only_pass_two_and_survives_draft_finalize(self):
+        for audio_mode in ("input_audio", "built_in_audio"):
+            for mode in ("reference_to_video", "image_to_video", "image_reference_to_video", "text_to_video"):
+                with self.subTest(audio_mode=audio_mode, mode=mode):
+                    payload = {**self.payload, "video_mode": mode, "audio_mode": audio_mode,
+                               "scene_number": 1, "timeline_start_seconds": 0, "timeline_end_seconds": 1,
+                               "use_loras": True, "lora_count": 1,
+                               "loras": [{"name": "character.safetensors", "strength": 0.6, "apply_to": "pass1"}]}
+                    normal = workflows._build_minimax_h3_2pass_api_prompt(payload)
+                    payload.update(two_pass_use_enhancer=True, two_pass_lora_name="[none]")
+                    result = workflows._build_minimax_h3_2pass_api_prompt(payload)
+                    graph = result["prompt"]
+                    for node_id in ("124", "125", "126", "129"):
+                        self.assertEqual(graph[node_id], normal["prompt"][node_id])
+                    self.assertEqual(graph["207"]["inputs"]["model"], ["141", 0])
+                    self.assertEqual(graph["207"]["inputs"]["lora_name"],
+                                     "H3\\dmad_minimax_h3_4step_full_critic_comfyui.safetensors")
+                    self.assertEqual(graph["207"]["inputs"]["strength_model"], 1.0)
+                    refiner = graph["pass2_enhancer_refiner"]["inputs"]
+                    self.assertEqual(refiner["model"], ["207", 0])
+                    self.assertEqual(refiner["strength_model"], 1.0)
+                    self.assertEqual(graph["193"]["inputs"]["model"], ["pass2_enhancer_refiner", 0])
+                    self.assertEqual(graph["192"]["class_type"], "ManualSigmas")
+                    self.assertEqual(graph["192"]["inputs"], {"sigmas": "0.7, 0.494118, 0"})
+                    self.assertEqual(graph["194"]["inputs"]["sigmas"], ["192", 0])
+                    self.assertEqual(graph["210"]["inputs"]["sampler_name"], "er_sde")
+                    self.assertEqual(result["two_pass"]["pass2_steps"], 2)
+                    self.assertEqual(graph["142"]["inputs"]["audio"], normal["prompt"]["142"]["inputs"]["audio"])
+                    draft = drafts._build_minimax_draft(result, payload)
+                    self.assertNotIn("194", draft["prompt"])
+                    self.assertEqual(draft["draft_steps"], {"pass1": 23, "pass2": 2})
+                    Path(draft["prompt"]["draft_save"]["inputs"]["checkpoint_path"]).touch()
+                    final = drafts._build_minimax_finalize({**payload, "draft_id": draft["draft_id"]})
+                    for node_id in ("192", "193", "194", "207", "pass2_enhancer_refiner"):
+                        self.assertEqual(final["prompt"][node_id], graph[node_id])
+                    # Switching off restores the caller's normal Turbo and sampler settings.
+                    restored = workflows._build_minimax_h3_2pass_api_prompt({
+                        **payload, "two_pass_use_enhancer": False,
+                        "two_pass_lora_name": normal["prompt"]["207"]["inputs"]["lora_name"],
+                    })
+                    for node_id in ("192", "193", "194", "207", "210"):
+                        self.assertEqual(restored["prompt"][node_id], normal["prompt"][node_id])
+
+    def test_enhancer_reports_both_missing_files_before_queueing(self):
+        with patch.object(workflows, "_lora_choices", return_value=[]):
+            with self.assertRaises(ValueError) as error:
+                workflows._build_minimax_h3_2pass_api_prompt({**self.payload, "two_pass_use_enhancer": True})
+        self.assertIn("DMAD", str(error.exception))
+        self.assertIn("Open-H3 Refiner", str(error.exception))
+        self.assertIn("ComfyUI/models/loras", str(error.exception))
 
     def test_draft_and_finalize_use_real_compiled_graph_for_input_and_native_audio(self) -> None:
         for audio_mode in ("input_audio", "built_in_audio"):

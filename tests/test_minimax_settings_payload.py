@@ -47,6 +47,28 @@ def _settings(**overrides):
 
 
 class DefaultsTests(unittest.TestCase):
+    def test_pass_two_enhancer_roundtrip_and_effective_payload(self):
+        import json
+
+        saved = _settings(two_pass_use_enhancer=True, two_pass_enhancer_dmad_name="H3/dmad.safetensors",
+                          two_pass_enhancer_refiner_name="H3/refiner.safetensors",
+                          render_pass="two_pass", video_mode="reference_to_video", two_pass_pass1_steps=23, two_pass_pass2_steps=9,
+                          two_pass_pass2_sampler="euler")
+        reloaded = _settings(**json.loads(json.dumps(saved)))
+        payload = payload_mod.build_minimax_render_payload(reloaded)
+        self.assertTrue(payload["two_pass_use_enhancer"])
+        self.assertEqual(payload["two_pass_enhancer_dmad_name"], "H3/dmad.safetensors")
+        self.assertEqual(payload["two_pass_enhancer_refiner_name"], "H3/refiner.safetensors")
+        self.assertEqual(payload["pass1_steps"], 23)
+        self.assertEqual(payload["pass2_steps"], 2)
+        self.assertEqual(payload["pass2_sampler_name"], "er_sde")
+        self.assertEqual(reloaded["two_pass_pass2_steps"], 9)
+        normal = payload_mod.build_minimax_render_payload({**saved, "two_pass_use_enhancer": False})
+        self.assertEqual(normal["pass2_steps"], 9)
+        self.assertEqual(normal["pass2_sampler_name"], "euler")
+        advanced = payload_mod.build_minimax_render_payload({**saved, "render_pass": "three_pass"})
+        self.assertEqual(advanced["pass2_steps"], saved["advanced_two_pass_pass2_steps"])
+
     def test_masked_continuation_resets_extra_frames_on_save_and_reload(self) -> None:
         import json
 
@@ -229,7 +251,7 @@ class SceneSettingsTests(unittest.TestCase):
 
 class RenderPayloadTests(unittest.TestCase):
     def test_pass_selection_and_workflow_key(self):
-        self.assertEqual(payload_mod.minimax_workflow_key(_settings()), "minimax_h3")
+        self.assertEqual(payload_mod.minimax_workflow_key(_settings(render_pass="single")), "minimax_h3")
         ref = {"video_mode": "reference_to_video"}
         self.assertEqual(payload_mod.minimax_workflow_key(_settings(render_pass="two_pass", **ref)), "minimax_h3_2pass")
         self.assertEqual(
@@ -287,16 +309,17 @@ class RenderPayloadTests(unittest.TestCase):
         self.assertEqual(advanced["advanced_pass2_megapixels"], 0.5625)
 
     def test_single_pass_has_no_multipass_only_keys(self):
-        payload = payload_mod.build_minimax_render_payload(_settings())
+        payload = payload_mod.build_minimax_render_payload(_settings(render_pass="single"))
         self.assertNotIn("final_width", payload)
         self.assertNotIn("latent_upscaler_name", payload)
         self.assertIn("use_te_speed", payload)
 
-    def test_multipass_rejects_built_in_audio(self):
-        with self.assertRaises(ValueError):
-            payload_mod.build_minimax_render_payload(
-                _settings(render_pass="three_pass", video_mode="reference_to_video", audio_mode="built_in_audio")
+    def test_multipass_payload_preserves_built_in_audio(self):
+        for render_pass in ("two_pass", "three_pass"):
+            payload = payload_mod.build_minimax_render_payload(
+                _settings(render_pass=render_pass, video_mode="reference_to_video", audio_mode="built_in_audio")
             )
+            self.assertEqual(payload["audio_mode"], "built_in_audio")
 
     def test_overrides_win(self):
         payload = payload_mod.build_minimax_render_payload(_settings(), {"seed": 123})

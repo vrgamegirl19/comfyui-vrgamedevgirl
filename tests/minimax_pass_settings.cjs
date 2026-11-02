@@ -134,6 +134,7 @@ test('LoRA presets select installed files, save steps, and leave missing selecti
   const eight = 'H3/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors';
   Object.assign(c, {
     state: { miniMaxH3TwoPassEnabled: true, miniMaxH3ThreePassEnabled: false },
+    miniMaxPass2Enhancer: { enabled: { input: { checked: false } } },
     miniMaxTwoPassLoraPresetButtons: [4, 8].map(preset => ({ dataset: { preset: String(preset) } })),
     miniMaxTwoPassLoraPreset: { dataset: { preset: '4' } },
     miniMaxTwoPassLoraPicker: { input: { value: 'chosen.safetensors' }, options: [] },

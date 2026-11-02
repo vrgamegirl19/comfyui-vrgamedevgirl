@@ -8,11 +8,13 @@ import random
 
 from .minimax_keyframes import patch_i2v_keyframe_timing
 from ..minimax.latent_manager import calculate_minimax_h3_timing
+from ..minimax.pass2_enhancer import resolve_enhancer_loras
+from ..minimax.settings_payload import minimax_h3_defaults
 from ..minimax.resolution import frame_size
 from ..minimax.tile_plan import HIDDEN_ADVANCED_SETTINGS, PLAN_OUTPUT_NAMES, normalize_vram_preset, plan_spatial_tiles
 
 from .paths import _bool_payload, _first_payload_value, _float_payload, _int_payload
-from .models import _NONE_LORA, _clean_lora_name, _model_choice_exists, _require_model_choice
+from .models import _lora_choices, _NONE_LORA, _clean_lora_name, _model_choice_exists, _require_model_choice
 from .api_graph import _api_node_id_by_class, _compat_node_inputs, _get_comfy_node_mappings, _load_api_template, _set_api_input
 from .minimax_inputs import _MINIMAX_H3_ASPECT_RATIOS, _minimax_h3_2pass_api_template_path, _minimax_h3_3pass_api_template_path, _minimax_h3_api_template_path, _minimax_h3_built_in_audio_api_template_path, _minimax_h3_image_paths, _minimax_h3_output_location, _minimax_h3_video_references, _patch_minimax_h3_image_to_video_node, _probe_media_duration_seconds, _trim_minimax_h3_audio_context
 from .minimax_patches import _minimax_h3_cooldown_frames, _minimax_h3_effective_warmup_frames, _minimax_h3_is_latent_mode, _minimax_h3_latent_continuation_mode, _patch_minimax_h3_advanced_settings, _patch_minimax_h3_fast_decode, _patch_minimax_h3_latent_continuation, _patch_minimax_h3_loras, _patch_minimax_h3_memory_efficient_sage_attention, _patch_minimax_h3_optional_model_paths, _patch_minimax_h3_save_latent, _patch_minimax_h3_te_speed, _patch_minimax_h3_turbo, _require_minimax_h3_memory_efficient_sage_attention
@@ -519,20 +521,42 @@ def _build_minimax_h3_2pass_api_prompt(payload):
         "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors" if video_mode == "image_to_video"
         else "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors"
     )
-    turbo_lora_name = _clean_lora_name(payload.get("two_pass_lora_name", default_lora))
-    if video_mode == "image_to_video" and "ref2v" in os.path.basename(turbo_lora_name).lower():
-        raise ValueError("Image to Video 2 Pass requires an FL2V/I2V Turbo LoRA, not a Reference-to-Video LoRA.")
-    if turbo_lora_name == _NONE_LORA:
-        raise ValueError("Select the MiniMax H3 two-pass Turbo LoRA; it is required by this fast workflow.")
-    _require_model_choice("loras", turbo_lora_name, "MiniMax H3 two-pass Turbo LoRA")
-    _set_api_input(prompt, "207", "lora_name", turbo_lora_name)
-    _set_api_input(prompt, "207", "strength_model", _float_payload(payload, "two_pass_lora_strength", 1.0, -10.0, 10.0))
+    use_enhancer = _bool_payload(payload, "two_pass_use_enhancer", False)
+    enhancer_loras = None
+    if use_enhancer:
+        defaults = minimax_h3_defaults()
+        enhancer_loras = resolve_enhancer_loras(
+            _lora_choices(),
+            payload.get("two_pass_enhancer_dmad_name") or defaults["two_pass_enhancer_dmad_name"],
+            payload.get("two_pass_enhancer_refiner_name") or defaults["two_pass_enhancer_refiner_name"],
+        )
+        pass2_lora_name, refiner_name = enhancer_loras
+        pass2_lora_strength = 1.0
+    else:
+        pass2_lora_name = _clean_lora_name(payload.get("two_pass_lora_name", default_lora))
+        if video_mode == "image_to_video" and "ref2v" in os.path.basename(pass2_lora_name).lower():
+            raise ValueError("Image to Video 2 Pass requires an FL2V/I2V Turbo LoRA, not a Reference-to-Video LoRA.")
+        if pass2_lora_name == _NONE_LORA:
+            raise ValueError("Select the MiniMax H3 two-pass Turbo LoRA; it is required by this fast workflow.")
+        _require_model_choice("loras", pass2_lora_name, "MiniMax H3 two-pass Turbo LoRA")
+        pass2_lora_strength = _float_payload(payload, "two_pass_lora_strength", 1.0, -10.0, 10.0)
+    _set_api_input(prompt, "207", "lora_name", pass2_lora_name)
+    _set_api_input(prompt, "207", "strength_model", pass2_lora_strength)
 
     use_te_speed = _bool_payload(payload, "two_pass_use_te_speed", False)
     _set_api_input(prompt, "207", "model", ["141", 0])
     prompt.pop("208", None)
     pass1_model = ["141", 0]
     pass2_model = ["207", 0]
+    if use_enhancer:
+        prompt["pass2_enhancer_refiner"] = {
+            "class_type": "LoraLoaderModelOnly",
+            "inputs": {"model": pass2_model, "lora_name": refiner_name, "strength_model": 1.0},
+            "_meta": {"title": "Pass 2 - Open-H3 Refiner"},
+        }
+        pass2_model = ["pass2_enhancer_refiner", 0]
+        _set_api_input(prompt, "210", "sampler_name", "er_sde")
+        _set_api_input(prompt, "190", "value", 2)
 
     extra_loras = []
     if _bool_payload(payload, "use_loras", False) or _bool_payload(payload, "use_custom_loras", False):
@@ -615,6 +639,15 @@ def _build_minimax_h3_2pass_api_prompt(payload):
     for node_id in ("192", "193"):
         _set_api_input(prompt, node_id, "model", list(pass2_model))
 
+    if use_enhancer:
+        # Replace the scheduler after model routing: ManualSigmas takes no model,
+        # step or denoise input. Keep node 190 for draft metadata and progress.
+        prompt["192"] = {
+            "class_type": "ManualSigmas",
+            "inputs": {"sigmas": "0.7, 0.494118, 0"},
+            "_meta": {"title": "Pass 2 - Fixed enhancer sigma schedule"},
+        }
+
     use_fast_vae_decode = _bool_payload(payload, "two_pass_use_fast_vae_decode", False)
     if use_fast_vae_decode:
         _patch_minimax_h3_fast_decode(prompt)
@@ -651,6 +684,8 @@ def _build_minimax_h3_2pass_api_prompt(payload):
         "post_render_trim": {"start": timing.final_trim_start_seconds, "duration": timing.final_trim_duration_seconds, "frames": timing.final_frame_count},
         "reference_inputs": {"image_count": len(image_paths), "video_count": len(video_references)},
         "two_pass": {
+            "enhancer_enabled": use_enhancer,
+            "enhancer_loras": enhancer_loras,
             "pass1_steps": prompt["124"]["inputs"]["steps"],
             "pass2_steps": prompt["190"]["inputs"]["value"],
             "final_width": final_width,
@@ -709,6 +744,7 @@ def _build_minimax_h3_advanced_2pass_api_prompt(payload):
     base_payload.setdefault("final_width", 1920)
     base_payload.setdefault("final_height", 1080)
     base_payload.setdefault("latent_upscale_scale", 2.0)
+    base_payload["two_pass_use_enhancer"] = False  # Whole-frame enhancer is only for plain 2 Pass.
     base_payload.setdefault("pass2_steps", 1)
     base_payload.setdefault("pass2_denoise", 0.2)
     base_payload.setdefault("pass2_sampler_name", "sa_solver")

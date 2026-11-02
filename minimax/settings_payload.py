@@ -57,6 +57,7 @@ _INT_CHOICES: Dict[str, Tuple[int, ...]] = {
 
 # One line per setting that agents get wrong without it, shown by minimax_h3_settings_schema.
 SETTING_NOTES: Dict[str, str] = {
+    "two_pass_use_enhancer": "2 Pass only: replace pass-2 Turbo with DMAD then Open-H3 Refiner at strength 1 each, er_sde and manual sigmas 0.7, 0.494118, 0. Pass 1 is unchanged; ignored in Single and 2 Pass Advanced.",
     "i2v_transition_style": "FLF Create Prompt guidance, global unless scene settings are locked. Regenerate the prompt after changing; does not change sampler settings.",
     "i2v_transition_direction": "Optional FLF transition instructions, global unless scene settings are locked. First and last images remain per scene.",
     "continuity_mode": (
@@ -460,6 +461,9 @@ def build_minimax_render_payload(settings: Dict[str, Any], overrides: Optional[D
         "ref_image_size": s["ref_image_size"],
         "two_pass_lora_name": s["two_pass_lora_name"],
         "two_pass_lora_strength": s["two_pass_lora_strength"],
+        "two_pass_use_enhancer": s["two_pass_use_enhancer"],
+        "two_pass_enhancer_dmad_name": s["two_pass_enhancer_dmad_name"],
+        "two_pass_enhancer_refiner_name": s["two_pass_enhancer_refiner_name"],
         "use_fast_vae_decode": s["use_fast_vae_decode"],
         "te_speed_processing_control": s["two_pass_te_speed_processing_control"],
         "te_speed_start_percent": s["two_pass_te_speed_start_percent"],
@@ -474,9 +478,9 @@ def build_minimax_render_payload(settings: Dict[str, Any], overrides: Optional[D
         "pass1_sampler_name": pick(s["sampler_name"], s["two_pass_pass1_sampler"], s["advanced_two_pass_pass1_sampler"]),
         "pass1_scheduler": pick(s["scheduler"], s["two_pass_pass1_scheduler"], s["advanced_two_pass_pass1_scheduler"]),
         "pass1_seed": pick(s["seed"], s["two_pass_pass1_seed"], s["advanced_two_pass_pass1_seed"]),
-        "pass2_steps": pick(4, s["two_pass_pass2_steps"], s["advanced_two_pass_pass2_steps"]),
+        "pass2_steps": pick(4, 2 if s["two_pass_use_enhancer"] else s["two_pass_pass2_steps"], s["advanced_two_pass_pass2_steps"]),
         "pass2_denoise": pick(0.2, s["two_pass_pass2_denoise"], s["advanced_two_pass_pass2_denoise"]),
-        "pass2_sampler_name": pick(s["sampler_name"], s["two_pass_pass2_sampler"], s["advanced_two_pass_pass2_sampler"]),
+        "pass2_sampler_name": pick(s["sampler_name"], "er_sde" if s["two_pass_use_enhancer"] else s["two_pass_pass2_sampler"], s["advanced_two_pass_pass2_sampler"]),
         "pass2_scheduler": pick(s["scheduler"], s["two_pass_pass2_scheduler"], s["advanced_two_pass_pass2_scheduler"]),
         "pass2_seed": pick(s["seed"], s["two_pass_pass2_seed"], s["advanced_two_pass_pass2_seed"]),
         "sage_attention": s["sage_attention"],

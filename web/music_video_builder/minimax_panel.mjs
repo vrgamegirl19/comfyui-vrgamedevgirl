@@ -1,3 +1,4 @@
+import { syncMiniMaxPass2Enhancer } from "./minimax_pass2_enhancer.mjs";
 import { postJson } from "./comfy_api.mjs";
 import { applyCompactButtonLabel, normalizeProjectVideoEngine, toast } from "./controls.mjs";
 import {
@@ -61,7 +62,7 @@ export function createMiniMaxPanel({
   miniMaxStartFrameReferenceNote, miniMaxSteps, miniMaxSubTabs, miniMaxThreePassLoraPicker,
   miniMaxThreePassLoraSection, miniMaxThreePassLoraStrength, miniMaxThreePassRefImageSize,
   miniMaxThreePassSettings,
-  miniMaxTwoPassLatentScale, miniMaxTwoPassLatentUpscalerPicker,
+  miniMaxPass2Enhancer, miniMaxTwoPassLatentScale, miniMaxTwoPassLatentUpscalerPicker,
   miniMaxTwoPassLoraLayout, miniMaxTwoPassLoraPicker, miniMaxTwoPassLoraPreset,
   miniMaxTwoPassLoraPresetButtons, miniMaxTwoPassLoraPresetField, miniMaxTwoPassLoraSection,
   miniMaxTwoPassLoraStatus, miniMaxTwoPassLoraStrength, miniMaxTwoPassOutputCrf, miniMaxTwoPassRefImageSize,
@@ -347,6 +348,9 @@ export function createMiniMaxPanel({
           : miniMaxRefImageSize.value,
       two_pass_lora_name: miniMaxTwoPassLoraPicker.input.value,
       two_pass_lora_strength: miniMaxTwoPassLoraStrength.value,
+      two_pass_use_enhancer: miniMaxPass2Enhancer.enabled.input.checked,
+      two_pass_enhancer_dmad_name: miniMaxPass2Enhancer.dmad.input.value,
+      two_pass_enhancer_refiner_name: miniMaxPass2Enhancer.refiner.input.value,
       two_pass_lora_preset: Number(miniMaxTwoPassLoraPreset.dataset.preset || 4),
       two_pass_defaults_version: DEFAULT_MINIMAX_H3_SETTINGS.two_pass_defaults_version,
       two_pass_latent_upscale_scale: miniMaxTwoPassLatentScale.value,
@@ -587,11 +591,15 @@ export function createMiniMaxPanel({
     miniMaxRefImageSize.value = settings.ref_image_size;
     miniMaxTwoPassRefImageSize.value = settings.ref_image_size;
     miniMaxThreePassRefImageSize.value = settings.ref_image_size;
+    const enhancerActive = syncMiniMaxPass2Enhancer(miniMaxPass2Enhancer, settings, {
+      twoPass: state.miniMaxH3TwoPassEnabled, threePass: state.miniMaxH3ThreePassEnabled,
+      twoPassControls, turboPicker: miniMaxTwoPassLoraPicker, turboStrength: miniMaxTwoPassLoraStrength,
+    });
     miniMaxTwoPassLoraPicker.input.value = settings.two_pass_lora_name;
     miniMaxTwoPassLoraStrength.value = String(settings.two_pass_lora_strength);
     miniMaxTwoPassLoraStatus.textContent = "";
     miniMaxTwoPassLoraPreset.dataset.preset = String(settings.two_pass_lora_preset);
-    const showTwoPassLoraPreset = state.miniMaxH3TwoPassEnabled && !state.miniMaxH3ThreePassEnabled;
+    const showTwoPassLoraPreset = state.miniMaxH3TwoPassEnabled && !state.miniMaxH3ThreePassEnabled && !enhancerActive;
     miniMaxTwoPassLoraPresetField.style.display = showTwoPassLoraPreset ? "" : "none";
     miniMaxTwoPassLoraLayout.style.gridTemplateColumns = showTwoPassLoraPreset ? "minmax(0,1fr) auto" : "minmax(0,1fr)";
     for (const button of miniMaxTwoPassLoraPresetButtons) {

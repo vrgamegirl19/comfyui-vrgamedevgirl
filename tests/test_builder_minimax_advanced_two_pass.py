@@ -216,6 +216,19 @@ class BuilderMiniMaxAdvancedTwoPassTests(unittest.TestCase):
         exec(compile(ast.Module(body=functions, type_ignores=[]), "advanced_two_pass", "exec"), namespace)
         return namespace
 
+    def test_advanced_ignores_the_plain_two_pass_enhancer(self):
+        namespace = self._advanced_prompt_namespace(object())
+        build_base = namespace["_build_minimax_h3_2pass_api_prompt"]
+        received = []
+
+        def capture(payload):
+            received.append(payload)
+            return build_base(payload)
+
+        namespace["_build_minimax_h3_2pass_api_prompt"] = capture
+        namespace["_build_minimax_h3_advanced_2pass_api_prompt"]({"two_pass_use_enhancer": True})
+        self.assertFalse(received[0]["two_pass_use_enhancer"])
+
     def test_generated_advanced_graph_has_no_dangling_node_links(self):
         namespace = self._advanced_prompt_namespace(object())
         result = namespace["_build_minimax_h3_advanced_2pass_api_prompt"]({})

@@ -786,6 +786,14 @@
             "default": 1,
             "type": "integer"
           },
+          "two_pass_enhancer_dmad_name": {
+            "default": "dmad_minimax_h3_4step_full_critic_comfyui.safetensors",
+            "type": "string"
+          },
+          "two_pass_enhancer_refiner_name": {
+            "default": "minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors",
+            "type": "string"
+          },
           "two_pass_final_resize_method": {
             "default": "nvidia_rtx_vsr",
             "type": "string"
@@ -899,6 +907,10 @@
             "type": "number"
           },
           "two_pass_use_block_sparse_attention": {
+            "default": false,
+            "type": "boolean"
+          },
+          "two_pass_use_enhancer": {
             "default": false,
             "type": "boolean"
           },

@@ -192,7 +192,7 @@ export function createModelPickers({
   krea2TwoPassLoraSlots, krea2TwoPassUnetPicker, krea2TwoPassVaePicker, loadVisionReferenceFile,
   ltxIdLoraPicker, ltxIngredientsLoraPicker, ltxMsrLoraPicker, miniMaxAdvancedLatentUpscalerPicker,
   miniMaxAudioVaePicker, miniMaxClipPicker, miniMaxDiffusionModelPicker, miniMaxGemmaModelSelect,
-  miniMaxLoraSlots, miniMaxMmprojSelect, miniMaxTextGemmaModelSelect, miniMaxThreePassLoraPicker,
+  miniMaxPass2Enhancer, miniMaxLoraSlots, miniMaxMmprojSelect, miniMaxTextGemmaModelSelect, miniMaxThreePassLoraPicker,
   miniMaxTwoPassLatentUpscalerPicker, miniMaxTwoPassLoraPicker, miniMaxVideoVaePicker,
   mmprojSelect, nbGemmaModelSelect, nbMmprojSelect, openPromptCreatorPanel, pushHistory, renderList,
   saveI2VVideoSettingsFromPanel, saveMiniMaxH3SettingsFromPanel, setVisionReferenceSource, state,
@@ -323,7 +323,7 @@ export function createModelPickers({
     if (!ltxIngredientsLoraPicker.input.value) ltxIngredientsLoraPicker.input.value = REQUIRED_LTX_INGREDIENTS_LORA;
     ltxIdLoraPicker.options = loras;
     if (!ltxIdLoraPicker.input.value) ltxIdLoraPicker.input.value = REQUIRED_LTX_ID_LORA;
-    for (const picker of [miniMaxTwoPassLoraPicker, miniMaxThreePassLoraPicker]) {
+    for (const picker of [miniMaxTwoPassLoraPicker, miniMaxThreePassLoraPicker, miniMaxPass2Enhancer.dmad, miniMaxPass2Enhancer.refiner]) {
       picker.options = loras;
     }
   }

@@ -1,3 +1,4 @@
+import { createMiniMaxPass2Enhancer } from "./minimax_pass2_enhancer.mjs";
 import { createMiniMaxKeyframes } from "./minimax_keyframes.mjs";
 import { ENHANCE_PROMPT_LABEL } from "./minimax_prompt_enhance.mjs";
 import {
@@ -565,7 +566,11 @@ export function buildMiniMaxPanel({
   miniMaxTwoPassLoraDownload.rel = "noopener noreferrer";
   miniMaxTwoPassLoraDownload.textContent = "Download MiniMax Turbo LoRAs";
   miniMaxTwoPassLoraDownload.style.cssText = "font-size:11px;color:#67e8f9;";
-  const miniMaxTwoPassLoraSection = makeSettingsSection("Pass 2 Turbo LoRA", [
+  const miniMaxPass2Enhancer = createMiniMaxPass2Enhancer();
+  miniMaxPass2Enhancer.turboLayout = miniMaxTwoPassLoraLayout;
+  miniMaxPass2Enhancer.turboDownload = miniMaxTwoPassLoraDownload;
+  const miniMaxTwoPassLoraSection = makeSettingsSection("Pass 2 LoRA / Refinement", [
+    miniMaxPass2Enhancer.wrapper,
     miniMaxTwoPassLoraLayout, miniMaxTwoPassLoraStatus, miniMaxTwoPassLoraDownload,
   ]);
   const miniMaxThreePassLoraPicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.three_pass_lightx_lora_name);
@@ -804,7 +809,7 @@ export function buildMiniMaxPanel({
     miniMaxStartFrameReferenceNote, miniMaxSteps, miniMaxSubTabs, miniMaxThreePassLoraPicker,
     miniMaxThreePassLoraSection, miniMaxThreePassLoraStrength, miniMaxThreePassRefImageSize,
     miniMaxThreePassSettings,
-    miniMaxTwoPassLatentScale, miniMaxTwoPassLatentUpscalerPicker,
+    miniMaxPass2Enhancer, miniMaxTwoPassLatentScale, miniMaxTwoPassLatentUpscalerPicker,
     miniMaxTwoPassLoraLayout, miniMaxTwoPassLoraPicker, miniMaxTwoPassLoraPreset,
     miniMaxTwoPassLoraPresetButtons, miniMaxTwoPassLoraPresetField, miniMaxTwoPassLoraSection,
     miniMaxTwoPassLoraStatus, miniMaxTwoPassLoraStrength, miniMaxTwoPassOutputCrf, miniMaxTwoPassRefImageSize,

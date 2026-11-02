@@ -1096,6 +1096,9 @@ export function createVideoRender({
         ref_image_size: miniMaxSettings.ref_image_size,
         two_pass_lora_name: miniMaxSettings.two_pass_lora_name,
         two_pass_lora_strength: miniMaxSettings.two_pass_lora_strength,
+        two_pass_use_enhancer: miniMaxSettings.two_pass_use_enhancer,
+        two_pass_enhancer_dmad_name: miniMaxSettings.two_pass_enhancer_dmad_name,
+        two_pass_enhancer_refiner_name: miniMaxSettings.two_pass_enhancer_refiner_name,
         final_width: twoPass ? outputFrame.width : undefined,
         final_height: twoPass ? outputFrame.height : undefined,
         latent_upscale_scale: twoPass ? miniMaxSettings.two_pass_latent_upscale_scale : undefined,
@@ -1125,9 +1128,9 @@ export function createVideoRender({
         pass1_sampler_name: twoPass ? miniMaxSettings.two_pass_pass1_sampler : threePass ? miniMaxSettings.advanced_two_pass_pass1_sampler : miniMaxSettings.sampler_name,
         pass1_scheduler: twoPass ? miniMaxSettings.two_pass_pass1_scheduler : threePass ? miniMaxSettings.advanced_two_pass_pass1_scheduler : miniMaxSettings.scheduler,
         pass1_seed: twoPass ? miniMaxSettings.two_pass_pass1_seed : threePass ? miniMaxSettings.advanced_two_pass_pass1_seed : miniMaxSettings.seed,
-        pass2_steps: twoPass ? (requestedTwoPassSteps?.pass2 ?? miniMaxSettings.two_pass_pass2_steps) : threePass ? (requestedTwoPassSteps?.pass2 ?? miniMaxSettings.advanced_two_pass_pass2_steps) : 4,
+        pass2_steps: twoPass ? (miniMaxSettings.two_pass_use_enhancer ? 2 : (requestedTwoPassSteps?.pass2 ?? miniMaxSettings.two_pass_pass2_steps)) : threePass ? (requestedTwoPassSteps?.pass2 ?? miniMaxSettings.advanced_two_pass_pass2_steps) : 4,
         pass2_denoise: twoPass ? miniMaxSettings.two_pass_pass2_denoise : threePass ? miniMaxSettings.advanced_two_pass_pass2_denoise : 0.2,
-        pass2_sampler_name: twoPass ? miniMaxSettings.two_pass_pass2_sampler : threePass ? miniMaxSettings.advanced_two_pass_pass2_sampler : miniMaxSettings.sampler_name,
+        pass2_sampler_name: twoPass ? (miniMaxSettings.two_pass_use_enhancer ? "er_sde" : miniMaxSettings.two_pass_pass2_sampler) : threePass ? miniMaxSettings.advanced_two_pass_pass2_sampler : miniMaxSettings.sampler_name,
         pass2_scheduler: twoPass ? miniMaxSettings.two_pass_pass2_scheduler : threePass ? miniMaxSettings.advanced_two_pass_pass2_scheduler : miniMaxSettings.scheduler,
         pass2_seed: twoPass ? miniMaxSettings.two_pass_pass2_seed : threePass ? miniMaxSettings.advanced_two_pass_pass2_seed : miniMaxSettings.seed,
         three_pass_pass1_megapixels: miniMaxSettings.three_pass_pass1_megapixels,
@@ -1215,7 +1218,7 @@ export function createVideoRender({
         throw new Error("The built MiniMax H3 two-pass prompt is missing its exact sampler step values.");
       }
       const exactTwoPassStepsLine = (twoPass || threePass)
-        ? `\nRequested panel steps: Pass 1 = ${requestedTwoPassSteps?.pass1 ?? (threePass ? miniMaxSettings.advanced_two_pass_pass1_steps : miniMaxSettings.two_pass_pass1_steps)}; Pass 2 = ${requestedTwoPassSteps?.pass2 ?? (threePass ? miniMaxSettings.advanced_two_pass_pass2_steps : miniMaxSettings.two_pass_pass2_steps)}`
+        ? `\nRequested panel steps: Pass 1 = ${requestedTwoPassSteps?.pass1 ?? (threePass ? miniMaxSettings.advanced_two_pass_pass1_steps : miniMaxSettings.two_pass_pass1_steps)}; Pass 2 = ${payload.pass2_steps}`
           + `\nExact built-prompt sampler steps: Pass 1 = ${exactTwoPassSteps.pass1}; Pass 2 = ${exactTwoPassSteps.pass2}`
         : "";
       const exactAdvancedResolutionLine = threePass

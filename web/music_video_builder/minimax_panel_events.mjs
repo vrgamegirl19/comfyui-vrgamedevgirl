@@ -34,7 +34,7 @@ export function wireMiniMaxPanel({
   miniMaxPass2Prompt, miniMaxPassButtons, miniMaxPrompt, miniMaxSageAttention, miniMaxSamplerName,
   miniMaxSceneImageUse, miniMaxScheduler, miniMaxSeed, miniMaxStartFrameCharacterInfluence, miniMaxSteps,
   miniMaxThreePassLoraPicker, miniMaxThreePassLoraStrength, miniMaxThreePassRefImageSize,
-  miniMaxTwoPassLatentScale, miniMaxTwoPassLatentUpscalerPicker, miniMaxTwoPassLoraPicker,
+  miniMaxPass2Enhancer, miniMaxTwoPassLatentScale, miniMaxTwoPassLatentUpscalerPicker, miniMaxTwoPassLoraPicker,
   miniMaxTwoPassLoraPreset, miniMaxTwoPassLoraPresetButtons, miniMaxTwoPassLoraStatus,
   miniMaxTwoPassLoraStrength, miniMaxTwoPassOutputCrf, miniMaxTwoPassRefImageSize, miniMaxTwoPassResizeMethod,
   miniMaxTwoPassTeCacheDepth, miniMaxTwoPassTeDevice, miniMaxTwoPassTeEnd, miniMaxTwoPassTeMcs,
@@ -54,13 +54,23 @@ export function wireMiniMaxPanel({
     wireSearchablePicker(picker, saveMiniMaxH3SettingsFromPanel);
     picker.input.addEventListener("change", persistMiniMaxSettings);
   }
+  for (const picker of [miniMaxPass2Enhancer.dmad, miniMaxPass2Enhancer.refiner]) {
+    wireSearchablePicker(picker, saveMiniMaxH3SettingsFromPanel);
+    picker.input.addEventListener("change", persistMiniMaxSettings);
+  }
+  miniMaxPass2Enhancer.enabled.input.addEventListener("change", () => {
+    pushHistory();
+    persistMiniMaxSettings();
+    syncMiniMaxH3Panel();
+    miniMaxPass2Enhancer.status.textContent = "Both selected LoRAs are checked before a render is queued.";
+  });
   for (const button of miniMaxTwoPassLoraPresetButtons) {
     button.onclick = async () => {
-      if (!state.miniMaxH3TwoPassEnabled || state.miniMaxH3ThreePassEnabled) return;
+      if (!state.miniMaxH3TwoPassEnabled || state.miniMaxH3ThreePassEnabled || miniMaxPass2Enhancer.enabled.input.checked) return;
       for (const presetButton of miniMaxTwoPassLoraPresetButtons) presetButton.disabled = true;
       try {
         const data = await getJson("/vrgdg/workflow_runner/lora_list");
-        if (!state.miniMaxH3TwoPassEnabled || state.miniMaxH3ThreePassEnabled) return;
+        if (!state.miniMaxH3TwoPassEnabled || state.miniMaxH3ThreePassEnabled || miniMaxPass2Enhancer.enabled.input.checked) return;
         miniMaxTwoPassLoraPicker.options = data.loras || [];
         const lora = miniMaxInstalledPass2Lora(button.dataset.preset, miniMaxTwoPassLoraPicker.options, miniMaxH3ModeForSegment(videoSettingsSegment()));
         if (!lora) {
