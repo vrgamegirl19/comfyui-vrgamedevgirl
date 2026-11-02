@@ -2300,7 +2300,7 @@ export function openBuilder(node, options = {}) {
     reloadFinalPromptList, render, replacePromptPhraseAcrossScenes, sceneDisplayName,
     selectedTimelineRangeInfo, state, storyIdeaInput, syncI2VMotionJsonFromSegments,
     syncPromptJsonFromSegments, t2iTextGemmaModelSelect, textGemmaRunnerPayload, themeStyleInput,
-    transcribeLyricsForTimeline, updateActiveFromInputs,
+    updateActiveFromInputs,
     enhanceAllMiniMaxH3Prompts: (...args) => enhanceAllMiniMaxH3Prompts(...args),
     openBuilderInstructionEditor: (...args) => openBuilderInstructionEditor(...args),
   });

@@ -12,7 +12,7 @@ export function createPromptCreators({
   fluxReferenceContextForSegment, i2vNotesInput, krea2TwoPassNotesInput, nbNotes, notesInput, pushHistory,
   reloadFinalPromptList, render, replacePromptPhraseAcrossScenes, sceneDisplayName, selectedTimelineRangeInfo,
   state, storyIdeaInput, syncI2VMotionJsonFromSegments, syncPromptJsonFromSegments, t2iTextGemmaModelSelect,
-  textGemmaRunnerPayload, themeStyleInput, transcribeLyricsForTimeline, updateActiveFromInputs,
+  textGemmaRunnerPayload, themeStyleInput, updateActiveFromInputs,
   enhanceAllMiniMaxH3Prompts, openBuilderInstructionEditor,
 }) {
   function conceptPromptTimelineNotesForSegment(segment) {
@@ -404,8 +404,6 @@ export function createPromptCreators({
     const note = document.createElement("div");
     note.textContent = "Edit or reload the final generated prompt text files for this project. Reload updates the scene boxes immediately and saves the session.";
     note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
-    const transcribeLyrics = makeButton("Transcribe Lines For Timeline", "primary");
-    transcribeLyrics.title = "Use the current audio and builder SRT timing to fill each scene's Line / lyric / dialogue field.";
     const grid = document.createElement("div");
     grid.style.cssText = `display:grid;grid-template-columns:repeat(${showImage && showVideo ? 2 : 1},minmax(0,1fr));gap:12px;`;
     const imageGroup = document.createElement("div");
@@ -522,7 +520,7 @@ export function createPromptCreators({
     const applyReplace = makeButton("Replace All");
     replaceActions.append(previewReplace, applyReplace);
     replaceGroup.append(replaceHeading, replaceNote, replaceFields, replaceChecks, replaceStatus, replaceActions);
-    box.append(header, note, transcribeLyrics);
+    box.append(header, note);
     if (showImage || showVideo) box.append(grid);
     if (miniMax) box.append(promptValidationGroup);
     if ((showImage || showVideo) && !apiProject) box.append(replaceGroup);
@@ -548,7 +546,6 @@ export function createPromptCreators({
     createConceptPrompts.onclick = () => run(() => openConceptPromptCreatorModal());
     createMotionNotes.onclick = () => run(() => openMotionNoteCreatorModal());
     editT2I.onclick = () => run(() => editFinalPromptList("t2i"));
-    transcribeLyrics.onclick = () => run(() => transcribeLyricsForTimeline());
     reloadT2I.onclick = () => run(() => reloadFinalPromptList("t2i", false));
     originalT2I.onclick = () => run(() => reloadFinalPromptList("t2i", true));
     clearT2I.onclick = () => run(() => clearFinalPromptList("t2i"));
