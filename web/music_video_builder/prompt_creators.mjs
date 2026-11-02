@@ -471,7 +471,7 @@ export function createPromptCreators({
       void autoSaveSessionQuiet("Video prompt lyric option changed");
     });
     videoGroup.append(videoHeading);
-    videoGroup.append(convertSeedance, editSeedanceConversionInstructions);
+    if (apiProject) videoGroup.append(convertSeedance, editSeedanceConversionInstructions);
     if (miniMax) {
       if (showStructuredOutputs) videoGroup.append(structuredOutputs.wrapper, structuredOutputsNote);
       videoGroup.append(omitLyrics.wrapper, omitLyricsNote, editMiniMax, reloadMiniMax, enhanceMiniMax, editEnhanceInstructions, editEnhanceReferenceInstructions);
