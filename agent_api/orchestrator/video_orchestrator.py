@@ -14,6 +14,7 @@ import folder_paths
 from ...builder.audio import _find_ffmpeg_path
 from ...builder import audio_stems, media as builder_media
 from ...runner import ltx_workflows, minimax_inputs, minimax_workflows, video_files
+from ...runner.minimax_drafts import _build_minimax_draft, _build_minimax_finalize
 from ..errors import (
     ComfyExecutionError,
     JobCancelledError,
@@ -128,6 +129,88 @@ def build_video_graph_for_mode(mode: str, payload: Dict[str, Any]) -> Dict[str, 
     return ltx_workflows._build_i2v_api_prompt(payload)
 
 
+_RENDER_PHASES = ("full", "draft", "finalize")
+_DRAFT_MODES = ("minimax_h3_2pass", "minimax_h3_advanced_2pass")
+
+
+def _render_phase(value: Any) -> str:
+    """Normalize ``render_phase``: ``full`` (both passes), ``draft`` (pass 1 only) or ``finalize`` (pass 2 only).
+
+    The Video Builder's "Render Draft — Pass 1 Only" and "Finalize Draft — Pass 2 Only" (``video_render.mjs``).
+    """
+    phase = str(value or "full").strip().lower()
+    if phase not in _RENDER_PHASES:
+        raise ValidationError(
+            f"Unknown render_phase '{value}'. Supported: {', '.join(_RENDER_PHASES)}.",
+            details={"supported": list(_RENDER_PHASES)},
+        )
+    return phase
+
+
+def _build_draft_graph(mode: str, payload: Dict[str, Any], restore_audio: Dict[str, Any]) -> Dict[str, Any]:
+    """Build a two-pass graph and cut it after pass 1, saving the pass-1 latent like the Builder's draft render.
+
+    Raises:
+        ValidationError: when the scene does not use a MiniMax two-pass workflow.
+    """
+    if mode not in _DRAFT_MODES:
+        raise ValidationError("Draft rendering requires a MiniMax two-pass workflow (render_pass two_pass or three_pass).")
+    draft_payload = {
+        **payload,
+        "timeline_start_seconds": payload["start"],
+        "timeline_end_seconds": payload["end"],
+        "draft_restore_audio": dict(restore_audio or {}),
+    }
+    return _build_minimax_draft(build_video_graph_for_mode(mode, draft_payload), draft_payload)
+
+
+def _build_finalize_graph(folder: str, seg: Dict[str, Any], scene_number: int, diffusion_model: str) -> Dict[str, Any]:
+    """Rebuild a scene's saved draft graph to run only pass 2 from its saved pass-1 latent.
+
+    Raises:
+        ValidationError: when the scene has no draft, the draft is stale (timing or model changed) or its latent is gone.
+    """
+    draft_id = str((seg.get("minimax_h3_draft") or {}).get("id") or "")
+    if not draft_id:
+        raise ValidationError(f"Scene {scene_number} has no draft. Render it with render_phase 'draft' first.")
+    try:
+        result = _build_minimax_finalize({
+            "project_folder": folder,
+            "draft_id": draft_id,
+            "scene_number": scene_number,
+            "timeline_start_seconds": float(seg.get("start", 0.0) or 0.0),
+            "timeline_end_seconds": float(seg.get("end", 0.0) or 0.0),
+            "diffusion_model_name": diffusion_model,
+        })
+    except (FileNotFoundError, ValueError) as exc:
+        raise ValidationError(f"Scene {scene_number}: {exc}") from exc
+    if result.get("stale_draft"):
+        raise ValidationError(
+            f"Scene {scene_number}'s draft was made with {', '.join(result['draft_models'])}, but the scene now uses "
+            f"{result['current_model']}. Render a new draft, or switch the diffusion model back to finalize this one.",
+            details={"draft_models": result["draft_models"], "current_model": result["current_model"]},
+        )
+    return result
+
+
+def _minimax_stage_fields(phase: str, video_path: str, graph_res: Dict[str, Any]) -> Dict[str, Any]:
+    """The pass-1/pass-2 and draft fields the Builder saves on a segment after a MiniMax render (``finishMiniMaxVideoRender``)."""
+    draft = phase == "draft"
+    # Present (even as {}) means a two-pass graph, as Boolean(built.two_pass) in the Builder.
+    multi_pass = graph_res.get("two_pass") is not None or graph_res.get("advanced_two_pass") is not None
+    stage1 = video_path if draft else ""
+    stage2 = video_path if not draft and multi_pass else ""
+    return {
+        "video_source_path": video_path,
+        "minimax_h3_stage1_path": stage1,
+        "minimax_h3_stage1_source_path": stage1,
+        "minimax_h3_stage2_path": stage2,
+        "minimax_h3_stage2_source_path": stage2,
+        "minimax_h3_timing": graph_res.get("timing") or {},
+        "minimax_h3_draft": {"id": graph_res.get("draft_id", ""), "video_path": video_path} if draft else None,
+    }
+
+
 async def render_scene_video_async(
     project_id: str,
     scene_id: str,
@@ -155,255 +238,271 @@ async def render_scene_video_async(
     seg = segments[idx]
     scene_number = idx + 1
     p = dict(params or {})
+    phase = _render_phase(p.pop("render_phase", None))
 
     # Timing
     start_sec = float(seg.get("start", 0.0) or 0.0)
     end_sec = float(seg.get("end", start_sec + 4.0) or (start_sec + 4.0))
     duration_sec = max(0.25, end_sec - start_sec)
 
-    # Mode
-    mode = str(p.get("mode") or session_video_mode(session)).strip().lower()
-
-    if manager and job:
-        manager.update_progress(job.id, 5.0, "preparing", scene_id=scene_id, message=f"Preparing {mode} video render...")
-
-    # Merge effective settings with parameter overrides
-    effective_settings = extract_effective_settings(session)
-    mode_group = "minimax_h3" if "minimax" in mode else "ltx_video"
-    if mode_group == "minimax_h3":
-        # Use every MiniMax option the Video Builder saved (scene overrides included)
-        # so agent and UI renders match. A plain "minimax_h3" mode follows the saved
-        # render pass (single, 2 Pass, 2 Pass Advanced); an explicit pass mode wins.
+    if phase == "finalize":
+        # Pass 2 only: replay the scene's saved draft graph from its pass-1 latent. Nothing else is resolved again.
         minimax_settings = minimax_h3_settings_for_scene(session, seg)
-        if p.get("randomize_seed"):
-            # Same as the Render All "new seeds" option: fresh seeds for every pass, saved with the
-            # project (or the scene, when it has its own MiniMax settings) so the render is reproducible.
-            fresh_seeds = randomize_minimax_seeds(minimax_settings)
-            with _BUILDER_SAVE_LOCK:
-                _, live_session = _get_active_session_and_folder(project_id)
-                live_segment = live_session["segments"][idx]
-                if live_segment.get("use_scene_minimax_h3_settings") and isinstance(live_segment.get("minimax_h3_settings"), dict):
-                    live_segment["minimax_h3_settings"].update(fresh_seeds)
-                else:
-                    live_session.setdefault("minimax_h3_settings", {}).update(fresh_seeds)
-                _persist_session(folder, live_session)
-        if mode in ("minimax_h3", "minimax"):
-            mode = minimax_workflow_key(minimax_settings)
-        try:
-            payload = build_minimax_render_payload(minimax_settings)
-        except ValueError as exc:
-            raise ValidationError(str(exc)) from exc
-        pass2_prompt = str(seg.get("minimax_h3_pass2_prompt") or "").strip()
-        if pass2_prompt:
-            payload["pass2_prompt"] = pass2_prompt
-        if minimax_settings.get("pipeline") == "refmod":
-            # The RefMod pipeline renders from saved RefMods in scene order (minimax/refmod_scene.py), with no images.
-            from ...minimax.refmod_scene import assign_labels, reference_payload, refmod_items_for_scene
+        mode = minimax_workflow_key(minimax_settings)
+        if manager and job:
+            manager.update_progress(job.id, 15.0, "compiling_graph", scene_id=scene_id, message="Loading the saved draft for pass 2...")
+        graph_res = await asyncio.to_thread(
+            _build_finalize_graph, folder, seg, scene_number, str(minimax_settings.get("diffusion_model_name") or ""),
+        )
+        payload = {"continuity_mode": minimax_settings.get("continuity_mode")}
+        mask_restore = dict(graph_res.get("draft_restore_audio") or {})
+    else:
+        # Mode
+        mode = str(p.get("mode") or session_video_mode(session)).strip().lower()
 
-            items = assign_labels([i for i in refmod_items_for_scene(session, seg, idx) if i["strength"] > 0])
-            if not items:
-                raise ValidationError(
-                    f"Scene {scene_number} needs at least one RefMod. Pick a RefMod on a Reference Builder card and map it to the scene.")
-            continuity = str(p.get("continuity_mode") or minimax_settings["continuity_mode"] or "off")
-            payload["pipeline"] = "refmod"
-            payload["refmod_references"] = reference_payload(items)
-            payload["continuity_mode"] = "latent_continuation_masked" if canonical_continuity_mode(continuity) == "latent_continuation_masked" else "off"
-            payload["image_paths"] = []
-            payload["video_references"] = []
-        else:
-            # Scene inputs the UI resolves per render: reference images, continuity frames,
-            # reference videos and the explicit last frame (minimax/scene_inputs.py).
+        if manager and job:
+            manager.update_progress(job.id, 5.0, "preparing", scene_id=scene_id, message=f"Preparing {mode} video render...")
+
+        # Merge effective settings with parameter overrides
+        effective_settings = extract_effective_settings(session)
+        mode_group = "minimax_h3" if "minimax" in mode else "ltx_video"
+        if mode_group == "minimax_h3":
+            # Use every MiniMax option the Video Builder saved (scene overrides included)
+            # so agent and UI renders match. A plain "minimax_h3" mode follows the saved
+            # render pass (single, 2 Pass, 2 Pass Advanced); an explicit pass mode wins.
+            minimax_settings = minimax_h3_settings_for_scene(session, seg)
+            if p.get("randomize_seed"):
+                # Same as the Render All "new seeds" option: fresh seeds for every pass, saved with the
+                # project (or the scene, when it has its own MiniMax settings) so the render is reproducible.
+                fresh_seeds = randomize_minimax_seeds(minimax_settings)
+                with _BUILDER_SAVE_LOCK:
+                    _, live_session = _get_active_session_and_folder(project_id)
+                    live_segment = live_session["segments"][idx]
+                    if live_segment.get("use_scene_minimax_h3_settings") and isinstance(live_segment.get("minimax_h3_settings"), dict):
+                        live_segment["minimax_h3_settings"].update(fresh_seeds)
+                    else:
+                        live_session.setdefault("minimax_h3_settings", {}).update(fresh_seeds)
+                    _persist_session(folder, live_session)
+            if mode in ("minimax_h3", "minimax"):
+                mode = minimax_workflow_key(minimax_settings)
             try:
-                scene_inputs = await asyncio.to_thread(
-                    resolve_scene_inputs,
-                    session,
-                    seg,
-                    minimax_settings["video_mode"],
-                    idx,
-                    continuity_mode=str(p.get("continuity_mode") or minimax_settings["continuity_mode"] or "off"),
-                    previous_segment=segments[idx - 1] if idx > 0 else None,
-                    project_folder=folder,
-                    scene_number=scene_number,
-                    extract_final_frame=_extract_final_frame_for_continuity,
-                    configured_image_paths=p.get("image_paths"),
-                    configured_video_references=p.get("video_references"),
-                    render_pass=str(minimax_settings.get("render_pass") or "single"),
+                payload = build_minimax_render_payload(minimax_settings)
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
+            pass2_prompt = str(seg.get("minimax_h3_pass2_prompt") or "").strip()
+            if pass2_prompt:
+                payload["pass2_prompt"] = pass2_prompt
+            if minimax_settings.get("pipeline") == "refmod":
+                # The RefMod pipeline renders from saved RefMods in scene order (minimax/refmod_scene.py), with no images.
+                from ...minimax.refmod_scene import assign_labels, reference_payload, refmod_items_for_scene
+
+                items = assign_labels([i for i in refmod_items_for_scene(session, seg, idx) if i["strength"] > 0])
+                if not items:
+                    raise ValidationError(
+                        f"Scene {scene_number} needs at least one RefMod. Pick a RefMod on a Reference Builder card and map it to the scene.")
+                continuity = str(p.get("continuity_mode") or minimax_settings["continuity_mode"] or "off")
+                payload["pipeline"] = "refmod"
+                payload["refmod_references"] = reference_payload(items)
+                payload["continuity_mode"] = "latent_continuation_masked" if canonical_continuity_mode(continuity) == "latent_continuation_masked" else "off"
+                payload["image_paths"] = []
+                payload["video_references"] = []
+            else:
+                # Scene inputs the UI resolves per render: reference images, continuity frames,
+                # reference videos and the explicit last frame (minimax/scene_inputs.py).
+                try:
+                    scene_inputs = await asyncio.to_thread(
+                        resolve_scene_inputs,
+                        session,
+                        seg,
+                        minimax_settings["video_mode"],
+                        idx,
+                        continuity_mode=str(p.get("continuity_mode") or minimax_settings["continuity_mode"] or "off"),
+                        previous_segment=segments[idx - 1] if idx > 0 else None,
+                        project_folder=folder,
+                        scene_number=scene_number,
+                        extract_final_frame=_extract_final_frame_for_continuity,
+                        configured_image_paths=p.get("image_paths"),
+                        configured_video_references=p.get("video_references"),
+                        render_pass=str(minimax_settings.get("render_pass") or "single"),
+                    )
+                except ValueError as exc:
+                    raise ValidationError(f"Scene {scene_number}: {exc}") from exc
+                if scene_inputs["missing_image_paths"]:
+                    raise ValidationError(
+                        f"Scene {scene_number} references image files that do not exist: "
+                        + ", ".join(scene_inputs["missing_image_paths"])
+                    )
+                payload["continuity_mode"] = scene_inputs["continuity_mode"]
+                payload["image_paths"] = scene_inputs["image_paths"]
+                payload["video_references"] = scene_inputs["video_references"]
+                if scene_inputs.get("last_frame_path"):
+                    payload["last_frame_path"] = scene_inputs["last_frame_path"]
+        else:
+            payload = dict(effective_settings.get(mode_group, {}))
+            if p.get("randomize_seed"):
+                # Same as setVideoSeedRandom in the UI: new seed, saved where the scene's LTX settings live.
+                payload["seed"] = random_seed_value()
+                with _BUILDER_SAVE_LOCK:
+                    _, live_session = _get_active_session_and_folder(project_id)
+                    live_segment = live_session["segments"][idx]
+                    if live_segment.get("use_scene_i2v_video_settings") and isinstance(live_segment.get("i2v_video_settings"), dict):
+                        live_segment["i2v_video_settings"]["seed"] = payload["seed"]
+                    else:
+                        live_session.setdefault("i2v_video_settings", {})["seed"] = payload["seed"]
+                    _persist_session(folder, live_session)
+        payload.update(p)
+        payload["project_folder"] = folder
+        payload["scene_number"] = scene_number
+        payload["start"] = start_sec
+        payload["end"] = end_sec
+        payload["duration"] = duration_sec
+
+        # MiniMax Latent Continuity Validation (Section 6.10, Invariant 4)
+        if "minimax" in mode:
+            continuity_mode = str(payload.get("continuity_mode") or "").strip().lower()
+            use_latent = payload.get("use_latent_continuation")
+            is_latent_cont = canonical_continuity_mode(continuity_mode) == "latent_continuation_masked" or bool(use_latent)
+            if is_latent_cont and scene_number > 1:
+                from ...minimax.latent_manager import SceneLatentManager
+                pred_scene = scene_number - 1
+                if not SceneLatentManager.latent_exists(folder, pred_scene):
+                    raise PredecessorMissingError(scene_number, pred_scene)
+                if SceneLatentManager.is_dirty(folder, pred_scene):
+                    raise LatentStaleError(scene_number, pred_scene)
+
+            # Normalize common aspect ratio aliases
+            raw_ar = str(payload.get("aspect_ratio") or "").strip()
+            if raw_ar:
+                ar_map = {
+                    "16:9": "16:9 (Widescreen)",
+                    "9:16": "9:16 (Portrait Widescreen)",
+                    "1:1": "1:1 (Square)",
+                    "4:3": "4:3 (Standard)",
+                    "3:4": "3:4 (Portrait Standard)",
+                    "3:2": "3:2 (Photo)",
+                    "2:3": "2:3 (Portrait Photo)",
+                    "21:9": "21:9 (Ultrawide)",
+                }
+                payload["aspect_ratio"] = ar_map.get(raw_ar, raw_ar)
+
+        # Prompt text
+        if "minimax" in mode:
+            # The Video Builder's "create each next scene prompt from the previous rendered final frame": a scene continued with
+            # latent_continuation_masked is written from the real last frame of the scene before it, right before it renders.
+            if (
+                mode_group == "minimax_h3" and scene_number > 1 and not p.get("prompt")
+                and str(payload.get("continuity_mode") or "") == "latent_continuation_masked"
+                and minimax_settings.get("continuity_prompt_from_last_frame")
+            ):
+                previous = segments[idx - 1]
+                previous_video = str(previous.get("video_path") or previous.get("rendered_video_path") or "").strip()
+                if not previous_video or not os.path.isfile(previous_video):
+                    raise ValidationError(
+                        f"Scene {scene_number} is set to write its prompt from scene {scene_number - 1}'s final frame, "
+                        f"but scene {scene_number - 1} has no rendered video. Render it first."
+                    )
+                if manager and job:
+                    manager.update_progress(job.id, 6.0, "preparing", scene_id=scene_id, message=f"Writing the scene {scene_number} prompt from scene {scene_number - 1}'s final frame...")
+                frame_path = await asyncio.to_thread(_extract_final_frame_for_continuity, folder, previous_video, scene_number)
+                from .minimax_prompt_orchestrator import write_continued_scene_prompt
+
+                written = await asyncio.to_thread(
+                    write_continued_scene_prompt, project_id, str(seg.get("id") or scene_id), frame_path, str(previous.get("id") or ""), p,
                 )
+                seg["minimax_h3_prompt"] = written["prompt"]
+                for warning in written.get("warnings") or []:
+                    logger.warning(f"Scene {scene_number}: {warning}")
+            # The Video Builder renders the saved MiniMax prompt, falling back to the video prompt.
+            video_prompt = str(p.get("prompt") or seg.get("minimax_h3_prompt") or seg.get("i2v_prompt") or "").strip()
+            if not video_prompt:
+                raise ValidationError(f"Scene {scene_number} needs a MiniMax H3 prompt before it can render.")
+        else:
+            video_prompt = str(p.get("prompt") or seg.get("i2v_prompt") or seg.get("t2v_prompt") or seg.get("lyric_text") or "").strip()
+        payload["i2v_prompt"] = video_prompt
+        payload["t2v_prompt"] = video_prompt
+        payload["prompt"] = video_prompt
+
+        # Audio preparation
+        native_audio = mode_group == "minimax_h3" and payload.get("audio_mode") == "built_in_audio"
+        audio_path = "" if native_audio else str(p.get("audio_path") or "").strip()
+        project_audio = "" if native_audio else session_audio_path(session)
+        speaking_clips = session.get("video_type") == "speaking" and isinstance(session.get("audio_clips"), list)
+        if not native_audio and not audio_path and speaking_clips:
+            from ...builder.audio_clips import prepare_audio_clip_mix
+
+            edited = await asyncio.to_thread(prepare_audio_clip_mix, {
+                "project_folder": folder, "clips": session["audio_clips"], "generation_only": True,
+                "duration": max([0.05] + [float(scene.get("end", 0)) for scene in session.get("segments", [])]),
+            })
+            project_audio = edited["audio_path"]
+        if not audio_path and project_audio and os.path.isfile(project_audio):
+            if mode_group == "minimax_h3":
+                audio_path = project_audio
+            else:
+                try:
+                    prep_audio_res = await asyncio.to_thread(
+                        minimax_inputs._prepare_scene_audio_clip,
+                        {
+                            "audio_path": project_audio,
+                            "project_folder": folder,
+                            "scene_number": scene_number,
+                            "start_seconds": start_sec,
+                            "duration_seconds": duration_sec,
+                        },
+                    )
+                    audio_path = prep_audio_res.get("audio_path", "")
+                except Exception as exc:
+                    logger.warning(f"Could not prepare scene audio clip for scene {scene_id}: {exc}")
+        # An enabled Audio Mask renders with its masked mix (kept vocals plus the music). The finished clip gets the real audio back.
+        mask_restore: Dict[str, Any] = {}
+        if mode_group == "minimax_h3" and audio_path and str(payload.get("audio_mode") or "input_audio") != "built_in_audio":
+            try:
+                masked_audio = audio_stems.audio_override_for_scene(seg, folder, duration_sec)
             except ValueError as exc:
                 raise ValidationError(f"Scene {scene_number}: {exc}") from exc
-            if scene_inputs["missing_image_paths"]:
-                raise ValidationError(
-                    f"Scene {scene_number} references image files that do not exist: "
-                    + ", ".join(scene_inputs["missing_image_paths"])
-                )
-            payload["continuity_mode"] = scene_inputs["continuity_mode"]
-            payload["image_paths"] = scene_inputs["image_paths"]
-            payload["video_references"] = scene_inputs["video_references"]
-            if scene_inputs.get("last_frame_path"):
-                payload["last_frame_path"] = scene_inputs["last_frame_path"]
-    else:
-        payload = dict(effective_settings.get(mode_group, {}))
-        if p.get("randomize_seed"):
-            # Same as setVideoSeedRandom in the UI: new seed, saved where the scene's LTX settings live.
-            payload["seed"] = random_seed_value()
-            with _BUILDER_SAVE_LOCK:
-                _, live_session = _get_active_session_and_folder(project_id)
-                live_segment = live_session["segments"][idx]
-                if live_segment.get("use_scene_i2v_video_settings") and isinstance(live_segment.get("i2v_video_settings"), dict):
-                    live_segment["i2v_video_settings"]["seed"] = payload["seed"]
-                else:
-                    live_session.setdefault("i2v_video_settings", {})["seed"] = payload["seed"]
-                _persist_session(folder, live_session)
-    payload.update(p)
-    payload["project_folder"] = folder
-    payload["scene_number"] = scene_number
-    payload["start"] = start_sec
-    payload["end"] = end_sec
-    payload["duration"] = duration_sec
+            if masked_audio:
+                mask_restore = {"restore_audio_path": audio_path, "restore_audio_start_seconds": start_sec}
+                audio_path = masked_audio["path"]
+                payload["source_start_seconds"] = 0.0
+                payload["source_duration_seconds"] = masked_audio["duration_seconds"]
+        payload["audio_path"] = audio_path
 
-    # MiniMax Latent Continuity Validation (Section 6.10, Invariant 4)
-    if "minimax" in mode:
-        continuity_mode = str(payload.get("continuity_mode") or "").strip().lower()
-        use_latent = payload.get("use_latent_continuation")
-        is_latent_cont = canonical_continuity_mode(continuity_mode) == "latent_continuation_masked" or bool(use_latent)
-        if is_latent_cont and scene_number > 1:
-            from ...minimax.latent_manager import SceneLatentManager
-            pred_scene = scene_number - 1
-            if not SceneLatentManager.latent_exists(folder, pred_scene):
-                raise PredecessorMissingError(scene_number, pred_scene)
-            if SceneLatentManager.is_dirty(folder, pred_scene):
-                raise LatentStaleError(scene_number, pred_scene)
-
-        # Normalize common aspect ratio aliases
-        raw_ar = str(payload.get("aspect_ratio") or "").strip()
-        if raw_ar:
-            ar_map = {
-                "16:9": "16:9 (Widescreen)",
-                "9:16": "9:16 (Portrait Widescreen)",
-                "1:1": "1:1 (Square)",
-                "4:3": "4:3 (Standard)",
-                "3:4": "3:4 (Portrait Standard)",
-                "3:2": "3:2 (Photo)",
-                "2:3": "2:3 (Portrait Photo)",
-                "21:9": "21:9 (Ultrawide)",
-            }
-            payload["aspect_ratio"] = ar_map.get(raw_ar, raw_ar)
-
-    # Prompt text
-    if "minimax" in mode:
-        # The Video Builder's "create each next scene prompt from the previous rendered final frame": a scene continued with
-        # latent_continuation_masked is written from the real last frame of the scene before it, right before it renders.
-        if (
-            mode_group == "minimax_h3" and scene_number > 1 and not p.get("prompt")
-            and str(payload.get("continuity_mode") or "") == "latent_continuation_masked"
-            and minimax_settings.get("continuity_prompt_from_last_frame")
-        ):
-            previous = segments[idx - 1]
-            previous_video = str(previous.get("video_path") or previous.get("rendered_video_path") or "").strip()
-            if not previous_video or not os.path.isfile(previous_video):
-                raise ValidationError(
-                    f"Scene {scene_number} is set to write its prompt from scene {scene_number - 1}'s final frame, "
-                    f"but scene {scene_number - 1} has no rendered video. Render it first."
-                )
-            if manager and job:
-                manager.update_progress(job.id, 6.0, "preparing", scene_id=scene_id, message=f"Writing the scene {scene_number} prompt from scene {scene_number - 1}'s final frame...")
-            frame_path = await asyncio.to_thread(_extract_final_frame_for_continuity, folder, previous_video, scene_number)
-            from .minimax_prompt_orchestrator import write_continued_scene_prompt
-
-            written = await asyncio.to_thread(
-                write_continued_scene_prompt, project_id, str(seg.get("id") or scene_id), frame_path, str(previous.get("id") or ""), p,
-            )
-            seg["minimax_h3_prompt"] = written["prompt"]
-            for warning in written.get("warnings") or []:
-                logger.warning(f"Scene {scene_number}: {warning}")
-        # The Video Builder renders the saved MiniMax prompt, falling back to the video prompt.
-        video_prompt = str(p.get("prompt") or seg.get("minimax_h3_prompt") or seg.get("i2v_prompt") or "").strip()
-        if not video_prompt:
-            raise ValidationError(f"Scene {scene_number} needs a MiniMax H3 prompt before it can render.")
-    else:
-        video_prompt = str(p.get("prompt") or seg.get("i2v_prompt") or seg.get("t2v_prompt") or seg.get("lyric_text") or "").strip()
-    payload["i2v_prompt"] = video_prompt
-    payload["t2v_prompt"] = video_prompt
-    payload["prompt"] = video_prompt
-
-    # Audio preparation
-    native_audio = mode_group == "minimax_h3" and payload.get("audio_mode") == "built_in_audio"
-    audio_path = "" if native_audio else str(p.get("audio_path") or "").strip()
-    project_audio = "" if native_audio else session_audio_path(session)
-    speaking_clips = session.get("video_type") == "speaking" and isinstance(session.get("audio_clips"), list)
-    if not native_audio and not audio_path and speaking_clips:
-        from ...builder.audio_clips import prepare_audio_clip_mix
-
-        edited = await asyncio.to_thread(prepare_audio_clip_mix, {
-            "project_folder": folder, "clips": session["audio_clips"], "generation_only": True,
-            "duration": max([0.05] + [float(scene.get("end", 0)) for scene in session.get("segments", [])]),
-        })
-        project_audio = edited["audio_path"]
-    if not audio_path and project_audio and os.path.isfile(project_audio):
-        if mode_group == "minimax_h3":
-            audio_path = project_audio
-        else:
+        # SRT preparation
+        srt_dir = os.path.join(folder, "scene_srt")
+        os.makedirs(srt_dir, exist_ok=True)
+        srt_file = os.path.join(srt_dir, f"scene_{scene_number:04d}.srt")
+        if not os.path.isfile(srt_file):
             try:
-                prep_audio_res = await asyncio.to_thread(
-                    minimax_inputs._prepare_scene_audio_clip,
-                    {
-                        "audio_path": project_audio,
-                        "project_folder": folder,
-                        "scene_number": scene_number,
-                        "start_seconds": start_sec,
-                        "duration_seconds": duration_sec,
-                    },
-                )
-                audio_path = prep_audio_res.get("audio_path", "")
-            except Exception as exc:
-                logger.warning(f"Could not prepare scene audio clip for scene {scene_id}: {exc}")
-    # An enabled Audio Mask renders with its masked mix (kept vocals plus the music). The finished clip gets the real audio back.
-    mask_restore: Dict[str, Any] = {}
-    if mode_group == "minimax_h3" and audio_path and str(payload.get("audio_mode") or "input_audio") != "built_in_audio":
-        try:
-            masked_audio = audio_stems.audio_override_for_scene(seg, folder, duration_sec)
-        except ValueError as exc:
-            raise ValidationError(f"Scene {scene_number}: {exc}") from exc
-        if masked_audio:
-            mask_restore = {"restore_audio_path": audio_path, "restore_audio_start_seconds": start_sec}
-            audio_path = masked_audio["path"]
-            payload["source_start_seconds"] = 0.0
-            payload["source_duration_seconds"] = masked_audio["duration_seconds"]
-    payload["audio_path"] = audio_path
+                with open(srt_file, "w", encoding="utf-8") as f:
+                    f.write(f"1\n00:00:00,000 --> 00:00:{int(duration_sec):02d},000\n{seg.get('lyric_text') or video_prompt or 'Scene'}\n")
+            except Exception:
+                pass
+        payload["srt_path"] = srt_file
 
-    # SRT preparation
-    srt_dir = os.path.join(folder, "scene_srt")
-    os.makedirs(srt_dir, exist_ok=True)
-    srt_file = os.path.join(srt_dir, f"scene_{scene_number:04d}.srt")
-    if not os.path.isfile(srt_file):
-        try:
-            with open(srt_file, "w", encoding="utf-8") as f:
-                f.write(f"1\n00:00:00,000 --> 00:00:{int(duration_sec):02d},000\n{seg.get('lyric_text') or video_prompt or 'Scene'}\n")
-        except Exception:
-            pass
-    payload["srt_path"] = srt_file
+        # Image inputs for I2V / MiniMax
+        images_dir = os.path.join(folder, "images")
+        os.makedirs(images_dir, exist_ok=True)
+        payload["image_folder"] = images_dir
 
-    # Image inputs for I2V / MiniMax
-    images_dir = os.path.join(folder, "images")
-    os.makedirs(images_dir, exist_ok=True)
-    payload["image_folder"] = images_dir
+        scene_img = seg.get("approved_image_path") or seg.get("custom_image_path") or (seg.get("image_history") or [""])[-1]
+        if scene_img and os.path.isfile(scene_img):
+            scene_img_target = os.path.join(images_dir, f"image_{scene_number:04d}.png")
+            try:
+                if not os.path.isfile(scene_img_target) or os.path.getmtime(scene_img) > os.path.getmtime(scene_img_target):
+                    shutil.copy2(scene_img, scene_img_target)
+            except Exception:
+                pass
+            payload["image_path"] = scene_img_target
+            payload["first_frame"] = {"path": scene_img_target}
 
-    scene_img = seg.get("approved_image_path") or seg.get("custom_image_path") or (seg.get("image_history") or [""])[-1]
-    if scene_img and os.path.isfile(scene_img):
-        scene_img_target = os.path.join(images_dir, f"image_{scene_number:04d}.png")
-        try:
-            if not os.path.isfile(scene_img_target) or os.path.getmtime(scene_img) > os.path.getmtime(scene_img_target):
-                shutil.copy2(scene_img, scene_img_target)
-        except Exception:
-            pass
-        payload["image_path"] = scene_img_target
-        payload["first_frame"] = {"path": scene_img_target}
+        if manager and job:
+            manager.update_progress(job.id, 15.0, "compiling_graph", scene_id=scene_id, message="Compiling ComfyUI video graph...")
 
-    if manager and job:
-        manager.update_progress(job.id, 15.0, "compiling_graph", scene_id=scene_id, message="Compiling ComfyUI video graph...")
-
-    # Compile prompt graph
-    graph_res = await asyncio.to_thread(build_video_graph_for_mode, mode, payload)
+        # Compile prompt graph
+        if phase == "draft":
+            graph_res = await asyncio.to_thread(_build_draft_graph, mode, payload, mask_restore)
+        else:
+            graph_res = await asyncio.to_thread(build_video_graph_for_mode, mode, payload)
     prompt_graph = graph_res.get("prompt")
     if not prompt_graph:
         raise ValidationError(f"Video mode '{mode}' compilation did not return a valid prompt graph.")
@@ -491,7 +590,7 @@ async def render_scene_video_async(
         "project_folder": folder,
         "scene_number": scene_number,
         "source_path": source_video_path,
-        "existing_action": "backup",
+        "existing_action": "overwrite" if phase == "finalize" else "backup",
     }
     collect_res = await asyncio.to_thread(video_files._collect_scene_video, collect_payload)
     final_video_path = collect_res["video_path"]
@@ -528,6 +627,7 @@ async def render_scene_video_async(
         if "minimax" in mode:
             # Record the continuity this graph used, like the Builder does after its render.
             target_seg.update(_continuity_used(payload, graph_res, session["segments"], scene_number))
+            target_seg.update(_minimax_stage_fields(phase, final_video_path, graph_res))
         # The untrimmed render, so a later re-trim (POST .../video/trim with take) can start from the whole take.
         target_seg["raw_video_path"] = raw_render_path
         raw_history = [str(x) for x in target_seg.get("raw_video_history") or [] if str(x).strip()]
@@ -560,6 +660,8 @@ async def render_scene_video_async(
         "backup_path": collect_res.get("backup_path", ""),
         "history_index": target_seg["video_history_index"],
         "history_count": len(target_seg["video_history"]),
+        "render_phase": phase,
+        "draft_id": graph_res.get("draft_id", "") if phase == "draft" else "",
         "revision": save_res.get("revision"),
     }
 

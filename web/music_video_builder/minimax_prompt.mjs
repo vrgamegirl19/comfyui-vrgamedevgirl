@@ -397,13 +397,14 @@ export function miniMaxH3LiteralSceneInstruction() {
 // renders. The emotions come from each scene, never from a stock list. Twins: MINIMAX_H3_CRAFT_* in minimax/shot_prompt.py.
 export const MINIMAX_H3_CRAFT_ACTING = "PERFORMANCE CRAFT — MANDATORY: Give every visible face its own concrete expression in every shot, "
   + "written as what the brows, eyes, smile, head and shoulders do, for example eyes narrowing, brows lifting, a slow smile spreading or the head turning away. "
+  + "Include each readable supporting face by subject label in every shot where it is visible, even behind the lead. Give each a distinct scene-motivated reaction that develops during the shot; do not give everyone the same raised brows and smile or reduce them to 'the others watch'. Carry expressions and eyelines naturally across cuts. Describe only faces readable in the existing framing, without adding cast or camera coverage. "
   + "Take each emotion from this scene's lyric meaning, story beat and song energy rather than a stock mood, choose two specific emotions wherever an emotion header is written, "
   + "and let the expression change at least once in a longer shot. Scale every expression to the {style} video style and the scene's energy: "
   + "stylized, animated or high-energy scenes use big, exaggerated expressions; realistic or quiet scenes use small, precise ones. "
   + "Write each emotion as a visible action instead of a feeling word or a face colour: anger is a jabbed finger, gritted teeth or brows slammed down, never a red, flushed or pale face. "
   + "Faces stay dry, with no tears, crying, wet eyes, glistening skin or sweat.";
 export const MINIMAX_H3_CRAFT_SILENT = "SILENT PEOPLE: Name every visible person who is not singing or speaking at that moment and state that their lips stay pressed together, "
-  + "with their own expression, for example '<Subject 2> watches with her lips pressed together and her brows lifted.'";
+  + "while their eyes, brows, cheeks and closed-mouth expressions remain active. Silence restricts vocals, not facial acting. For example '<Subject 2> remains silent, her brows pinching before one brow arches toward the singer.' Give each visible supporting person a different reaction suited to the scene and requested facial intensity, without adding speech, singing or audible laughter.";
 export const MINIMAX_H3_CRAFT_FRAMING = "FACES WHILE SINGING OR SPEAKING: Unless a per-shot framing above says otherwise, frame a person who is singing or speaking "
   + "from a medium shot to a close-up, with the camera near their eye level, so the face stays large in frame; keep wide and full-body framing for moments without vocals.";
 export const MINIMAX_H3_CRAFT_CLEAR_FACE = "Keep hands, drinks, food, hair and kisses away from a singing or speaking person's face while words are heard, "
@@ -2221,7 +2222,9 @@ export function createMiniMaxPrompt({
     const { guidance } = miniMaxH3VideoStyleParts(segment);
     const look = guidance && ["text_to_video", "reference_to_video"].includes(normalizeMiniMaxH3Mode(miniMaxH3ModeForSegment(segment)))
       ? `: ${guidance}` : ".";
-    return `detailed_description:\nThe target video is in a ${miniMaxH3OpeningStyle(segment)} music-video style${look}${continuity}\n\n`;
+    const style = `${miniMaxH3OpeningStyle(segment).trim()} music-video`
+      .replace(/\bmusic[ -]video(?:\s+music[ -]video)+$/i, "music-video");
+    return `detailed_description:\nThe target video is in a ${style} style${look}${continuity}\n\n`;
   }
 
   function miniMaxH3OfficialSoundscape(segment) {

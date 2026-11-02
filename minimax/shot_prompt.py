@@ -118,6 +118,7 @@ def _frequency_cut_plan_instruction(cut_plan: Dict[str, Any]) -> str:
 MINIMAX_H3_CRAFT_ACTING = (
     "PERFORMANCE CRAFT — MANDATORY: Give every visible face its own concrete expression in every shot, "
     "written as what the brows, eyes, smile, head and shoulders do, for example eyes narrowing, brows lifting, a slow smile spreading or the head turning away. "
+    "Include each readable supporting face by subject label in every shot where it is visible, even behind the lead. Give each a distinct scene-motivated reaction that develops during the shot; do not give everyone the same raised brows and smile or reduce them to 'the others watch'. Carry expressions and eyelines naturally across cuts. Describe only faces readable in the existing framing, without adding cast or camera coverage. "
     "Take each emotion from this scene's lyric meaning, story beat and song energy rather than a stock mood, choose two specific emotions wherever an emotion header is written, "
     "and let the expression change at least once in a longer shot. Scale every expression to the {style} video style and the scene's energy: "
     "stylized, animated or high-energy scenes use big, exaggerated expressions; realistic or quiet scenes use small, precise ones. "
@@ -126,7 +127,7 @@ MINIMAX_H3_CRAFT_ACTING = (
 )
 MINIMAX_H3_CRAFT_SILENT = (
     "SILENT PEOPLE: Name every visible person who is not singing or speaking at that moment and state that their lips stay pressed together, "
-    "with their own expression, for example '<Subject 2> watches with her lips pressed together and her brows lifted.'"
+    "while their eyes, brows, cheeks and closed-mouth expressions remain active. Silence restricts vocals, not facial acting. For example '<Subject 2> remains silent, her brows pinching before one brow arches toward the singer.' Give each visible supporting person a different reaction suited to the scene and requested facial intensity, without adding speech, singing or audible laughter."
 )
 MINIMAX_H3_CRAFT_FRAMING = (
     "FACES WHILE SINGING OR SPEAKING: Unless a per-shot framing above says otherwise, frame a person who is singing or speaking "
@@ -444,7 +445,9 @@ def opening_wrapper(style: str, continuous: bool = False, guidance: str = "") ->
     """The opening of detailed_description: the style name and its look, then the continuity sentence."""
     continuity = f" {CONTINUOUS_CUTS_OPENING}" if continuous else ""
     look = f": {guidance.strip()}" if guidance and guidance.strip() else "."
-    return f"detailed_description:\nThe target video is in a {style or 'photorealistic cinematic'} music-video style{look}{continuity}\n\n"
+    style_name = re.sub(r"\bmusic[ -]video(?:\s+music[ -]video)+$", "music-video",
+                        f"{str(style or 'photorealistic cinematic').strip()} music-video", flags=re.I)
+    return f"detailed_description:\nThe target video is in a {style_name} style{look}{continuity}\n\n"
 
 
 def _clean_sentence_start(text: str) -> str:

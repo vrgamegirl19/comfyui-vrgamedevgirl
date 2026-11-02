@@ -296,10 +296,11 @@ export function createProjectSetup({
     const projectVideoEngineSelect = makeSelect([
       { value: "ltx", label: "LTX (current Builder)" },
       { value: "minimax_h3", label: "MiniMax H3" },
+      { value: "api_nodes", label: "API Nodes" },
     ], normalizeProjectVideoEngine(state.projectVideoEngine));
     settingsModalControls.projectVideoEngineSelect = projectVideoEngineSelect;
     const projectVideoEngineNote = document.createElement("div");
-    projectVideoEngineNote.textContent = "This choice belongs to the whole project. LTX projects keep the existing scene renderer unchanged. MiniMax H3 projects use the separate MiniMax scene action and exact-timeline adapter.";
+    projectVideoEngineNote.textContent = "Choose LTX or MiniMax H3 for local generation, or API Nodes for remote video generation using your ComfyUI account and credits.";
     projectVideoEngineNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
     const projectVideoEnginePanel = makeSettingsSection("Project Video Engine", [
       makeField("Video engine for this project", projectVideoEngineSelect),
@@ -616,7 +617,7 @@ export function createProjectSetup({
       state.projectVideoEngine = normalizeProjectVideoEngine(projectVideoEngineSelect.value);
       syncProjectVideoEngineUI();
       await autoSaveSessionQuiet("project video engine");
-      toast(state.projectVideoEngine === "minimax_h3"
+      toast(state.projectVideoEngine === "api_nodes" ? "This project now uses API Nodes. Select Seedance 2.5 Reference to Video in the Video panel." : state.projectVideoEngine === "minimax_h3"
         ? "This project now uses the separate MiniMax H3 scene renderer."
         : "This project now uses the existing LTX scene renderer.");
     });

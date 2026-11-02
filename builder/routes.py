@@ -31,6 +31,7 @@ from .elevenlabs import list_voices
 from .elevenlabs_voice_design import create_designed_voice, design_voice
 from ..llm.voice_design import generate_voice_description
 from ..llm.scene_dialogue import craft_dialogue
+from ..llm.seedance_conversion import backup_seedance_prompts, convert_seedance_prompt
 from .elevenlabs_speech import dialogue_speaker, generate_speech, validate_dialogue
 from .scene_audio_settings import require_speaking
 from .audio import _convert_audio_to_wav, _create_silent_audio, _default_audio_srt_paths, _estimate_beats_from_audio, _find_latest_capcut_beats, _load_srt_segments, _prepare_scene_audio_mix, _read_audio_peaks, _save_project_audio, _save_project_srt, _save_scene_audio, _save_single_scene_srt, _trim_scene_audio
@@ -1217,6 +1218,22 @@ def _ensure_music_builder_routes():
             result = await asyncio.to_thread(_enhance_minimax_h3_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/backup_seedance_prompts")
+    async def vrgdg_music_builder_backup_seedance_prompts(request):
+        try:
+            result = await asyncio.to_thread(backup_seedance_prompts, await request.json())
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/convert_seedance_prompt")
+    async def vrgdg_music_builder_convert_seedance_prompt(request):
+        try:
+            result = await asyncio.to_thread(convert_seedance_prompt, await request.json())
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
 
     @server_instance.routes.post("/vrgdg/music_builder/edit_image_prompt")

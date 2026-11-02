@@ -156,6 +156,8 @@ import { loadTransitionCapabilities } from "./transition_library.mjs";
 import { createTransitionPreview } from "./transition_preview.mjs";
 import { loadLookCapabilities } from "./look_library.mjs";
 import { createLookPreview } from "./look_preview.mjs";
+import { createApiVideoPanel } from "./api_video.mjs";
+import { createSeedanceConversion, seedanceImageAssignments } from "./seedance_conversion.mjs";
 import { createBatchRender } from "./batch_render.mjs";
 import { createModelPickers } from "./model_pickers.mjs";
 import { createStoryBuilder } from "./story_builder.mjs";
@@ -1311,6 +1313,7 @@ export function openBuilder(node, options = {}) {
     showFilmGrainPreviewImage, showLutPreviewImage, syncInspector, syncPreview, syncPreviewPlayback,
     updateAudioScrubbers, updateSelectedMediaTools, waitForPreviewVideoReady,
   } = createSelectionPreview({
+    syncApiVideoPanel: () => apiVideoPanel.sync(),
     miniMaxH3ModeForSegment: (...args) => miniMaxH3ModeForSegment(...args),
     audioInput, audioSummary, cancelPreviewPlayStart, clearSceneEndFrameButton, clearSegmentAdjustPreview,
     clearSegmentFilmGrainPreview, clearSegmentLutPreview, createFluxPromptButton, createI2VButton,
@@ -1977,6 +1980,7 @@ export function openBuilder(node, options = {}) {
     validateRenderAllReady, validateSceneReadyForVideo, validateSrtTimingForSceneVideo,
     validateZImageAllReady,
   } = createSceneRenderPrep({
+    apiVideoReferences: segment => apiVideoPanel.references(segment),
     activeProjectFolderForSave, audioInput, autoSaveSessionQuiet, currentVideoMode,
     finalizeVideoPromptForSegment, firstLastFrameEndImageSource, firstLastFrameResolvedEndImageSource,
     firstLastFrameStartImageSource, flfChainingEnabled, flfRenderChainStartSource, gemmaRunnerLine,
@@ -2289,6 +2293,7 @@ export function openBuilder(node, options = {}) {
   });
 
   const { openPromptOptionsModal, runConceptPromptCreator, runMotionNoteCreator } = createPromptCreators({
+    convertAllToSeedancePrompts: () => convertAllToSeedancePrompts(),
     activeSegment, autoSaveSessionQuiet, clearFinalPromptList, countPromptFindReplaceMatches,
     createProgressWindow, currentVideoMode, editFinalPromptList, ernieNotesInput,
     fluxReferenceContextForSegment, i2vNotesInput, krea2TwoPassNotesInput, nbNotes, notesInput, pushHistory,
@@ -2331,12 +2336,69 @@ export function openBuilder(node, options = {}) {
     syncSegmentT2IPrompt: (...args) => syncSegmentT2IPrompt(...args),
   });
 
+  const apiVideoPanel = createApiVideoPanel({
+    activeSegment, state, allEditableSegments,
+    getMappedImages: (segment) => {
+      if (!segment) return [];
+      const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+      const subjects = segment.no_character_present ? [] : referenceBuilderSubjectItemsForSegment(refs, segment)
+        .map(item => ({ ...item.image, label: item.name || item.description || "Character" }));
+      const locationId = sceneReferenceMapValue(refs.scene_map, segment);
+      const location = refs.locations.find(item => item.id === locationId);
+      if (location?.image && refs.use_location_references) subjects.push({ ...location.image, label: location.name || "Location" });
+      return subjects;
+    },
+    autoSave: (...args) => autoSaveSessionQuiet(...args),
+    onRender: () => createSceneVideo(),
+    onConvertScene: () => convertSceneToSeedancePrompt(),
+  });
+  miniMaxEnginePanel.parentElement.append(apiVideoPanel.panel);
+  createSceneVideoButtons.push(apiVideoPanel.renderButton);
+
+  const { convertAllToSeedancePrompts, convertSceneToSeedancePrompt } = createSeedanceConversion({
+    state, activeSegment, allEditableSegments, activeProjectFolderForSave, updateActiveFromInputs,
+    saveApiPanel: () => {
+      if (state.projectVideoEngine === "api_nodes") apiVideoPanel.save();
+      else if (state.projectVideoEngine === "minimax_h3") saveMiniMaxSceneInputsFromPanel();
+    },
+    getSourceReferences: (segment, source) => {
+      let items, videoPaths, audioPaths;
+      if (source.key === "minimax_h3_prompt") {
+        items = miniMaxEnhanceReferenceImages(segment);
+        videoPaths = (segment.minimax_h3_video_references || []).map(item => item.path).filter(Boolean);
+        audioPaths = [];
+      } else {
+        const refs = apiVideoPanel.references(segment);
+        items = refs.reference_images.map((image, index) => ({ image, label: `<Subject ${index + 1}>` }));
+        if (source.key === "i2v_prompt" && !["rtv", "t2v"].includes(state.videoModelMode)) {
+          const image = segmentImageSource(segment);
+          if (image?.path || image?.data) items.unshift({ image, label: "Scene image" });
+        }
+        videoPaths = refs.reference_videos;
+        audioPaths = refs.reference_audios;
+      }
+      const assignments = seedanceImageAssignments(items);
+      if (!assignments.images.length && !videoPaths.length && !audioPaths.length) throw new Error(`${segment.label || "Scene"}: assign at least one reference before converting to Seedance Reference to Video.`);
+      const originalSoundtrack = Boolean(segment.custom_audio_path || currentProjectAudioPath() || audioInput.value);
+      return { image_references: assignments.images, reference_aliases: assignments.aliases,
+        video_paths: videoPaths, audio_paths: audioPaths,
+        original_soundtrack: originalSoundtrack,
+        use_scene_audio: segment.api_video_settings?.audio_mode === "scene_audio"
+          || (!segment.api_video_settings?.audio_mode && originalSoundtrack && !audioPaths.length) };
+    },
+    textGemmaRunnerPayload,
+    getTextModel: () => state.textGemmaRunner === "qwen_local" ? state.qwenModelFile
+      : (miniMaxTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || state.gemmaModelFile || ""),
+    createProgressWindow, pushHistory, saveSession, syncInspector, render,
+  });
+
   const {
     activeErnieImageSettings, activeFluxKleinSettings, activeI2VVideoSettings, activeKrea2TwoPassSettings,
     activeNBImageSettings, activeZImageSettings, clearTriggerPhrasesForFreshProject,
     cloneFlowGptBrowserSettingsForLoadedProject, loadGlobalModelDefaultsQuiet, setVideoVisionReferenceEnabled,
     syncProjectVideoEngineUI, videoVisionReferenceEnabled,
   } = createModelSettings({
+    apiVideoPanel,
     activeSegment, currentVideoMode, ensureAllSegmentRuntimeFields, ernieImageTriggerInput,
     fluxImageTriggerInput, imageTriggerInput, krea2TwoPassImageTriggerInput, ltxVideoPanel,
     miniMaxEnginePanel, projectVideoEngineBadge, segmentImageSource, settingsModalControls, state,
@@ -2414,6 +2476,7 @@ export function openBuilder(node, options = {}) {
     renderImageSlideshowPreview, renderMiniMaxSceneVideoWithProgress, renderSceneVideoWithProgress,
     runGemmaThenCreateSceneVideo, stitchRenderedScenes,
   } = createVideoRender({
+    apiVideoPanel,
     activeSegment, activeVideoOutputFolder, advancedTwoPassControls, applyMappedTriggerPhrases,
     applySceneAdjustToRenderedVideo, applySceneFilmGrainToRenderedVideo, applySceneLutToRenderedVideo,
     applyVocalDirectiveToVideoPrompt, assertValidMiniMaxH3FinalPrompt, audioInput,

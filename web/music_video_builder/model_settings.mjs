@@ -669,6 +669,7 @@ export function cloneI2VVideoSettings(settings) {
 }
 
 export function createModelSettings({
+  apiVideoPanel,
   activeSegment, currentVideoMode, ensureAllSegmentRuntimeFields, ernieImageTriggerInput,
   fluxImageTriggerInput, imageTriggerInput, krea2TwoPassImageTriggerInput, ltxVideoPanel, miniMaxEnginePanel,
   projectVideoEngineBadge, segmentImageSource, settingsModalControls, state, syncErnieImagePanel,
@@ -899,22 +900,24 @@ export function createModelSettings({
       state.activeId = state.segments[0]?.id || state.overlaySegments[0]?.id || "";
     }
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
-    if (settingsModalControls.projectVideoEngineSelect) settingsModalControls.projectVideoEngineSelect.value = miniMaxProject ? "minimax_h3" : "ltx";
-    projectVideoEngineBadge.dataset.engine = miniMaxProject ? "minimax_h3" : "ltx";
-    projectVideoEngineBadge.textContent = miniMaxProject ? "◈ MiniMax" : "◈ LTX";
+    const apiProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "api_nodes";
+    if (settingsModalControls.projectVideoEngineSelect) settingsModalControls.projectVideoEngineSelect.value = normalizeProjectVideoEngine(state.projectVideoEngine);
+    projectVideoEngineBadge.dataset.engine = normalizeProjectVideoEngine(state.projectVideoEngine);
+    projectVideoEngineBadge.textContent = apiProject ? "◈ API Nodes" : miniMaxProject ? "◈ MiniMax" : "◈ LTX";
     if (miniMaxProject && String(state.miniMaxH3Settings?.pipeline || "") === "refmod") projectVideoEngineBadge.textContent = "◈ MiniMax · RefMod";
-    projectVideoEngineBadge.title = miniMaxProject
+    projectVideoEngineBadge.title = apiProject ? "Switch project video engine: API Nodes (Seedance 2.5)" : miniMaxProject
       ? "Switch project video engine: MiniMax H3"
       : "Switch project video engine: LTX";
-    projectVideoEngineBadge.setAttribute("aria-label", miniMaxProject
-      ? "Switch project video engine from MiniMax H3 to LTX"
+    projectVideoEngineBadge.setAttribute("aria-label", apiProject ? "Switch project video engine from API Nodes to LTX" : miniMaxProject
+      ? "Switch project video engine from MiniMax H3 to API Nodes"
       : "Switch project video engine from LTX to MiniMax H3");
     projectVideoEngineBadge.style.background = miniMaxProject ? "#083344" : "#172554";
     projectVideoEngineBadge.style.borderColor = miniMaxProject ? "#22d3ee" : "#60a5fa";
     projectVideoEngineBadge.style.color = miniMaxProject ? "#a5f3fc" : "#bfdbfe";
-    ltxVideoPanel.style.display = miniMaxProject ? "none" : "flex";
+    ltxVideoPanel.style.display = miniMaxProject || apiProject ? "none" : "flex";
     miniMaxEnginePanel.style.display = miniMaxProject ? "flex" : "none";
     syncMiniMaxH3Panel();
+    apiVideoPanel?.sync();
   }
 
   return {

@@ -337,6 +337,7 @@ export function createSceneOutput({
   }
 
   function videoModeDisplayLabel(mode = currentVideoMode(), compact = false) {
+    if (mode === "api_reference_to_video") return compact ? "Seedance RTV" : "Seedance 2.5 Reference to Video";
     if (mode === "import") return compact ? "Import" : "Import Custom Video";
     if (mode === "id_lora") return compact ? "ID-LoRA" : "ID-LoRA I2V";
     if (mode === "ingredients") return compact ? "Ingredients" : "Ingredients to Video";

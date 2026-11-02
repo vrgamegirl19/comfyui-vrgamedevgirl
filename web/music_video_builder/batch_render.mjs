@@ -98,7 +98,7 @@ export function createBatchRender({
       mode_label: modeLabel,
       scene_scope: sceneScope,
       project_folder: String(state.projectFolder || projectInput.value || ""),
-      video_engine: miniMaxProject ? "minimax_h3" : "ltx",
+      video_engine: normalizeProjectVideoEngine(state.projectVideoEngine),
       video_mode: miniMaxProject ? state.miniMaxH3Settings.video_mode : currentVideoMode(),
       force_videos: forceVideos,
       render_phase: renderPhase,
@@ -138,7 +138,7 @@ export function createBatchRender({
       const ltx25RtvBatch = !miniMaxProject
         && currentVideoMode() === "rtv"
         && (state.i2vVideoSettings?.ltx_version || "2.5") === "2.5";
-      const preparedAudio = miniMaxProject || skipFinalStitch
+      const preparedAudio = miniMaxProject || state.projectVideoEngine === "api_nodes" || skipFinalStitch
         ? { audioPath: "", srtPath: "" }
         : await prepareSceneAudioMix(progress, "Preparing combined scene-audio track for LTX", { rtvLtx25: ltx25RtvBatch });
       const scenes = batchTargetItems(sceneScope)
@@ -1855,6 +1855,13 @@ export function createBatchRender({
   }
 
   async function buildFullVideoPipeline(options = {}) {
+    if (state.projectVideoEngine === "api_nodes") {
+      if (options.runOnServer) {
+        toast("API Nodes currently render through this Builder tab using your ComfyUI login. Use Render All and keep the tab open.", true);
+        return;
+      }
+      return renderAllScenes({ ...options, forceVideos: ["fresh_rebuild", "redo_i2v_prompts_videos", "redo_videos"].includes(options.buildMode) || options.forceVideos });
+    }
     if (options.runOnServer) return buildFullVideoOnServer(options);
     let buildMode = options.buildMode || "resume_missing";
     const maxAutoRetries = Math.max(0, Math.min(5, Number(options.maxAutoRetries ?? 3)));
