@@ -1,0 +1,76 @@
+{
+  "id": "16c6d8eb-941e-4c90-b613-9f91d70dc4ac",
+  "revision": 0,
+  "last_node_id": 2,
+  "last_link_id": 0,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "VRGDG_YuE2Installer",
+      "pos": [220, 180],
+      "size": [470, 630],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "yue2_config", "type": "VRGDG_YUE2_CONFIG", "links": null},
+        {"name": "sheetsage2_config", "type": "VRGDG_SHEETSAGE2_CONFIG", "links": null},
+        {"name": "status", "type": "STRING", "links": null},
+        {"name": "report_path", "type": "STRING", "links": null}
+      ],
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "Node name for S&R": "VRGDG_YuE2Installer"
+      },
+      "title": "Install YuE2 + Cover Tools + Models",
+      "widgets_values": ["", "isolated_process", "", "", "", "", "cuda", 24, "torch", "none", false, true, true, false, "", "", "", "cuda"],
+      "widgets_values_named": {
+        "target_root": "",
+        "runtime_mode": "isolated_process",
+        "yue2_python": "",
+        "model": "",
+        "vae": "",
+        "cache_dir": "",
+        "device": "cuda",
+        "memory_budget_gib": 24,
+        "backend": "torch",
+        "quantization": "none",
+        "offload_ar": false,
+        "local_files_only": true,
+        "unload_comfy_models": true,
+        "verify_hashes": false,
+        "sheetsage2_python": "",
+        "sheetsage2_model": "",
+        "mert_model": "",
+        "sheetsage2_device": "cuda"
+      },
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 2,
+      "type": "MarkdownNote",
+      "pos": [760, 120],
+      "size": [720, 670],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "START HERE — Installation and Verification",
+      "properties": {"Node name for S&R": "MarkdownNote"},
+      "widgets_values": ["<h1>YuE2 Setup</h1>\n<p>This optional workflow is a clean first-time installer and troubleshooting page. The Starter and Cover workflows contain the same combined installer/settings node, so you do not have to return here after setup.</p>\n<h2>Install</h2>\n<ol><li>Set <strong>target_root</strong> to a dedicated folder outside ComfyUI, for example <code>E:\\Yue2</code>.</li><li>Click <strong>Install Generation + Models</strong> for text-to-song only.</li><li>Click <strong>Install Cover Tools + Models</strong> to add SheetSage2 source-song transcription.</li><li>Or click <strong>Install Everything</strong> for both environments and all required models.</li><li>Wait for the completion dialog. Large model downloads can take time.</li></ol>\n<h2>Verify</h2>\n<p>Click <strong>Verify Existing Installation</strong> to check environments, CUDA support, dependencies, and model files without changing the installation. The report path appears in the completion dialog and ComfyUI console.</p>\n<h2>Important</h2>\n<ul><li>The YuE2 and SheetSage2 Python environments are intentionally separate because their dependency versions differ.</li><li>Installation happens only when an install button is clicked. Merely queueing this node is passive.</li><li>Keep <strong>runtime_mode = isolated_process</strong> and <strong>backend = torch</strong> for the recommended fast, conflict-resistant setup.</li><li>After installation, use the same <strong>target_root</strong> in the Starter and Cover workflows.</li></ul>\n<p><strong>Tip:</strong> Hover over every setting and installer button for details.</p>"],
+      "widgets_values_named": {"text": "<h1>YuE2 Setup</h1>\n<p>This optional workflow is a clean first-time installer and troubleshooting page. The Starter and Cover workflows contain the same combined installer/settings node, so you do not have to return here after setup.</p>\n<h2>Install</h2>\n<ol><li>Set <strong>target_root</strong> to a dedicated folder outside ComfyUI, for example <code>E:\\Yue2</code>.</li><li>Click <strong>Install Generation + Models</strong> for text-to-song only.</li><li>Click <strong>Install Cover Tools + Models</strong> to add SheetSage2 source-song transcription.</li><li>Or click <strong>Install Everything</strong> for both environments and all required models.</li><li>Wait for the completion dialog. Large model downloads can take time.</li></ol>\n<h2>Verify</h2>\n<p>Click <strong>Verify Existing Installation</strong> to check environments, CUDA support, dependencies, and model files without changing the installation. The report path appears in the completion dialog and ComfyUI console.</p>\n<h2>Important</h2>\n<ul><li>The YuE2 and SheetSage2 Python environments are intentionally separate because their dependency versions differ.</li><li>Installation happens only when an install button is clicked. Merely queueing this node is passive.</li><li>Keep <strong>runtime_mode = isolated_process</strong> and <strong>backend = torch</strong> for the recommended fast, conflict-resistant setup.</li><li>After installation, use the same <strong>target_root</strong> in the Starter and Cover workflows.</li></ul>\n<p><strong>Tip:</strong> Hover over every setting and installer button for details.</p>"},
+      "color": "#23445a",
+      "bgcolor": "#315f7d"
+    }
+  ],
+  "links": [],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {"scale": 1, "offset": [0, 0]}
+  },
+  "version": 0.4
+}
