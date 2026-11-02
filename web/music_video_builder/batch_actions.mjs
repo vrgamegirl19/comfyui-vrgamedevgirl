@@ -645,6 +645,10 @@ export function createBatchActions({
   }
 
   async function confirmAndRunGemmaVideoAll() {
+    if (state.projectVideoEngine === "api_nodes") {
+      toast("Enter the Seedance prompt in each scene's API Nodes panel. Automatic Seedance prompt generation is not included yet.", true);
+      return;
+    }
     const videoMode = currentVideoMode();
     const videoLabel = videoModeDisplayLabel(videoMode, true);
     const runnerName = promptRunnerActionName();
@@ -722,7 +726,9 @@ export function createBatchActions({
       title: "Run Render All?",
       intro: [
         "Render All only works on the video/render stage.",
-        miniMaxProject
+        state.projectVideoEngine === "api_nodes"
+          ? "It uses each scene's saved Seedance prompt, references, resolution, and audio settings. Generation uses your ComfyUI credits."
+          : miniMaxProject
           ? "It uses each scene's existing MiniMax prompt and effective project-global or locked MiniMax mode, models, and video settings."
           : videoMode === "t2v"
           ? "It uses existing T2V prompts and does not require scene images."
@@ -768,6 +774,7 @@ export function createBatchActions({
   }
 
   async function confirmAndRunFullBuild() {
+    if (state.projectVideoEngine === "api_nodes") return confirmAndRunRenderAll();
     const videoMode = currentVideoMode();
     const t2vMode = videoMode === "t2v";
     const rtvMode = videoMode === "rtv";

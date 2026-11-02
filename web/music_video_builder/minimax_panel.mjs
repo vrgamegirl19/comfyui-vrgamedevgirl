@@ -114,12 +114,11 @@ export function createMiniMaxPanel({
   }
 
   async function toggleProjectVideoEngineFromBadge() {
-    state.projectVideoEngine = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3"
-      ? "ltx"
-      : "minimax_h3";
+    const engines = ["ltx", "minimax_h3", "api_nodes"];
+    state.projectVideoEngine = engines[(engines.indexOf(normalizeProjectVideoEngine(state.projectVideoEngine)) + 1) % engines.length];
     syncProjectVideoEngineUI();
     await autoSaveSessionQuiet("project video engine badge toggle");
-    toast(state.projectVideoEngine === "minimax_h3"
+    toast(state.projectVideoEngine === "api_nodes" ? "Switched this project to API Nodes: Seedance 2.5 Reference to Video." : state.projectVideoEngine === "minimax_h3"
       ? "Switched this project to MiniMax H3."
       : "Switched this project to LTX.");
   }

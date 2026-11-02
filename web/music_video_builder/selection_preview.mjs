@@ -146,6 +146,7 @@ export function openFirstLastFrameImagePreview(image = {}, label = "First Last F
 }
 
 export function createSelectionPreview({
+  syncApiVideoPanel,
   activeSegment, allEditableSegments, audioInput, audioSummary, cancelPreviewPlayStart,
   clearSceneEndFrameButton, clearSegmentAdjustPreview, clearSegmentFilmGrainPreview, clearSegmentLutPreview,
   createFluxPromptButton, createI2VButton, createNBPromptButton, createSceneEndFrameButton,
@@ -1137,6 +1138,7 @@ export function createSelectionPreview({
     syncZEnhanceSettingsPanel();
     syncVideoModePanel();
     syncMiniMaxH3Panel();
+    syncApiVideoPanel?.();
     syncPreview(segment);
     updateAudioScrubbers();
   }

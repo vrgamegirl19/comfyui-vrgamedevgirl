@@ -17,7 +17,7 @@ Carry each person's expression and eyeline naturally across camera cuts along wi
 # only the shared response shape and the one active generation task.
 # ============================================================================
 
-MINIMAX_H3_PROMPT_DIRECTOR_CORE = """Write the creative shot descriptions for the active MiniMax H3 scene.
+MINIMAX_H3_PROMPT_DIRECTOR_CORE = MINIMAX_H3_SUPPORTING_FACE_DIRECTION + "\n" + """Write the creative shot descriptions for the active MiniMax H3 scene.
 
 The Scene concept already contains the Builder's resolved mode, performance, audio, timing, reference, and continuity rules. Follow only those active rules; do not invent alternate mode behavior.
 
@@ -37,7 +37,7 @@ MULTI-SHOT CONTINUITY — MANDATORY: When a scene has multiple shots, write them
 
 SHOT FORMAT
 Write each shot like a music video director's shot note in concise complete sentences suited to its available time, in this order:
-1. Camera: the opening framing, one named move (direction and speed), and the ending framing.
+1. Camera: the opening framing, one named move (direction and speed), and the ending framing. Make the move physically connect those views: a cut directly to a face establishes that close-up; hold it or use a motivated move, rather than whip-panning away and claiming to settle on the same face without a return path.
 2. Action: what each person in the cast physically does, by label, as one continuous motion.
 3. Acting detail: each visible face's concrete expression for this moment, taken from the lyric, story beat and song and sized to the video style, as the Scene concept's PERFORMANCE CRAFT rules describe.
 4. Light and set: one line using only the mapped location's own light and objects.

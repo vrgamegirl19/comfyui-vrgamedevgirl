@@ -307,14 +307,16 @@ export function resolveComfyVideoPath(video) {
   return "";
 }
 
-function extractVideosFromHistory(historyPayload, promptId) {
+function extractVideosFromHistory(historyPayload, promptId, outputNodeId = "") {
   const root = historyPayload?.[promptId] || historyPayload;
   const outputs = root?.outputs || {};
   const videos = [];
-  for (const output of Object.values(outputs)) {
-    for (const key of ["gifs", "videos", "animated"]) {
+  for (const output of outputNodeId ? [outputs[outputNodeId]].filter(Boolean) : Object.values(outputs)) {
+    for (const key of ["gifs", "videos", "animated", "images"]) {
       if (Array.isArray(output?.[key])) {
-        for (const video of output[key]) videos.push(video);
+        for (const video of output[key]) {
+          if (video && typeof video === "object" && (key !== "images" || /\.(mp4|webm|mov|mkv|m4v)$/i.test(String(video.filename || "")))) videos.push(video);
+        }
       }
     }
   }
@@ -380,7 +382,7 @@ export async function waitForVideos(promptId, onStatus, shouldCancel, findOutput
       reportProjectError(error, { source: "ComfyUI", stage: "Video Generation", component: "Prompt Execution", details: promptError }, logContext);
       throw error;
     }
-    const videos = extractVideosFromHistory(data, promptId);
+    const videos = extractVideosFromHistory(data, promptId, options.outputNodeId);
     if (videos.length) return videos;
     if (typeof findOutputFallback === "function" && Date.now() - lastFallbackCheck > 10000) {
       lastFallbackCheck = Date.now();
@@ -502,8 +504,43 @@ export async function cancelComfyExecutionAndWaitIdle(onStatus, options = {}) {
   });
 }
 
+// ComfyUI sets api.authToken/api.apiKey only while its own Queue runs, so read
+// the signed-in account from the frontend's auth stores, as that Queue does.
+async function comfyOrgCredentials() {
+  let authToken = api.authToken;
+  let apiKey = api.apiKey;
+  let stores = null;
+  try {
+    stores = globalThis.document?.getElementById?.("vue-app")?.__vue_app__?.config?.globalProperties?.$pinia?._s || null;
+  } catch {}
+  if (!authToken && stores) {
+    const auth = stores.get("auth") || stores.get("firebaseAuth");
+    const getToken = auth?.getWorkspaceAuthToken || auth?.getAuthToken || auth?.getIdToken;
+    try {
+      authToken = getToken ? await getToken() : undefined;
+    } catch (error) {
+      console.warn("[VRGDG Music Builder] Could not read the ComfyUI sign-in token:", error);
+    }
+  }
+  if (!apiKey) {
+    try {
+      apiKey = stores?.get("apiKeyAuth")?.getApiKey?.() || globalThis.localStorage?.getItem("comfy_api_key") || undefined;
+    } catch {}
+  }
+  return { authToken: authToken || undefined, apiKey: apiKey || undefined };
+}
+
 export async function queueWorkflowPrompt(prompt, options = {}) {
   const logContext = errorLogContext();
+  const credentials = options.partnerApi ? await comfyOrgCredentials() : null;
+  const extraData = options.partnerApi ? {
+    auth_token_comfy_org: credentials.authToken,
+    api_key_comfy_org: credentials.apiKey,
+    comfy_usage_source: "vrgdg-video-builder",
+  } : undefined;
+  if (options.partnerApi && !extraData.auth_token_comfy_org && !extraData.api_key_comfy_org) {
+    throw new Error("Sign into your ComfyUI account or configure a ComfyUI API key in Settings before rendering Seedance. Your account needs credits.");
+  }
   await waitForComfyQueueIdle(options.onStatus, {
     timeoutMs: options.idleTimeoutMs,
     shouldCancel: options.shouldCancel,
@@ -518,10 +555,11 @@ export async function queueWorkflowPrompt(prompt, options = {}) {
     }
   }
   const clientId = api.clientId || app?.clientId || crypto.randomUUID();
+  if (options.shouldCancel?.()) throw new Error("Stopped by user.");
   const response = await api.fetchApi("/prompt", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt: queuedPrompt, client_id: clientId }),
+    body: JSON.stringify({ prompt: queuedPrompt, client_id: clientId, ...(extraData ? { extra_data: extraData } : {}) }),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data?.error) {

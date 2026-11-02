@@ -6,6 +6,7 @@ import { isInstrumentalLyricText, syncConceptPromptToStoryBeat } from "./prompt_
 import { normalizeTimelineMarkers } from "./timeline_state.mjs";
 
 export function createPromptCreators({
+  convertAllToSeedancePrompts,
   activeSegment, autoSaveSessionQuiet, clearFinalPromptList, countPromptFindReplaceMatches,
   createProgressWindow, currentVideoMode, editFinalPromptList, ernieNotesInput,
   fluxReferenceContextForSegment, i2vNotesInput, krea2TwoPassNotesInput, nbNotes, notesInput, pushHistory,
@@ -379,6 +380,7 @@ export function createPromptCreators({
   }
 
   function openPromptOptionsModal() {
+    const apiProject = state.projectVideoEngine === "api_nodes";
     const miniMax = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
     const miniMaxMode = normalizeMiniMaxH3Pipeline(state.miniMaxH3Settings?.pipeline) === "refmod"
       ? "reference_to_video" : normalizeMiniMaxH3Mode(state.miniMaxH3Settings?.video_mode);
@@ -434,6 +436,9 @@ export function createPromptCreators({
     enhanceMiniMax.title = "Choose enhancement with or without reference images for every scene. With images adds brief character and location descriptions. Lyrics, cue times and labels stay as they are.";
     const editEnhanceInstructions = makeButton("Edit Enhance Instructions (without images)");
     const editEnhanceReferenceInstructions = makeButton("Edit Enhance Instructions (with images)");
+    const convertSeedance = makeButton("Convert All to Seedance Prompts", "primary");
+    convertSeedance.title = "Back up current video prompts, then convert only their format using the selected text LLM. Preserve all scene content, lyrics, cue times and shot order. Originals stay saved.";
+    const editSeedanceConversionInstructions = makeButton("Edit Seedance Conversion Instructions");
     const promptValidationGroup = document.createElement("div");
     promptValidationGroup.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;display:flex;flex-direction:column;gap:7px;";
     const promptValidationHeading = document.createElement("div");
@@ -466,9 +471,14 @@ export function createPromptCreators({
       void autoSaveSessionQuiet("Video prompt lyric option changed");
     });
     videoGroup.append(videoHeading);
+    videoGroup.append(convertSeedance, editSeedanceConversionInstructions);
     if (miniMax) {
       if (showStructuredOutputs) videoGroup.append(structuredOutputs.wrapper, structuredOutputsNote);
       videoGroup.append(omitLyrics.wrapper, omitLyricsNote, editMiniMax, reloadMiniMax, enhanceMiniMax, editEnhanceInstructions, editEnhanceReferenceInstructions);
+    } else if (apiProject) {
+      const seedanceNote = document.createElement("div");
+      seedanceNote.textContent = "Convert the current prompts here, then review and edit each Seedance prompt in the scene's API Nodes panel. Conversion preserves all source content and does not render videos or switch engines.";
+      videoGroup.append(seedanceNote);
     } else {
       const videoLabel = ({ i2v: "Image to Video", t2v: "Text to Video", rtv: "Reference to Video", flf: "First / Last Frame", ingredients: "Ingredients to Video", id_lora: "ID LoRA" })[videoMode] || "Video";
       editI2V.textContent = `Edit ${videoLabel} Prompts`;
@@ -515,7 +525,7 @@ export function createPromptCreators({
     box.append(header, note, transcribeLyrics);
     if (showImage || showVideo) box.append(grid);
     if (miniMax) box.append(promptValidationGroup);
-    if (showImage || showVideo) box.append(replaceGroup);
+    if ((showImage || showVideo) && !apiProject) box.append(replaceGroup);
     backdrop.append(box);
     document.body.append(backdrop);
     const run = (action) => {
@@ -551,6 +561,8 @@ export function createPromptCreators({
     enhanceMiniMax.onclick = () => run(() => enhanceAllMiniMaxH3Prompts());
     editEnhanceInstructions.onclick = () => run(() => openBuilderInstructionEditor("minimax_h3_prompt_enhance"));
     editEnhanceReferenceInstructions.onclick = () => run(() => openBuilderInstructionEditor("minimax_h3_prompt_enhance_with_references"));
+    convertSeedance.onclick = () => run(() => convertAllToSeedancePrompts());
+    editSeedanceConversionInstructions.onclick = () => run(() => openBuilderInstructionEditor("seedance25_prompt_conversion"));
     failOnInvalidPromptFormats.input.addEventListener("change", () => {
       state.failOnInvalidPromptFormats = Boolean(failOnInvalidPromptFormats.input.checked);
       void autoSaveSessionQuiet("MiniMax prompt validation setting changed");

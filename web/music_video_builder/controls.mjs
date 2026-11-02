@@ -286,7 +286,8 @@ export function normalizeProjectVideoType(value) {
 }
 
 export function normalizeProjectVideoEngine(value) {
-  return String(value || "").trim().toLowerCase() === "minimax_h3" ? "minimax_h3" : "ltx";
+  const engine = String(value || "").trim().toLowerCase();
+  return ["minimax_h3", "api_nodes"].includes(engine) ? engine : "ltx";
 }
 
 export function makeVideoTypeSelect(value = "singing") {

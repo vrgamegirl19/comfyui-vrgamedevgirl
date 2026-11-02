@@ -1177,6 +1177,7 @@ export function createVideoSettingsPanel({
   }
 
   function currentVideoMode() {
+    if (state.projectVideoEngine === "api_nodes") return "api_reference_to_video";
     if (state.videoModelMode === "import") return "import";
     if (state.videoModelMode === "id_lora") return "id_lora";
     if (state.videoModelMode === "t2v") return "t2v";
@@ -1290,6 +1291,8 @@ export function createVideoSettingsPanel({
   }
 
   function syncVideoModePanel() {
+    // API mode has its own panel; preserve the last local mode when switching engines.
+    if (state.projectVideoEngine === "api_nodes") return;
     const mode = currentVideoMode();
     state.videoModelMode = mode;
     for (const card of [imageToVideoCard, idLoraVideoCard, textToVideoCard, referenceToVideoCard, ingredientsToVideoCard, firstLastFrameVideoCard, importCustomVideoCard]) {

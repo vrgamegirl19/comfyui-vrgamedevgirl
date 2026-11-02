@@ -11,6 +11,7 @@ from ..builder.paths import _context_folder, _project_folder_from_builder_payloa
 from ..core.atomic_write import atomic_write_text
 from .prompts.minimax import MINIMAX_H3_PROMPT_ENHANCE_WITH_REFERENCES_INSTRUCTIONS
 from .prompts.speech import ELEVENLABS_DIALOGUE_INSTRUCTIONS
+from .prompts.seedance import SEEDANCE_CONVERSION_INSTRUCTIONS
 from .prompts.story_mode import (
     STORY_ACTS_TEMPLATE,
     STORY_BOOK_TEMPLATE,
@@ -24,6 +25,7 @@ from .prompts.storyboard import SCENE_BEAT_RULES_TEMPLATE
 
 
 _BUILDER_INSTRUCTION_DEFAULTS = {
+    "seedance25_prompt_conversion": SEEDANCE_CONVERSION_INSTRUCTIONS,
     "elevenlabs_dialogue": ELEVENLABS_DIALOGUE_INSTRUCTIONS,
     "flux_klein_t2i": _FLUX_KLEIN_T2I_INSTRUCTIONS,
     "flow_gpt_t2i": _FLOW_GPT_T2I_INSTRUCTIONS,
@@ -91,6 +93,7 @@ for _minimax_mode, _instructions in MINIMAX_H3_SHORT_FILM_CUSTOM_INSTRUCTIONS_BY
 
 
 _BUILDER_INSTRUCTION_LABELS = {
+    "seedance25_prompt_conversion": "Seedance 2.5 Format-Only Conversion",
     "elevenlabs_dialogue": "ElevenLabs Dialogue",
     "flux_klein_t2i": "Flux/Klein Text to Image",
     "flow_gpt_t2i": "Flow/GPT Text to Image",

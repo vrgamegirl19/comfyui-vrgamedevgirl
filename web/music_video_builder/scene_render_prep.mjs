@@ -1,4 +1,5 @@
 import { speakingAudioEditsActive } from "./audio_clip_editor.mjs";
+import { seedanceSettings, validateApiVideoScene } from "./api_video.mjs";
 import { GEMMA_VIDEO_PROMPT_TIMEOUT_MS, postJson } from "./comfy_api.mjs";
 import { escapeHtml, normalizeProjectVideoEngine, setWidgetValue, toast } from "./controls.mjs";
 import { formatTime } from "./format.mjs";
@@ -63,6 +64,7 @@ export function renderMissingListHtml(missing) {
 }
 
 export function createSceneRenderPrep({
+  apiVideoReferences,
   activeI2VVideoSettings, activeProjectFolderForSave, activeSegment, activeZImageSettings,
   addSceneImageHistoryPath, allEditableSegments, applyIngredientsSheetForSceneIfMapped, audioInput,
   autoSaveSessionQuiet, batchTargetItems, createErnieImageForSegment, createFlowGptImageForSegment,
@@ -89,6 +91,14 @@ export function createSceneRenderPrep({
 }) {
   function validateSceneReadyForVideo(segment, sceneIndex) {
     const name = sceneDisplayName(segment, sceneIndex);
+    if (state.projectVideoEngine === "api_nodes") {
+      const errors = validateApiVideoScene(segment, apiVideoReferences(segment));
+      if (seedanceSettings(segment).audio_mode === "scene_audio" && !speakingAudioEditsActive(state)
+        && !String(segment.custom_audio_path || currentProjectAudioPath() || audioInput.value || "").trim()) {
+        errors.push("Load project audio or add custom scene audio before using Seedance scene-audio mode.");
+      }
+      return errors.map(error => `${name}: ${error}`);
+    }
     const missing = [];
     const mode = currentVideoMode();
     const selectedLtxVersion = activeI2VVideoSettings()?.ltx_version || "2.5";
@@ -1031,6 +1041,11 @@ export function createSceneRenderPrep({
     const scenesToRender = allScenes
       .map((segment) => ({ segment, index: segmentIndexInfo(segment).index }))
       .filter(({ segment }) => options.forceVideos || (miniMaxProject && Boolean(segment.minimax_h3_draft?.id)) || !String(selectedSegmentVideoPath(segment) || "").trim());
+    if (state.projectVideoEngine === "api_nodes") {
+      if (!String(projectInput.value || state.projectFolder || "").trim()) missing.push("Project folder is missing.");
+      scenesToRender.forEach(({ segment, index }) => missing.push(...validateSceneReadyForVideo(segment, index)));
+      return missing;
+    }
     if (miniMaxProject) {
       if (!String(projectInput.value || state.projectFolder || "").trim()) missing.push("Project folder is missing.");
       if (options.renderPhase === "finalize") return missing;
@@ -1098,6 +1113,7 @@ export function createSceneRenderPrep({
   }
 
   async function ensureAudioOrOfferSilentTimeline(options = {}) {
+    if (state.projectVideoEngine === "api_nodes") return true;
     if (speakingAudioEditsActive(state)) return true;
     if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
       const targetScenes = audioFallbackTargetScenes(options);

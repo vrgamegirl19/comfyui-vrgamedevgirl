@@ -510,6 +510,7 @@ export function createTimelineState({
 
   function segmentUsesRenderedTimelineAudio(segment) {
     if (!segment || !String(selectedSegmentVideoPath(segment) || "").trim()) return false;
+    if (state.projectVideoEngine === "api_nodes") return segment.api_video_settings?.audio_mode === "scene_audio" || segment.api_video_settings?.generate_audio !== false;
     if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
       return miniMaxH3SettingsForSegment(segment).audio_mode === "built_in_audio";
     }

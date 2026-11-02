@@ -4,7 +4,7 @@ This package adds practical controls around ComfyUI's built-in MiniMax Music3 no
 
 ## Included workflow
 
-Import `Workflows/MiniMax_Music3_Advanced_Tuning_VRGDG.json` after restarting ComfyUI. The workflow is prefilled with the local Music3 model filenames and includes notes directly on the canvas.
+Import `Workflows/Music/MiniMax_Music3_Advanced_Tuning_VRGDG.json` after restarting ComfyUI. The workflow is prefilled with the local Music3 model filenames and includes notes directly on the canvas.
 
 The optional two-plan blend branch is disabled by default. It will not add a second AR-generation pass unless you explicitly enable and connect it.
 

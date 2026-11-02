@@ -5,6 +5,7 @@ from server import PromptServer
 from ..core.model_paths import load_custom_model_root, register_custom_model_root, save_custom_model_root
 
 from .models import _folder_choices, _lora_choices, _ltx_video_model_choices
+from .api_video_workflows import _build_seedance25_reference_prompt, _prepare_seedance_scene_audio
 from .api_graph import _ensure_placeholder_load_image
 from .image_workflows import _build_ernie_image_api_prompt, _build_flux_klein_api_prompt, _build_krea2_2pass_api_prompt, _build_krea2_api_prompt, _build_moss_image_api_prompt, _build_nb_image_api_prompt, _build_z_upscale_enhance_prompt, _build_zimage_api_prompt
 from .ltx_workflows import _build_flf_api_prompt, _build_i2v_api_prompt, _build_id_lora_api_prompt, _build_ingredients_api_prompt, _build_rtv_api_prompt, _build_t2v_api_prompt
@@ -36,6 +37,23 @@ def _ensure_workflow_runner_routes():
     async def vrgdg_workflow_runner_lora_list(request):
         loras = await asyncio.to_thread(_lora_choices)
         return web.json_response({"ok": True, "loras": loras})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/build_seedance25_reference_prompt")
+    async def vrgdg_workflow_runner_build_seedance25_reference_prompt(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_build_seedance25_reference_prompt, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/prepare_seedance_scene_audio")
+    async def vrgdg_workflow_runner_prepare_seedance_scene_audio(request):
+        try:
+            result = await asyncio.to_thread(_prepare_seedance_scene_audio, await request.json())
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
 
     @server_instance.routes.get("/vrgdg/workflow_runner/i2v_choices")
     async def vrgdg_workflow_runner_i2v_choices(request):

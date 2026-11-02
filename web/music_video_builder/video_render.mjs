@@ -1,4 +1,5 @@
 import { cloneSceneAsOverlay, overlayClipIsEnabled } from "../VRGDG_OverlayTrack.js";
+import { seedanceSceneAudioInput, seedanceSettings, seedanceStitchAudioItems, validateApiVideoScene } from "./api_video.mjs";
 import {
   postJson,
   queueWorkflowPrompt,
@@ -70,6 +71,7 @@ export function showMultiSelectHint() {
 }
 
 export function createVideoRender({
+  apiVideoPanel,
   activeSegment, activeVideoOutputFolder, advancedTwoPassControls, applyMappedTriggerPhrases,
   applySceneAdjustToRenderedVideo, applySceneFilmGrainToRenderedVideo, applySceneLutToRenderedVideo,
   applyVocalDirectiveToVideoPrompt, assertValidMiniMaxH3FinalPrompt, audioInput, audioSourceDurationForScene,
@@ -96,6 +98,7 @@ export function createVideoRender({
   validateSrtTimingForSceneVideo, videoModeDisplayLabel, videoTriggerPhraseForSegment,
 }) {
   async function renderSceneVideoWithProgress(segment, sceneIndex, progress, options = {}) {
+    if (state.projectVideoEngine === "api_nodes") return renderApiSceneVideoWithProgress(segment, sceneIndex, progress, options);
     const editedAudio = await prepareEditedAudio(state, projectInput.value || state.projectFolder, { generation: true });
     const progressBase = Number(options.progressBase ?? 0);
     const progressSpan = Number(options.progressSpan ?? 100);
@@ -424,6 +427,95 @@ export function createVideoRender({
     const backupNote = collected.backup_path ? `\n\nPrevious video backed up to:\n${collected.backup_path}` : "";
     progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, segment.video_folder || collectedSceneVideoFolder(), `${batchLabel}Scene video ready.\n${segment.video_path}${backupNote}`, workflowDetails), pct(100));
     return segment.video_path;
+  }
+
+  async function renderApiSceneVideoWithProgress(segment, sceneIndex, progress, options = {}) {
+    if (segment.id === activeSegment()?.id) apiVideoPanel.save();
+    const references = apiVideoPanel.references(segment);
+    const missing = validateApiVideoScene(segment, references);
+    if (missing.length) throw new Error(missing.join("\n"));
+    const projectFolder = projectInput.value || state.projectFolder;
+    if (!projectFolder) throw new Error("Set the project folder before rendering Seedance.");
+    const pct = value => Math.min(100, Number(options.progressBase || 0) + Number(options.progressSpan ?? 100) * value / 100);
+    const settings = seedanceSettings(segment);
+    const slotNumber = sceneSlotNumber(segment);
+    const shouldCancel = () => state.batchCancelled;
+    const status = message => progress?.set(message, pct(35));
+    segment.video_status = "running";
+    renderList();
+    try {
+      await saveSessionForSceneVideo();
+        let preparedAudio = null;
+        const renderReferences = { ...references };
+        if (settings.audio_mode === "scene_audio") {
+          const edited = await prepareEditedAudio(state, projectFolder, { generation: true });
+          const selection = seedanceSceneAudioInput(segment, currentProjectAudioPath() || audioInput.value, edited);
+          if (!String(selection.source_path || "").trim()) throw new Error("Load project audio or add custom audio in Scene Audio Options before using Seedance scene-audio mode.");
+          progress?.set("Preparing this scene's custom/project audio as Audio 1...", pct(7));
+          preparedAudio = await postJson("/vrgdg/workflow_runner/prepare_seedance_scene_audio", {
+            project_folder: projectFolder, ...selection,
+          }, 120000);
+          if (!preparedAudio.audio_path) throw new Error("The scene audio excerpt was not created. Nothing was sent to Seedance.");
+          renderReferences.reference_audios = [preparedAudio.audio_path];
+        }
+      progress?.set("Preparing Seedance 2.5 references...", pct(10));
+      const built = await postJson("/vrgdg/workflow_runner/build_seedance25_reference_prompt", {
+          prompt: segment.api_video_prompt, ...settings, ...renderReferences,
+          no_lip_sync: Boolean(segment.no_character_present || segmentUsesNoLipSyncPerformance(segment)),
+        duration: timelineSegmentDuration(segment), seed: Math.floor(Math.random() * 2147483647),
+      });
+      const queued = await queueWorkflowPrompt(built.prompt, { partnerApi: true, shouldCancel, onStatus: status });
+      if (!queued?.prompt_id) throw new Error("ComfyUI did not return a Seedance prompt ID.");
+      segment.api_video_prompt_id = queued.prompt_id;
+      await autoSaveSessionQuiet("Seedance render queued");
+      const videos = await waitForVideos(queued.prompt_id, status, shouldCancel, null, {
+        timeoutHours: state.sceneRenderWaitHours, outputNodeId: "save_video",
+        timeoutMessage: `Seedance render timed out. Check ComfyUI history for prompt ${queued.prompt_id} before rendering again.`,
+      });
+      const video = videos[videos.length - 1];
+      const params = video?.params || video || {};
+      const sourcePath = resolveComfyVideoPath(video) || (params.filename
+        ? `${built.output_root}/${params.subfolder || ""}/${params.filename}` : "");
+      if (!sourcePath) throw new Error("Seedance completed without a saved video.");
+      if (shouldCancel()) throw new Error("Stopped by user.");
+      progress?.set("Fitting Seedance video to the scene timeline...", pct(80));
+      const trimmed = await postJson("/vrgdg/workflow_runner/trim_scene_video", {
+        source_path: sourcePath, project_folder: projectFolder, scene_number: slotNumber,
+        start: 0, duration: timelineSegmentDuration(segment), label: "seedance", mark_as_audio_video: true,
+          ...(preparedAudio ? { restore_audio_path: preparedAudio.audio_path, restore_audio_start_seconds: 0 } : {}),
+      }, 180000);
+      const collected = await postJson("/vrgdg/workflow_runner/collect_scene_video", {
+        source_path: trimmed.video_path, project_folder: projectFolder, scene_number: slotNumber,
+        existing_action: options.existingVideoAction || "overwrite",
+      }, 120000);
+      pushHistory();
+      let result = { video_path: collected.video_path, thumbnail_path: collected.thumbnail_path };
+      for (const apply of [applySceneLutToRenderedVideo, applySceneAdjustToRenderedVideo, applySceneFilmGrainToRenderedVideo]) {
+        const applied = await apply(segment, sceneIndex, result.video_path, result.thumbnail_path || "", progress, pct, options.batchLabel || "");
+        result = { video_path: applied.video_path || result.video_path, thumbnail_path: applied.thumbnail_path || result.thumbnail_path };
+      }
+      for (const [field, value] of [["video_backup_paths", collected.backup_path], ["video_backup_thumbnail_paths", collected.backup_thumbnail_path]]) {
+        if (value) segment[field] = [...new Set([...(segment[field] || []), value])];
+      }
+      segment.video_output = video;
+      segment.video_source_path = sourcePath;
+      activateSegmentVideoPath(segment, result.video_path, result.thumbnail_path || "");
+      segment.api_video_audio_reference_path = preparedAudio?.audio_path || "";
+      segment.video_folder = collected.video_folder;
+      segment.video_cache_bust = Date.now();
+      segment.video_status = "done";
+      segment.preview_mode = "video";
+      segment.scene_audio_render_dirty = false;
+      syncPreview(segment);
+      render();
+      if (options.autoSaveAfter !== false) await autoSaveSessionQuiet("Seedance scene video complete");
+      progress?.set(`Seedance scene video ready:\n${segment.video_path}`, pct(100));
+      return segment.video_path;
+    } catch (error) {
+      segment.video_status = /stopped by user/i.test(String(error?.message || error)) ? "none" : "error";
+      renderList();
+      throw error;
+    }
   }
 
   async function prepareMiniMaxH3ContinuityReference(segment, progress = null, percent = 3, label = "MiniMax continuity") {
@@ -1212,6 +1304,7 @@ export function createVideoRender({
     await prepareEditedAudio(state, projectInput.value || state.projectFolder);
     const baseSegments = Array.isArray(options.segments) && options.segments.length ? options.segments : state.segments;
     const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+    const apiProject = state.projectVideoEngine === "api_nodes";
     const overlaySegments = state.overlayTrack.enabled
       ? (Array.isArray(options.overlaySegments) ? options.overlaySegments : state.overlaySegments)
           .filter((segment) => overlayClipIsEnabled(segment, state.overlayTrack))
@@ -1232,7 +1325,7 @@ export function createVideoRender({
     // scenes shifts the times, so the shift must be a whole number of frames or the rounding differs and a clip is
     // padded with a repeated frame or loses one at the join (a stutter).
     const frameAlignedOffset = Math.round(timelineOffset * 24) / 24;
-    const sceneTimingItems = miniMaxProject ? baseSegments.map((segment) => ({
+    const sceneTimingItems = miniMaxProject || apiProject ? baseSegments.map((segment) => ({
       start: Math.max(0, Number(segment.start || 0) - frameAlignedOffset),
       end: Math.max(0, Number(segment.end || 0) - frameAlignedOffset),
     })) : [];
@@ -1248,14 +1341,17 @@ export function createVideoRender({
     let globalAudioPath = currentProjectAudioPath();
     const miniMaxBuiltInAudioMode = miniMaxProject && baseSegments.length > 0
       && baseSegments.every((segment) => miniMaxH3SettingsForSegment(segment).audio_mode === "built_in_audio");
-    let embeddedSceneAudioMode = miniMaxBuiltInAudioMode || (!miniMaxProject && currentVideoMode() === "id_lora") || !!options.useEmbeddedSceneAudio;
+    const apiEmbeddedAudio = apiProject && !globalAudioPath;
+    let embeddedSceneAudioMode = apiEmbeddedAudio || miniMaxBuiltInAudioMode || (!miniMaxProject && currentVideoMode() === "id_lora") || !!options.useEmbeddedSceneAudio;
     if (embeddedSceneAudioMode && paths.every(Boolean)) {
       const mixed = await prepareEmbeddedAudioWithClips(state, projectInput.value || state.projectFolder, baseSegments, paths);
       if (mixed) { globalAudioPath = mixed.audio_path; embeddedSceneAudioMode = false; }
     }
-    const sceneAudioMode = !embeddedSceneAudioMode && !globalAudioPath && usingSceneAudioMode();
-    const audioPaths = sceneAudioMode ? baseSegments.map((segment) => String(segment.custom_audio_path || "").trim()) : [];
-    const audioItems = sceneAudioMode ? baseSegments.map((segment) => ({
+    const apiCustomAudioMode = apiProject && !!globalAudioPath && !speakingAudioEditsActive(state) && baseSegments.some(segment => segment.custom_audio_path);
+    const sceneAudioMode = apiCustomAudioMode || (!embeddedSceneAudioMode && !globalAudioPath && usingSceneAudioMode());
+    const apiAudioItems = apiCustomAudioMode ? seedanceStitchAudioItems(baseSegments, globalAudioPath) : [];
+    const audioPaths = apiCustomAudioMode ? apiAudioItems.map(item => item.path) : sceneAudioMode ? baseSegments.map((segment) => String(segment.custom_audio_path || "").trim()) : [];
+    const audioItems = apiCustomAudioMode ? apiAudioItems : sceneAudioMode ? baseSegments.map((segment) => ({
       path: String(segment.custom_audio_path || "").trim(),
       start: audioSourceStart(segment),
       duration: audioChunkDuration(segment),
@@ -1274,10 +1370,10 @@ export function createVideoRender({
     if (missing.length) throw new Error(missing.join("\n"));
     const stitchSettings = state.i2vVideoSettings || {};
     const stitchVideoMode = currentVideoMode();
-    const stitchWidth = miniMaxProject ? 0 : stitchVideoMode === "ingredients"
+    const stitchWidth = miniMaxProject || apiProject ? 0 : stitchVideoMode === "ingredients"
       ? Number(stitchSettings.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH)
       : Number(stitchSettings.width || 1920);
-    const stitchHeight = miniMaxProject ? 0 : stitchVideoMode === "ingredients"
+    const stitchHeight = miniMaxProject || apiProject ? 0 : stitchVideoMode === "ingredients"
       ? Number(stitchSettings.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT)
       : Number(stitchSettings.height || 1080);
     const stitchAudioMessage = embeddedSceneAudioMode
@@ -1299,7 +1395,7 @@ export function createVideoRender({
       scene_audio_paths: audioPaths,
       scene_audio_items: audioItems,
       scene_timing_items: sceneTimingItems,
-      timeline_fps: miniMaxProject ? 24 : 0,
+      timeline_fps: miniMaxProject || apiProject ? 24 : 0,
       use_embedded_scene_audio: embeddedSceneAudioMode,
       overlay_items: overlayItems,
       ...(transitionItems.length ? { transitions: transitionItems } : {}),
@@ -1362,11 +1458,12 @@ export function createVideoRender({
     const sceneIndex = info.index;
     if (sceneIndex < 0) return;
     const idLoraMode = currentVideoMode() === "id_lora";
+    const apiProject = state.projectVideoEngine === "api_nodes";
     if (!idLoraMode && !(await ensureAudioOrOfferSilentTimeline({ segment }))) return;
     const missing = [
       ...validateSceneReadyForVideo(segment, sceneIndex),
-      ...(!idLoraMode && ((!speakingAudioEditsActive(state) && !String(segment.custom_audio_path || currentProjectAudioPath() || audioInput.value || "").trim()) || !String(projectInput.value || "").trim()) ? ["Load global audio or add custom audio for this scene, and set the project folder first."] : []),
-      ...(idLoraMode && !String(projectInput.value || "").trim() ? ["Project folder is missing."] : []),
+      ...(!apiProject && !idLoraMode && ((!speakingAudioEditsActive(state) && !String(segment.custom_audio_path || currentProjectAudioPath() || audioInput.value || "").trim()) || !String(projectInput.value || "").trim()) ? ["Load global audio or add custom audio for this scene, and set the project folder first."] : []),
+      ...((idLoraMode || apiProject) && !String(projectInput.value || state.projectFolder || "").trim() ? ["Project folder is missing."] : []),
     ];
     if (missing.length) {
       toast(missing.join("\n"), true);
