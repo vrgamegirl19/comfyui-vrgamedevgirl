@@ -1,4 +1,0 @@
-transformers
-accelerate
-huggingface_hub
-llama-cpp-python

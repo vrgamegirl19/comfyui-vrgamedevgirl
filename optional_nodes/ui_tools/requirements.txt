@@ -1,2 +1,0 @@
-llama-cpp-python
-huggingface_hub

@@ -23,8 +23,8 @@ If the task is to *use* the Video Builder through `/vrgdg/api/v1` or the MCP ser
 
 ## Critical Rules & Invariants
 
-1. **Exclude `optional_nodes/`**:
-   - The `optional_nodes/` directory contains legacy and optional standalone modules. **Do NOT edit, reference, or import from `optional_nodes/`**.
+1. **Keep standalone nodes in their separate repository**:
+   - Standalone node packs are maintained in [VRGDG_CustomNodePack](https://github.com/vrgamegirl19/VRGDG_CustomNodePack). Do not vendor them back into this repository or import their implementation from the core runtime.
    - Work strictly within the active core submodules defined in `_VRGDG_SUBMODULES` in [__init__.py](__init__.py).
 
 2. **Atomic Disk Operations**:

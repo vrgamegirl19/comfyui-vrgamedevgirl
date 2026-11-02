@@ -4,6 +4,8 @@ A growing collection of custom ComfyUI nodes for **AI video creation, music vide
 
 The flagship tool is the **AI Video Builder**: a scene-by-scene production workspace for LTX 2.3, MiniMax H3, and future video engines that brings planning, prompting, media generation, timing, review, and final assembly together inside ComfyUI.
 
+Standalone face-repair, utility, LLM, long-video, LoRA-training, LTX/MiniMax, music/audio, and workflow-UI nodes are now maintained in [VRGDG Custom Node Pack](https://github.com/vrgamegirl19/VRGDG_CustomNodePack). Install that pack separately for those canvas nodes and their example workflows. The AI Video Builder and its core nodes remain in this repository.
+
 ---
 
 ## Resource monitor

@@ -79,10 +79,3 @@ for (const script of ["chatgpt-images-poc.mjs", "meta-ai-poc.mjs"]) {
     } finally { await browser.close(); }
   });
 }
-
-test("bundled provider scripts and viewer helper match the primary copies", async () => {
-  for (const file of ["browser-image-viewer.mjs", "chatgpt-images-poc.mjs", "meta-ai-poc.mjs"]) {
-    assert.equal(await readFile(new URL(`../flow_automation/${file}`, import.meta.url), "utf8"),
-      await readFile(new URL(`../optional_nodes/ui_tools/flow_automation/${file}`, import.meta.url), "utf8"));
-  }
-});
