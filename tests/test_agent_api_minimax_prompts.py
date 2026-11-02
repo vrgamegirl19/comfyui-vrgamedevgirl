@@ -6,7 +6,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT.parent) not in sys.path:
@@ -17,6 +17,7 @@ if str(ROOT / "tests") not in sys.path:
 pkg_name = ROOT.name
 errors = importlib.import_module(f"{pkg_name}.agent_api.errors")
 mm = importlib.import_module(f"{pkg_name}.agent_api.orchestrator.minimax_prompt_orchestrator")
+timing = importlib.import_module(f"{pkg_name}.agent_api.orchestrator.lyrics_orchestrator")
 from test_agent_api_references_llm import Base  # noqa: E402
 
 
@@ -40,7 +41,7 @@ class MiniMaxPromptTests(Base):
         session["segments"][0]["story_beat"] = "Darrel paces the rooftop."
         self.write_session(session)
 
-    def run_with(self, reply, params=None):
+    def run_with(self, reply, params=None, **options):
         calls = []
 
         def fake(payload):
@@ -48,7 +49,87 @@ class MiniMaxPromptTests(Base):
             return {"prompt": reply(payload) if callable(reply) else reply}
 
         with patch.object(mm.vid_gen, "_generate_builder_t2v_prompt", fake):
-            return mm.create_minimax_prompts("Song", params or {"limit": 2}), calls
+            return mm.create_minimax_prompts("Song", params or {"limit": 2}, **options), calls
+
+    def test_multishot_prompt_waits_for_whisper_and_saves_shot_lyrics(self):
+        session = self.read_session()
+        scene = session["segments"][0]
+        scene.update(start=0, end=8, lyric_text="First words later words", lyric_singers=["Darrel"])
+        session["audio_path"] = os.path.join(self.temp, "song.wav")
+        Path(session["audio_path"]).write_bytes(b"audio")
+        session["builder_storyboard_defaults"]["minimax_h3_cut_frequency"] = 3
+        self.write_session(session)
+        payload = {"segments": [{"text": scene["lyric_text"], "start": 0, "end": 7, "words": [
+            {"word": "First", "start": 0.2, "end": 1}, {"word": "words", "start": 1.2, "end": 2},
+            {"word": "later", "start": 6, "end": 6.4}, {"word": "words", "start": 6.5, "end": 7},
+        ]}]}
+        plan = mm.scene_cut_plan(scene, session)
+        expected = mm.sp.shot_aligned_singer_cues(payload, plan, {"id": "darrel", "name": "Darrel"})
+        client = Mock()
+        client.queue_prompt.return_value = {"prompt_id": "timing"}
+        client.wait_for_prompt = AsyncMock(return_value={})
+        queued = []
+        check_cancel = lambda: False
+
+        def reply(_request):
+            client.wait_for_prompt.assert_awaited_once()
+            return json.dumps({"shots": [{"description": "<Subject 1> turns toward the camera as it tracks across the rooftop."}
+                                         for _ in expected]})
+
+        with patch.object(timing, "_prepare_scene_audio_clip", return_value={"audio_path": "scene.wav"}) as clip, \
+                patch.object(timing.utility_workflows, "_build_timestamped_transcribe_api_prompt", return_value={"prompt": {}}) as graph, \
+                patch.object(timing, "get_comfy_client", return_value=client), \
+                patch.object(timing, "extract_text_from_history", return_value=[json.dumps(payload)]):
+            result, calls = self.run_with(reply, {"scene_ids": [scene["id"]]},
+                                          on_timing_queued=queued.append, check_cancel=check_cancel)
+        self.assertEqual(result["failed"], 0, result)
+        self.assertEqual(result["created"], 1)
+        self.assertEqual(clip.call_args.args[0]["duration_seconds"], 8)
+        self.assertEqual(graph.call_args.args[0]["segment_mode"], "reference_scene_words")
+        self.assertEqual(queued, ["timing"])
+        self.assertIs(client.wait_for_prompt.call_args.kwargs["check_cancel"], check_cancel)
+        saved = self.read_session()["segments"][0]
+        self.assertEqual(saved["lyric_cue_map"], expected)
+        self.assertTrue(saved["lyric_shot_word_timing_enabled"])
+        self.assertEqual(saved["lyric_performance_mode"], "cue_map")
+        self.assertIn("First words", calls[0]["t2i_prompt"])
+        self.assertIn("later words", calls[0]["t2i_prompt"])
+
+    def test_single_shot_visual_only_and_manual_timings_do_not_queue_whisper(self):
+        session = self.read_session()
+        scene = dict(session["segments"][0], lyric_singers=["Darrel"])
+        single = mm.storyboard_cut_plan_for_duration(8, 0)
+        multi = mm.storyboard_cut_plan_for_duration(8, 3)
+        with patch.object(timing, "get_comfy_client") as client:
+            self.assertEqual(timing.time_scene_singer_cues(session, self.folder, scene, 0, single), {})
+            for fields in ({"lyric_no_lip_sync": True}, {"no_character_present": True},
+                           {"performance_mode": "speaking"}, {"lyric_text": "[instrumental]"},
+                           {"lyric_performance_mode": "cue_map", "lyric_cue_map": [{"text": "Manual", "start": 0, "end": None}]}):
+                self.assertEqual(timing.time_scene_singer_cues(session, self.folder, {**scene, **fields}, 0, multi), {})
+            client.assert_not_called()
+
+    def test_word_timing_snaps_cuts_and_keeps_instrumental_shots(self):
+        payload = {"segments": [{"words": [
+            {"text": "Opening", "start": 0.2, "end": 1},
+            {"text": "First", "start": 2.8, "end": 3.2}, {"text": "last", "start": 3.8, "end": 4.1},
+        ]}]}
+        plan = {"exact_duration_seconds": 8, "cut_times_seconds": [3, 6]}
+        cues = mm.sp.shot_aligned_singer_cues(payload, plan, {"id": "darrel", "name": "Darrel"})
+        self.assertEqual([cue["start"] for cue in cues], [0, 3.5, 6])
+        self.assertEqual([cue["text"] for cue in cues], ["Opening First", "last", ""])
+        self.assertEqual(cues[-1]["type"], "instrumental")
+
+    def test_missing_audio_stops_multishot_prompt_before_the_llm(self):
+        session = self.read_session()
+        session["segments"][0].update(start=0, end=8, lyric_singers=["Darrel"])
+        session["builder_storyboard_defaults"]["minimax_h3_cut_frequency"] = 3
+        self.write_session(session)
+        result, calls = self.run_with("unused", {"limit": 1})
+        self.assertEqual(result["created"], 0)
+        self.assertEqual(result["failed"], 1)
+        self.assertIn("audio", result["failures"][0]["error"])
+        self.assertEqual(calls, [])
+        self.assertFalse(self.read_session()["segments"][0].get("minimax_h3_prompt"))
 
     def test_theatrical_presets_reach_the_existing_api_prompt_job(self):
         session = self.read_session()

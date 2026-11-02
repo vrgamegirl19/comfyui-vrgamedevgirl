@@ -369,10 +369,10 @@ export function createWizardBridge({
         const label = `Storyboard ${runnerName} All ${index + 1}/${targetScenes.length}: ${scene.label || `Scene ${scene.scene_number || index + 1}`}`;
         try {
           progress.set(`${label}\nCreating storyboard video prompt...`, base);
-          if (segment && state.autoTimeSingerCuesBeforePrompt && !segment.no_character_present
+          if (miniMaxProject && segment && !segment.no_character_present
             && normalizeVideoType(segment.performance_mode || state.videoType) === "singing") {
             const timed = await ensureAutoTimedSingerCuesBeforePrompt(segment);
-            if (!timed) throw new Error(`${label}: Whisper timing did not complete; prompt generation was stopped.`);
+            if (timed === false) throw new Error(`${label}: Whisper timing did not complete; prompt generation was stopped.`);
           }
           const promptCueMap = segment && Array.isArray(segment.lyric_cue_map)
             ? normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true })

@@ -27,6 +27,7 @@ from ..scene_card_context import storyboard_video_context
 from ..temporal_effect import append_temporal_world_effect, temporal_world_effect_verbiage
 from ..video_style import apply_fx, fx_reserve, video_style_guidance, video_style_label
 from .storyboard_orchestrator import scene_cards, sync_storyboard_files
+from .lyrics_orchestrator import time_scene_singer_cues
 
 MODE = "reference_to_video"
 INSTRUCTION_KEY = "minimax_h3_reference_to_video"
@@ -50,7 +51,7 @@ def _scene_context(session: Dict[str, Any], segment: Dict[str, Any], card: Dict[
     defaults = theatrical_project_defaults(session)
     scoped_defaults = normalize_scene_defaults(segment.get("scene_defaults"))
     defaults = {**defaults, **scoped_defaults}
-    settings = session.get("minimax_h3_settings") if isinstance(session.get("minimax_h3_settings"), dict) else {}
+    settings = minimax_h3_settings_for_scene(session, segment)
     start, end = _number(segment.get("start"), 0.0), _number(segment.get("end"), 0.0)
     duration = max(0.1, end - start)
     items = ordered_reference_items(session, segment, MODE, index)
@@ -109,7 +110,9 @@ def _scene_context(session: Dict[str, Any], segment: Dict[str, Any], card: Dict[
 
 
 def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[str, Any], card: Dict[str, Any], index: int,
-                          params: Dict[str, Any], previous_frame: str = "") -> Dict[str, Any]:
+                          params: Dict[str, Any], previous_frame: str = "",
+                          on_timing_queued: Optional[Callable[[str], None]] = None,
+                          check_cancel: Optional[Callable[[], bool]] = None) -> Dict[str, Any]:
     """Ask the LLM for the shot descriptions of one scene and assemble the saved prompt. Retries when too long.
 
     ``previous_frame`` is the final frame of the previous scene's rendered video. For a scene continued with
@@ -121,6 +124,10 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
     if not ctx["items"]:
         raise ValidationError(f"{card['label']} has no mapped Reference Builder image. Map a character to the scene first.")
     labels = sp.reference_labels(ctx["items"])
+    timing_fields = {}
+    if not ctx["continuation"] and ctx["audio_mode"] != "built_in_audio":
+        timing_fields = time_scene_singer_cues(session, folder, segment, index, scene_cut_plan(segment, session),
+                                              on_queued=on_timing_queued, check_cancel=check_cancel)
     plan = ctx["cut_plan"]
     omit_lyrics = lfp.scene_enabled(session, segment)
     if omit_lyrics:
@@ -260,7 +267,7 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
             continue
         return {"prompt": prompt, "characters": len(prompt), "shots": budget["shot_count"], "attempts": attempt,
                 "model": request.get("lmstudio_model") or request.get("model_file"),
-                "used_previous_frame": use_picture, "warnings": warnings}
+                "used_previous_frame": use_picture, "warnings": warnings, "timing_fields": timing_fields}
     raise ValidationError(f"Could not fit the prompt in {sp.HARD_LIMIT} characters after {MAX_ATTEMPTS} tries (last {last_length}).")
 
 
@@ -314,6 +321,8 @@ def create_minimax_prompts(
     project_id: str,
     params: Optional[Dict[str, Any]] = None,
     progress: Optional[Callable[[int, int, str], None]] = None,
+    on_timing_queued: Optional[Callable[[str], None]] = None,
+    check_cancel: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, Any]:
     """Write a MiniMax prompt for each scene that has none, saving after every scene.
 
@@ -345,11 +354,12 @@ def create_minimax_prompts(
             progress(done, len(targets), f"Scene {card['scene_number']}")
         index, segment = segments[card["id"]]
         try:
-            result = generate_scene_prompt(session, folder, segment, card, index, params)
+            result = generate_scene_prompt(session, folder, segment, card, index, params,
+                                           on_timing_queued=on_timing_queued, check_cancel=check_cancel)
         except (ValidationError, sp.ShotPromptError) as exc:
             failures.append({"scene_id": card["id"], "scene_number": card["scene_number"], "error": str(exc)})
             continue
-        revision = _save_scene_prompt(project_id, card["id"], result["prompt"])
+        revision = _save_scene_prompt(project_id, card["id"], result["prompt"], extra=result["timing_fields"])
         created.append({"scene_id": card["id"], "scene_number": card["scene_number"], "characters": result["characters"],
                         "shots": result["shots"], "attempts": result["attempts"], "warnings": result.get("warnings") or []})
     if progress:
@@ -363,7 +373,11 @@ def create_minimax_prompts(
 def run_minimax_prompts_job(job: Job, manager: JobManager) -> Dict[str, Any]:
     def report(done: int, total: int, label: str) -> None:
         manager.update_progress(job.id, 5.0 + 90.0 * done / max(1, total), "minimax_prompts", message=f"MiniMax prompts {done}/{total} ({label})")
-    return create_minimax_prompts(job.project_id, job.params, progress=report)
+    return create_minimax_prompts(
+        job.project_id, job.params, progress=report,
+        on_timing_queued=lambda prompt_id: manager.set_current_comfy_prompt(job.id, prompt_id),
+        check_cancel=lambda: job.cancel_requested,
+    )
 
 
 def register_minimax_prompt_orchestrator_handlers(manager: Optional[JobManager] = None) -> None:

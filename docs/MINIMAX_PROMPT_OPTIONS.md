@@ -1,5 +1,9 @@
 # MiniMax prompt options and reference scenes
 
+Multi-shot singing scenes using supplied audio automatically run Stable-ts word timing before prompt generation. The scene's effective cut plan determines whether it has multiple shots, including per-scene cut-frequency overrides. Complete existing cue timings are preserved. Missing lyrics, instrumental scenes, visual-only scenes and built-in audio do not trigger singing transcription. A scene with lyrics needs a mapped singer and usable project/custom audio; a timing failure stops its prompt. The checkbox **Also auto-time lyric cues for single-shot scenes** retains the optional timing behavior for single shots.
+
+The `minimax-prompts` Agent API job and MCP `minimax_prompts` tool use the same default for multi-shot scenes and save `lyric_cue_map`, `lyric_performance_mode` and `lyric_shot_word_timing_enabled` with the prompt. They run as GPU jobs because timing uses Whisper. Existing prompts are unchanged until regenerated.
+
 **Prompt Options → Use Structured outputs** defaults to off. Reference-to-video prompts use a compact `detailed_description` with shot prose and location picture references. Enable the option to include subject definitions, summary, retention analysis and audio sections. It is saved as `use_structured_outputs` and supports undo. Regenerate existing prompts to apply a changed option.
 
 Reference-to-video uses character pictures for identity and environment pictures for the setting. The scene beat, storyboard directions and camera settings determine the new shot's staging, framing and movement. Changing from either image mode to reference-to-video clears legacy start-frame requirements. Reference mode also ignores stale flags that would prepend the scene image or copy its composition.

@@ -8,9 +8,10 @@
 
 import asyncio
 import json
+import math
 import os
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from ...builder.lyric_scenes import (
     DEFAULT_INSTRUMENTAL_TEXT,
@@ -18,11 +19,14 @@ from ...builder.lyric_scenes import (
     apply_lyric_sections,
     clean_timestamped_lyric_text,
     enforce_scene_lengths,
+    is_instrumental_lyric_text,
     normalize_scene_durations,
     segments_from_timestamped_payload,
 )
 from ...core.atomic_write import atomic_write_json
 from ...runner import utility_workflows
+from ...runner.minimax_inputs import _prepare_scene_audio_clip
+from ...minimax import shot_prompt
 from ..errors import JobCancelledError, ValidationError
 from ..jobs.manager import JobManager, get_job_manager
 from ..jobs.models import Job
@@ -32,6 +36,72 @@ from .comfy_client import extract_text_from_history, get_comfy_client
 
 _PAYLOAD_FILE = "timestamped_lyrics.json"
 _SEGMENT_MODES = ("whisper_chunks", "reference_lines", "exact_reference_lines", "reference_stanzas")
+
+
+def time_scene_singer_cues(session: Dict[str, Any], folder: str, segment: Dict[str, Any], index: int,
+                          cut_plan: Dict[str, Any], on_queued: Optional[Callable[[str], None]] = None,
+                          check_cancel: Optional[Callable[[], bool]] = None) -> Dict[str, Any]:
+    """Time a multi-shot singing scene before prompt writing; return the Builder fields to save."""
+    lyric = str(segment.get("lyric_text") or "").strip()
+    if (not cut_plan.get("cut_times_seconds") or segment.get("no_character_present") or segment.get("lyric_no_lip_sync")
+            or not lyric or is_instrumental_lyric_text(lyric)
+            or str(segment.get("performance_mode") or session.get("video_type") or "singing") != "singing"):
+        return {}
+    if check_cancel and check_cancel():
+        raise JobCancelledError(message="Lyric timing cancelled by request.")
+    duration = float(cut_plan["exact_duration_seconds"])
+    existing = segment.get("lyric_cue_map") or []
+    if segment.get("lyric_performance_mode") == "cue_map" and existing:
+        complete = True
+        for position, cue in enumerate(existing):
+            start = cue.get("start")
+            end = cue.get("end")
+            if end is None:
+                end = existing[position + 1].get("start") if position + 1 < len(existing) else duration
+            if start is None or end is None or not math.isfinite(float(start)) or not math.isfinite(float(end)) or float(end) <= float(start):
+                complete = False
+                break
+        if complete:
+            return {}
+    refs = session.get("flux_reference_builder") or {}
+    performer_map = refs.get("performer_scene_map") or {}
+    selected = performer_map.get(str(segment.get("id"))) or performer_map.get(str(index + 1)) or segment.get("lyric_singers") or []
+    if isinstance(selected, str):
+        selected = re.split(r"[,;\n]+", selected)
+    selected = {str(value).strip().lower() for value in selected}
+    performer = next((subject for subject in refs.get("subjects") or []
+                      if str(subject.get("id") or "").lower() in selected or str(subject.get("name") or "").lower() in selected), None)
+    if performer is None:
+        raise ValidationError(f"Scene {index + 1}: auto-time-before-prompt needs a mapped singer.")
+    custom_audio = str(segment.get("custom_audio_path") or "").strip()
+    source = custom_audio or session_audio_path(session)
+    if not source:
+        raise ValidationError(f"Scene {index + 1}: load project audio or add custom scene audio before auto-timing cues.")
+    prepared = _prepare_scene_audio_clip({
+        "audio_path": source, "project_folder": folder, "scene_number": index + 1,
+        "start_seconds": float(segment.get("custom_audio_source_start") or 0) if custom_audio else float(segment.get("start") or 0),
+        "duration_seconds": float(segment.get("custom_audio_duration") or duration) if custom_audio else duration,
+    })
+    graph = utility_workflows._build_timestamped_transcribe_api_prompt({
+        "audio_path": prepared["audio_path"], "reference_lyrics": "\n".join(
+            str(cue.get("text") or "").strip() for cue in existing
+            if cue.get("type") != "instrumental" and str(cue.get("text") or "").strip()) or lyric, "language": "english",
+        "segment_mode": "reference_scene_words", "include_instrumental_gaps": True,
+        "instrumental_text": "[instrumental]", "min_gap_seconds": 0.5, "min_scene_seconds": 1.0,
+        "max_scene_seconds": max(1.0, duration), "vocal_tail_padding_seconds": 0.0, "model_name": "large-v3",
+    })
+    client = get_comfy_client()
+    prompt_id = client.queue_prompt(graph["prompt"])["prompt_id"]
+    if on_queued:
+        on_queued(prompt_id)
+    history = asyncio.run(client.wait_for_prompt(prompt_id, timeout_seconds=45 * 60, check_cancel=check_cancel))
+    payload = parse_timestamped_lyrics_output("\n".join(extract_text_from_history(history, prompt_id)))
+    cues = shot_prompt.shot_aligned_singer_cues(payload, cut_plan, performer)
+    if not cues:
+        raise ValidationError(f"Scene {index + 1}: Whisper returned no word timings; prompt generation was stopped.")
+    fields = {"lyric_cue_map": cues, "lyric_performance_mode": "cue_map", "lyric_shot_word_timing_enabled": True}
+    segment.update(fields)
+    return fields
 
 
 def parse_timestamped_lyrics_output(text: str) -> Dict[str, Any]:

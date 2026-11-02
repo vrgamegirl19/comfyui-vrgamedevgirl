@@ -703,13 +703,13 @@ export function buildMiniMaxPanel({
   const miniMaxSpeakerAssignmentList = document.createElement("div");
   miniMaxSpeakerAssignmentList.style.cssText = "display:flex;flex-direction:column;gap:8px;";
   const miniMaxAddSpeakerCueButton = makeButton("Add Dialogue Cue", "primary");
-  const miniMaxAutoTimeBeforePrompt = makeCheckbox("Auto-time lyric cues before creating prompts", false);
+  const miniMaxAutoTimeBeforePrompt = makeCheckbox("Also auto-time lyric cues for single-shot scenes", false);
   miniMaxAutoTimeBeforePrompt.wrapper.style.cssText += "border:1px solid #155e75;border-radius:7px;background:#07111f;padding:10px;";
-  miniMaxAutoTimeBeforePrompt.input.title = "Before each MiniMax H3 prompt, enable exact lyric-to-shot timing and run Stable-ts on the scene audio.";
+  miniMaxAutoTimeBeforePrompt.input.title = "Multi-shot singing scenes are timed automatically. Enable this to also time single-shot singing scenes before writing prompts.";
   const miniMaxAutoTimeAllScenesButton = makeButton("Auto Time All Scenes", "primary");
   miniMaxAutoTimeAllScenesButton.title = "Run Stable-ts lyric timing for every eligible singing scene now, so the cue timing can be reviewed before prompts are created.";
   const miniMaxAutoTimeBeforePromptNote = document.createElement("div");
-  miniMaxAutoTimeBeforePromptNote.textContent = "Auto Time All Scenes fills every eligible scene now for review. The checkbox still makes each MiniMax prompt wait for that scene's timing first. Both require scene lyric text, a mapped singer, and usable scene/project audio.";
+  miniMaxAutoTimeBeforePromptNote.textContent = "Multi-shot singing scenes automatically wait for Stable-ts lyric-to-shot timing before prompts are written. Complete existing cue timings are kept. Enable the checkbox for single-shot scenes too. Auto Time All Scenes fills eligible scenes now for review. Timing requires scene lyrics, a mapped singer, and usable scene/project audio.";
   miniMaxAutoTimeBeforePromptNote.style.cssText = "font-size:11px;color:#94a3b8;line-height:1.45;margin:-3px 4px 2px;";
   miniMaxSpeakerAssignmentPanel.append(miniMaxSpeakerAssignmentNote, miniMaxAutoTimeBeforePrompt.wrapper, miniMaxAutoTimeAllScenesButton, miniMaxAutoTimeBeforePromptNote, miniMaxSpeakerAssignmentList, miniMaxAddSpeakerCueButton);
   const miniMaxAudioNote = document.createElement("div");
