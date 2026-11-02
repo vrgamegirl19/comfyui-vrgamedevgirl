@@ -2781,13 +2781,16 @@ export function createMiniMaxPrompt({
   }
 
   async function ensureAutoTimedSingerCuesBeforePrompt(segment, options = {}) {
-    if ((!state.autoTimeSingerCuesBeforePrompt && !options.force) || !segment || segment.no_character_present) return;
-    if (segment.no_character_present || normalizeVideoType(segment.performance_mode || state.videoType) !== "singing") return;
+    if (!segment || segment.no_character_present) return;
+    const multiShot = miniMaxH3OfficialShotPlan(miniMaxH3CutPlanForSegment(segment)).length > 1;
+    if (!state.autoTimeSingerCuesBeforePrompt && !options.force && !multiShot) return;
+    if (normalizeVideoType(segment.performance_mode || state.videoType) !== "singing") return;
+    if (!isMiniMaxSingerAssignmentMode(segment) || segment.lyric_no_lip_sync) return;
     const lyric = isInstrumentalLyricText(segment.lyric_text) ? "" : flattenLyricForPrompt(segment.lyric_text);
     const performers = selectedPerformerSubjectsForSegment(segment);
     const rawExisting = Array.isArray(segment.lyric_cue_map) ? segment.lyric_cue_map : [];
     const existing = normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true });
-    const timingCues = existing.length ? existing : rawExisting;
+    const timingCues = segment.lyric_performance_mode === "cue_map" ? (existing.length ? existing : rawExisting) : [];
     const existingTimingComplete = timingCues.length && timingCues.every((cue, index) => {
       const start = Number(cue.start);
       // The UI intentionally derives a final cue's end from the scene end when
@@ -2795,10 +2798,11 @@ export function createMiniMaxPrompt({
       // as complete; never replace an already hand-authored cue map with a new
       // transcription just because the final raw `end` is null.
       const end = miniMaxEffectiveCueEnd(segment, timingCues, index, cue);
-      return Number.isFinite(start) && Number.isFinite(Number(end)) && Number(end) > start;
+      return cue.start !== null && cue.start !== undefined && cue.start !== ""
+        && Number.isFinite(start) && Number.isFinite(Number(end)) && Number(end) > start;
     });
     if (existingTimingComplete) return true;
-    if (!lyric) return false;
+    if (!lyric) return;
     if (!performers.length) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: auto-time-before-prompt needs a mapped singer.`);
     }

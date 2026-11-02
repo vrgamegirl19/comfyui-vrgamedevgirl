@@ -1731,6 +1731,8 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
         description=(
             "Write MiniMax H3 reference-to-video prompts with the project's LLM, as a background job (T63). Only scenes without a "
             "prompt are written unless replace_existing; limit caps the count. Every scene needs a mapped character with an image. "
+            "Multi-shot singing scenes automatically run Stable-ts on scene audio before writing prompts; complete cue timings are kept. "
+            "These scenes need lyrics, a mapped singer and project/custom audio. Timing failure stops that scene's prompt. "
             "Run after story_create beats. Returns a job id for job_wait. For LM Studio the loaded model is used and never changed."
         ),
         input_schema={

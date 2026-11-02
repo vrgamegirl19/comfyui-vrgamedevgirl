@@ -3726,7 +3726,7 @@
           },
           {}
         ],
-        "summary": "Write MiniMax H3 reference-to-video prompts for the scenes that have none, with the project's LLM. Runs as a job.",
+        "summary": "Write MiniMax H3 prompts, automatically timing multi-shot singing scenes first. Runs as a GPU job.",
         "tags": [
           "minimax-prompts"
         ]

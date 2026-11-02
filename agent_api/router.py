@@ -692,11 +692,11 @@ def register_agent_api_routes(server_instance=None):
     @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/minimax-prompts")
     @_api_endpoint
     async def api_minimax_prompts(request: web.Request):
-        """Write MiniMax H3 reference-to-video prompts for the scenes that have none, with the project's LLM. Runs as a job."""
+        """Write MiniMax H3 prompts, automatically timing multi-shot singing scenes first. Runs as a GPU job."""
         pid = request.match_info["pid"]
         payload = await request.json() if request.can_read_body else {}
-        folder = await asyncio.to_thread(resolve_project_folder, pid)
-        job = get_job_manager().submit_job("minimax.prompts", project_id=pid, params=dict(payload), is_gpu=is_llm_runner_gpu(payload, folder))
+        await asyncio.to_thread(resolve_project_folder, pid)
+        job = get_job_manager().submit_job("minimax.prompts", project_id=pid, params=dict(payload), is_gpu=True)
         return api_success({"job_id": job.id, "status": job.status, "job": job.to_dict()}, status=202)
 
     @server_instance.routes.get(f"{_API_V1_PREFIX}/llm/active")

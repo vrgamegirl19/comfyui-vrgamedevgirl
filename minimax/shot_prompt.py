@@ -12,6 +12,7 @@ Python twin of ``minimax_prompt.mjs`` (``miniMaxH3CreativePromptContextForSegmen
 """
 
 import json
+import math
 import re
 from typing import Any, Dict, List, Optional
 
@@ -256,6 +257,57 @@ def timed_cue_rows(segment: Dict[str, Any]) -> List[Dict[str, Any]]:
     if not rows or any(row["start"] is None for row in rows):
         return []
     return rows
+
+
+def shot_aligned_singer_cues(payload: Dict[str, Any], cut_plan: Dict[str, Any], performer: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Mirror buildShotAlignedSingerCueMap: assign timestamped words to shots, snapping cuts out of words."""
+    duration = float(cut_plan["exact_duration_seconds"])
+    words = []
+    for segment in payload.get("segments") or []:
+        if segment.get("type") == "instrumental":
+            continue
+        for word in segment.get("words") or []:
+            text = str(word.get("text") or word.get("word") or "").strip()
+            start, end = word.get("start"), word.get("end")
+            if text and start is not None and end is not None and math.isfinite(float(start)) and math.isfinite(float(end)) and float(end) > float(start):
+                words.append({"text": text, "start": max(0.0, float(start)), "end": max(0.0, float(end))})
+    words.sort(key=lambda word: word["start"])
+    if not words:
+        return []
+
+    def splits_word(time: float) -> bool:
+        return any(word["start"] - 0.08 < time < word["end"] - 0.02 for word in words)
+
+    gaps = [max(0.0, words[0]["start"] - 0.1), words[-1]["end"] + 0.1]
+    gaps.extend((a["end"] + b["start"]) / 2 for a, b in zip(words, words[1:]) if b["start"] > a["end"])
+    cuts = sorted(float(time) for time in cut_plan.get("cut_times_seconds") or [] if 0.001 < float(time) < duration - 0.001)
+    placed = []
+    for index, cut in enumerate(cuts):
+        previous = placed[-1] if placed else 0.0
+        following = cuts[index + 1] if index + 1 < len(cuts) else duration
+        if splits_word(cut):
+            options = [time for time in gaps if abs(time - cut) <= 1.0 and time - previous >= 1.0
+                       and following - time >= 1.0 and not splits_word(time)]
+            if options:
+                cut = min(options, key=lambda time: abs(time - cut))
+        if cut > previous + 0.001:
+            placed.append(round(cut, 3))
+    boundaries = [0.0, *placed, duration]
+    cues = []
+    for index, (start, end) in enumerate(zip(boundaries, boundaries[1:])):
+        selected = [word for word in words if start <= (word["start"] + word["end"]) / 2
+                    and ((word["start"] + word["end"]) / 2 <= end if index == len(boundaries) - 2
+                         else (word["start"] + word["end"]) / 2 < end)]
+        cues.append({
+            "type": "vocal" if selected else "instrumental",
+            "text": " ".join(word["text"] for word in selected), "action_note": "",
+            "singer_id": str(performer.get("id") or "") if selected else "",
+            "singer_name": str(performer.get("name") or "") if selected else "",
+            "start": start, "end": end,
+            "vocal_start": max(start, selected[0]["start"]) if selected else None,
+            "vocal_end": min(end, selected[-1]["end"]) if selected else None,
+        })
+    return cues
 
 
 def cue_cut_plan(cut_plan: Dict[str, Any], cues: List[Dict[str, Any]]) -> Dict[str, Any]:
