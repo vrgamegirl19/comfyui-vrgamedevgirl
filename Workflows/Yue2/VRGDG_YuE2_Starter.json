@@ -1,0 +1,1110 @@
+{
+  "id": "c871754f-b56f-43f4-bfeb-9ce22d2f2e34",
+  "revision": 0,
+  "last_node_id": 11,
+  "last_link_id": 9,
+  "nodes": [
+    {
+      "id": 6,
+      "type": "VRGDG_MultiStringConcat",
+      "pos": [
+        100,
+        920
+      ],
+      "size": [
+        400,
+        206
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 2,
+      "inputs": [
+        {
+          "localized_name": "string_count",
+          "name": "string_count",
+          "type": "INT",
+          "widget": {
+            "name": "string_count"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "delimiter",
+          "name": "delimiter",
+          "type": "STRING",
+          "widget": {
+            "name": "delimiter"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "string_1",
+          "name": "string_1",
+          "type": "STRING",
+          "widget": {
+            "name": "string_1"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "string_2",
+          "name": "string_2",
+          "type": "STRING",
+          "widget": {
+            "name": "string_2"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "string_3",
+          "name": "string_3",
+          "type": "STRING",
+          "widget": {
+            "name": "string_3"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "string_4",
+          "name": "string_4",
+          "type": "STRING",
+          "widget": {
+            "name": "string_4"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "string_5",
+          "name": "string_5",
+          "type": "STRING",
+          "widget": {
+            "name": "string_5"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "string_6",
+          "name": "string_6",
+          "type": "STRING",
+          "widget": {
+            "name": "string_6"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "string_7",
+          "name": "string_7",
+          "type": "STRING",
+          "widget": {
+            "name": "string_7"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "string_8",
+          "name": "string_8",
+          "type": "STRING",
+          "widget": {
+            "name": "string_8"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "string_9",
+          "name": "string_9",
+          "type": "STRING",
+          "widget": {
+            "name": "string_9"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "string_10",
+          "name": "string_10",
+          "type": "STRING",
+          "widget": {
+            "name": "string_10"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "string_11",
+          "name": "string_11",
+          "type": "STRING",
+          "widget": {
+            "name": "string_11"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "string_12",
+          "name": "string_12",
+          "type": "STRING",
+          "widget": {
+            "name": "string_12"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "string_13",
+          "name": "string_13",
+          "type": "STRING",
+          "widget": {
+            "name": "string_13"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "string_14",
+          "name": "string_14",
+          "type": "STRING",
+          "widget": {
+            "name": "string_14"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "string_15",
+          "name": "string_15",
+          "type": "STRING",
+          "widget": {
+            "name": "string_15"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "string_16",
+          "name": "string_16",
+          "type": "STRING",
+          "widget": {
+            "name": "string_16"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "string_17",
+          "name": "string_17",
+          "type": "STRING",
+          "widget": {
+            "name": "string_17"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "string_18",
+          "name": "string_18",
+          "type": "STRING",
+          "widget": {
+            "name": "string_18"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "string_19",
+          "name": "string_19",
+          "type": "STRING",
+          "widget": {
+            "name": "string_19"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "string_20",
+          "name": "string_20",
+          "type": "STRING",
+          "widget": {
+            "name": "string_20"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "text",
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            4
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-vrgamedevgirl",
+        "ver": "c4b83325b8a0a50e5507766a43d243a83fd5ee62",
+        "Node name for S&R": "VRGDG_MultiStringConcat"
+      },
+      "widgets_values": [
+        2,
+        "\\n\\n",
+        "You are a music style prompt generator.\n\nThe user may enter anything, such as:\n\n* a genre: \"a rock song\"\n* a mood: \"dark and emotional\"\n* a combination: \"industrial metal with female vocals\"\n* an artist reference: \"a song in the style of [artist]\"\n* a detailed music description\n\nYour job is to convert the user's request into ONE polished music-generation style prompt.\n\nOutput rules:\n\n* Output plain text only.\n* Do not use headings, labels, bullets, JSON, markdown, or explanations.\n* Output only the final style prompt.\n* Use comma-separated descriptive phrases.\n* Keep the prompt concise but detailed enough for a music-generation model.\n* Include the most relevant genre, subgenre, mood, energy, instrumentation, vocal style, production style, dynamics, and tempo.\n* Add an appropriate BPM when the user does not provide one.\n* If the user specifies male or female vocals, preserve that.\n* If vocal type is not specified, choose one only when it clearly fits the request.\n* Describe vocal characteristics when useful, such as breathy, gritty, clean, powerful, intimate, whispered, belted, screamed, layered, or melodic.\n* Include relevant production characteristics such as distorted guitars, synth layers, acoustic drums, electronic percussion, reverb, delay, vocal harmonies, wide stereo, cinematic dynamics, or compressed drums when appropriate.\n* Do not include lyrics or song structure unless the user specifically requests those in the style prompt.\n* Do not include negative prompts.\n* Do not explain your choices.\n\nArtist references:\nIf the user asks for music \"in the style of\" a specific artist or band, do not simply output the artist's name as the style description. Translate the reference into recognizable musical characteristics such as genre, instrumentation, vocal delivery, mood, rhythm, production, and dynamics.\n\nExample:\n\nUser:\na dark industrial rock song with female vocals\n\nOutput:\nDark industrial rock, alternative metal, intense female lead vocal, smoky intimate verses, powerful belted choruses, distorted low-tuned guitars, grinding bass, industrial synth pulses, atmospheric pads, punchy acoustic and electronic drums, layered backing vocals, tense verses building into an explosive anthemic chorus, gritty cinematic production, wide stereo image, heavy compression, reverb and delay, 112 BPM\n\nuser input:\n",
+        "a song in the style of [song name here]",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "widgets_values_named": {
+        "string_count": 2,
+        "delimiter": "\\n\\n",
+        "string_1": "You are a music style prompt generator.\n\nThe user may enter anything, such as:\n\n* a genre: \"a rock song\"\n* a mood: \"dark and emotional\"\n* a combination: \"industrial metal with female vocals\"\n* an artist reference: \"a song in the style of [artist]\"\n* a detailed music description\n\nYour job is to convert the user's request into ONE polished music-generation style prompt.\n\nOutput rules:\n\n* Output plain text only.\n* Do not use headings, labels, bullets, JSON, markdown, or explanations.\n* Output only the final style prompt.\n* Use comma-separated descriptive phrases.\n* Keep the prompt concise but detailed enough for a music-generation model.\n* Include the most relevant genre, subgenre, mood, energy, instrumentation, vocal style, production style, dynamics, and tempo.\n* Add an appropriate BPM when the user does not provide one.\n* If the user specifies male or female vocals, preserve that.\n* If vocal type is not specified, choose one only when it clearly fits the request.\n* Describe vocal characteristics when useful, such as breathy, gritty, clean, powerful, intimate, whispered, belted, screamed, layered, or melodic.\n* Include relevant production characteristics such as distorted guitars, synth layers, acoustic drums, electronic percussion, reverb, delay, vocal harmonies, wide stereo, cinematic dynamics, or compressed drums when appropriate.\n* Do not include lyrics or song structure unless the user specifically requests those in the style prompt.\n* Do not include negative prompts.\n* Do not explain your choices.\n\nArtist references:\nIf the user asks for music \"in the style of\" a specific artist or band, do not simply output the artist's name as the style description. Translate the reference into recognizable musical characteristics such as genre, instrumentation, vocal delivery, mood, rhythm, production, and dynamics.\n\nExample:\n\nUser:\na dark industrial rock song with female vocals\n\nOutput:\nDark industrial rock, alternative metal, intense female lead vocal, smoky intimate verses, powerful belted choruses, distorted low-tuned guitars, grinding bass, industrial synth pulses, atmospheric pads, punchy acoustic and electronic drums, layered backing vocals, tense verses building into an explosive anthemic chorus, gritty cinematic production, wide stereo image, heavy compression, reverb and delay, 112 BPM\n\nuser input:\n",
+        "string_2": "a song in the style of [song name here]",
+        "string_3": "",
+        "string_4": "",
+        "string_5": "",
+        "string_6": "",
+        "string_7": "",
+        "string_8": "",
+        "string_9": "",
+        "string_10": "",
+        "string_11": "",
+        "string_12": "",
+        "string_13": "",
+        "string_14": "",
+        "string_15": "",
+        "string_16": "",
+        "string_17": "",
+        "string_18": "",
+        "string_19": "",
+        "string_20": ""
+      }
+    },
+    {
+      "id": 7,
+      "type": "VRGDG_ShowText",
+      "pos": [
+        960,
+        920
+      ],
+      "size": [
+        440,
+        250
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 2,
+      "inputs": [
+        {
+          "localized_name": "text",
+          "name": "text",
+          "shape": 7,
+          "type": "STRING",
+          "link": 6
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "text_output",
+          "name": "text_output",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "VRGDG_ShowText - style",
+      "properties": {
+        "cnr_id": "comfyui-vrgamedevgirl",
+        "ver": "c4b83325b8a0a50e5507766a43d243a83fd5ee62",
+        "Node name for S&R": "VRGDG_ShowText"
+      }
+    },
+    {
+      "id": 8,
+      "type": "MarkdownNote",
+      "pos": [
+        -680,
+        80
+      ],
+      "size": [
+        720,
+        780
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "START HERE — YuE2 Full Song Instructions",
+      "properties": {
+        "Node name for S&R": "MarkdownNote"
+      },
+      "widgets_values": [
+        "<h1>YuE2 Full Song</h1>\n<p><strong>First use only:</strong> Enter a dedicated folder such as <code>E:\\Yue2</code> in <em>target_root</em>, then click <strong>Install Generation + Models</strong> (or <strong>Install Everything</strong> if you also want covers). Installation buttons run only when clicked. Queueing the workflow does not reinstall anything.</p>\n<hr>\n<h2>Create a song</h2>\n<ol><li>Enter sectioned lyrics in the Generate node using tags such as <code>[Verse]</code>, <code>[Chorus]</code>, <code>[Bridge]</code>, and <code>[Outro]</code>.</li><li>Choose a style preset, type your own comma-separated style description, or use the optional LLM section below.</li><li>Leave <strong>planning_mode = full</strong> for normal songs. Set a seed for repeatable comparisons.</li><li>Queue the workflow. Live stages and token speed appear in the ComfyUI console.</li><li>Preview the result or use the saved copy in <code>ComfyUI/output/audio/YuE2</code>. YuE2 artifacts and metadata are also retained in the reported artifact directory.</li></ol>\n<h2>Optional LLM style helper</h2>\n<p>Edit the short request in <strong>VRGDG_MultiStringConcat</strong>. The LLM converts it into a detailed YuE2 style prompt and sends it to Generate. To bypass the LLM, disconnect the purple style cable and use the preset or editable style box directly. An API key/provider may be required for the selected LLM.</p>\n<h2>Useful settings</h2>\n<ul><li><strong>ode_steps:</strong> controls only final audio synthesis. 32 is the official default; 16 is faster/lower fidelity, while 48–64 is slower with diminishing returns.</li><li><strong>memory_budget_gib:</strong> 30 is reasonable on a 32 GiB GPU; lower it if other applications use VRAM.</li><li><strong>backend:</strong> <code>torch</code> is the fast path; <code>torch-eager</code> is for troubleshooting.</li><li><strong>cfg_scale:</strong> <code>-1</code> uses YuE2 defaults.</li><li><strong>verify_hashes:</strong> leave off for normal runs, especially on slower drives.</li></ul>\n<p><strong>Tip:</strong> Hover over any YuE2 setting for a detailed tooltip.</p>"
+      ],
+      "widgets_values_named": {
+        "text": "<h1>YuE2 Full Song</h1>\n<p><strong>First use only:</strong> Enter a dedicated folder such as <code>E:\\Yue2</code> in <em>target_root</em>, then click <strong>Install Generation + Models</strong> (or <strong>Install Everything</strong> if you also want covers). Installation buttons run only when clicked. Queueing the workflow does not reinstall anything.</p>\n<hr>\n<h2>Create a song</h2>\n<ol><li>Enter sectioned lyrics in the Generate node using tags such as <code>[Verse]</code>, <code>[Chorus]</code>, <code>[Bridge]</code>, and <code>[Outro]</code>.</li><li>Choose a style preset, type your own comma-separated style description, or use the optional LLM section below.</li><li>Leave <strong>planning_mode = full</strong> for normal songs. Set a seed for repeatable comparisons.</li><li>Queue the workflow. Live stages and token speed appear in the ComfyUI console.</li><li>Preview the result or use the saved copy in <code>ComfyUI/output/audio/YuE2</code>. YuE2 artifacts and metadata are also retained in the reported artifact directory.</li></ol>\n<h2>Optional LLM style helper</h2>\n<p>Edit the short request in <strong>VRGDG_MultiStringConcat</strong>. The LLM converts it into a detailed YuE2 style prompt and sends it to Generate. To bypass the LLM, disconnect the purple style cable and use the preset or editable style box directly. An API key/provider may be required for the selected LLM.</p>\n<h2>Useful settings</h2>\n<ul><li><strong>ode_steps:</strong> controls only final audio synthesis. 32 is the official default; 16 is faster/lower fidelity, while 48–64 is slower with diminishing returns.</li><li><strong>memory_budget_gib:</strong> 30 is reasonable on a 32 GiB GPU; lower it if other applications use VRAM.</li><li><strong>backend:</strong> <code>torch</code> is the fast path; <code>torch-eager</code> is for troubleshooting.</li><li><strong>cfg_scale:</strong> <code>-1</code> uses YuE2 defaults.</li><li><strong>verify_hashes:</strong> leave off for normal runs, especially on slower drives.</li></ul>\n<p><strong>Tip:</strong> Hover over any YuE2 setting for a detailed tooltip.</p>"
+      },
+      "color": "#23445a",
+      "bgcolor": "#315f7d"
+    },
+    {
+      "id": 5,
+      "type": "VRGDG_LLM_Multi",
+      "pos": [
+        520,
+        910
+      ],
+      "size": [
+        400,
+        264
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 2,
+      "inputs": [
+        {
+          "localized_name": "image1",
+          "name": "image1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "localized_name": "image2",
+          "name": "image2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "localized_name": "image3",
+          "name": "image3",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "localized_name": "image4",
+          "name": "image4",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "localized_name": "api_key",
+          "name": "api_key",
+          "type": "STRING",
+          "widget": {
+            "name": "api_key"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "provider",
+          "name": "provider",
+          "type": "COMBO",
+          "widget": {
+            "name": "provider"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "model",
+          "name": "model",
+          "type": "COMBO",
+          "widget": {
+            "name": "model"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "prompt",
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": 4
+        },
+        {
+          "localized_name": "custom_model",
+          "name": "custom_model",
+          "type": "STRING",
+          "widget": {
+            "name": "custom_model"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "text",
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            6,
+            7
+          ]
+        },
+        {
+          "localized_name": "used_provider",
+          "name": "used_provider",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "used_model",
+          "name": "used_model",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "status",
+          "name": "status",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-vrgamedevgirl",
+        "ver": "c4b83325b8a0a50e5507766a43d243a83fd5ee62",
+        "Node name for S&R": "VRGDG_LLM_Multi"
+      },
+      "widgets_values": [
+        "",
+        "openai",
+        "gpt-5.6-luna",
+        "Write a concise answer.",
+        ""
+      ],
+      "widgets_values_named": {
+        "api_key": "",
+        "provider": "openai",
+        "model": "gpt-5.6-luna",
+        "prompt": "Write a concise answer.",
+        "custom_model": ""
+      }
+    },
+    {
+      "id": 1,
+      "type": "VRGDG_YuE2Installer",
+      "pos": [
+        80,
+        160
+      ],
+      "size": [
+        470,
+        630
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "target_root",
+          "name": "target_root",
+          "type": "STRING",
+          "widget": {
+            "name": "target_root"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "runtime_mode",
+          "name": "runtime_mode",
+          "type": "COMBO",
+          "widget": {
+            "name": "runtime_mode"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "yue2_python",
+          "name": "yue2_python",
+          "type": "STRING",
+          "widget": {
+            "name": "yue2_python"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "model",
+          "name": "model",
+          "type": "STRING",
+          "widget": {
+            "name": "model"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "vae",
+          "name": "vae",
+          "type": "STRING",
+          "widget": {
+            "name": "vae"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "cache_dir",
+          "name": "cache_dir",
+          "type": "STRING",
+          "widget": {
+            "name": "cache_dir"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "device",
+          "name": "device",
+          "type": "COMBO",
+          "widget": {
+            "name": "device"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "memory_budget_gib",
+          "name": "memory_budget_gib",
+          "type": "FLOAT",
+          "widget": {
+            "name": "memory_budget_gib"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "backend",
+          "name": "backend",
+          "type": "COMBO",
+          "widget": {
+            "name": "backend"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "quantization",
+          "name": "quantization",
+          "type": "COMBO",
+          "widget": {
+            "name": "quantization"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "offload_ar",
+          "name": "offload_ar",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "offload_ar"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "local_files_only",
+          "name": "local_files_only",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "local_files_only"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "unload_comfy_models",
+          "name": "unload_comfy_models",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "unload_comfy_models"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "verify_hashes",
+          "name": "verify_hashes",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "verify_hashes"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "sheetsage2_python",
+          "name": "sheetsage2_python",
+          "type": "STRING",
+          "widget": {
+            "name": "sheetsage2_python"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "sheetsage2_model",
+          "name": "sheetsage2_model",
+          "type": "STRING",
+          "widget": {
+            "name": "sheetsage2_model"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "mert_model",
+          "name": "mert_model",
+          "type": "STRING",
+          "widget": {
+            "name": "mert_model"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "sheetsage2_device",
+          "name": "sheetsage2_device",
+          "type": "COMBO",
+          "widget": {
+            "name": "sheetsage2_device"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "yue2_config",
+          "name": "yue2_config",
+          "type": "VRGDG_YUE2_CONFIG",
+          "links": [
+            1
+          ]
+        },
+        {
+          "localized_name": "sheetsage2_config",
+          "name": "sheetsage2_config",
+          "type": "VRGDG_SHEETSAGE2_CONFIG",
+          "links": null
+        },
+        {
+          "localized_name": "status",
+          "name": "status",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "report_path",
+          "name": "report_path",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "1. Install Once, Then Supply YuE2 Settings",
+      "properties": {
+        "cnr_id": "comfyui-vrgamedevgirl",
+        "ver": "c4b83325b8a0a50e5507766a43d243a83fd5ee62",
+        "Node name for S&R": "VRGDG_YuE2Installer",
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl"
+      },
+      "widgets_values": [
+        "[enter a target root NOT comfyui folder here]",
+        "isolated_process",
+        "",
+        "",
+        "",
+        "",
+        "cuda",
+        24,
+        "torch",
+        "none",
+        false,
+        true,
+        true,
+        false,
+        "",
+        "",
+        "",
+        "cuda"
+      ],
+      "widgets_values_named": {
+        "target_root": "[enter a target root NOT comfyui folder here]",
+        "runtime_mode": "isolated_process",
+        "yue2_python": "",
+        "model": "",
+        "vae": "",
+        "cache_dir": "",
+        "device": "cuda",
+        "memory_budget_gib": 24,
+        "backend": "torch",
+        "quantization": "none",
+        "offload_ar": false,
+        "local_files_only": true,
+        "unload_comfy_models": true,
+        "verify_hashes": false,
+        "sheetsage2_python": "",
+        "sheetsage2_model": "",
+        "mert_model": "",
+        "sheetsage2_device": "cuda"
+      }
+    },
+    {
+      "id": 9,
+      "type": "Reroute",
+      "pos": [
+        550,
+        250
+      ],
+      "size": [
+        75,
+        26
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "",
+          "type": "*",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "showOutputText": false,
+        "horizontal": false
+      }
+    },
+    {
+      "id": 2,
+      "type": "VRGDG_YuE2Generate",
+      "pos": [
+        730,
+        140
+      ],
+      "size": [
+        520,
+        650
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "yue2_config",
+          "name": "yue2_config",
+          "type": "VRGDG_YUE2_CONFIG",
+          "link": 1
+        },
+        {
+          "localized_name": "style",
+          "name": "style",
+          "type": "STRING",
+          "widget": {
+            "name": "style"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "lyrics",
+          "name": "lyrics",
+          "type": "STRING",
+          "widget": {
+            "name": "lyrics"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "planning_mode",
+          "name": "planning_mode",
+          "type": "COMBO",
+          "widget": {
+            "name": "planning_mode"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "seed",
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "cfg_scale",
+          "name": "cfg_scale",
+          "type": "FLOAT",
+          "widget": {
+            "name": "cfg_scale"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ode_steps",
+          "name": "ode_steps",
+          "type": "INT",
+          "widget": {
+            "name": "ode_steps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "filename_prefix",
+          "name": "filename_prefix",
+          "type": "STRING",
+          "widget": {
+            "name": "filename_prefix"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "style_preset",
+          "name": "style_preset",
+          "type": "COMBO",
+          "widget": {
+            "name": "style_preset"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "audio",
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            9
+          ]
+        },
+        {
+          "localized_name": "abc_score",
+          "name": "abc_score",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "artifact_directory",
+          "name": "artifact_directory",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "metadata_json",
+          "name": "metadata_json",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "truncated",
+          "name": "truncated",
+          "type": "BOOLEAN",
+          "links": null
+        }
+      ],
+      "title": "2. Generate Full Song",
+      "properties": {
+        "cnr_id": "comfyui-vrgamedevgirl",
+        "ver": "c4b83325b8a0a50e5507766a43d243a83fd5ee62",
+        "Node name for S&R": "VRGDG_YuE2Generate",
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl"
+      },
+      "widgets_values": [
+        "English, cinematic synth-pop, expressive female lead vocal, emotional and uplifting, analog synthesizers, electric bass, punchy drums, 112 BPM",
+        "[Verse]\nCity lights are fading underneath the morning sky\nI can hear the future calling like a distant satellite\nEvery road we left behind is turning into gold\nWe are writing something brighter than the stories we were told\n\n[Chorus]\nWe are sparks against the darkness\nWe are voices in the blue\nWhen the whole world starts to tremble\nI will find my way to you\n\n[Verse]\nAll the maps are changing but our compass still is true\nEvery broken constellation draws another path to you\n\n[Chorus]\nWe are sparks against the darkness\nWe are voices in the blue\nWhen the whole world starts to tremble\nI will find my way to you\n\n[Outro]\nI will find my way to you",
+        "full",
+        831001,
+        "fixed",
+        -1,
+        32,
+        "yue2_starter_song",
+        "Custom / Keep typed style"
+      ],
+      "widgets_values_named": {
+        "style": "English, cinematic synth-pop, expressive female lead vocal, emotional and uplifting, analog synthesizers, electric bass, punchy drums, 112 BPM",
+        "lyrics": "[Verse]\nCity lights are fading underneath the morning sky\nI can hear the future calling like a distant satellite\nEvery road we left behind is turning into gold\nWe are writing something brighter than the stories we were told\n\n[Chorus]\nWe are sparks against the darkness\nWe are voices in the blue\nWhen the whole world starts to tremble\nI will find my way to you\n\n[Verse]\nAll the maps are changing but our compass still is true\nEvery broken constellation draws another path to you\n\n[Chorus]\nWe are sparks against the darkness\nWe are voices in the blue\nWhen the whole world starts to tremble\nI will find my way to you\n\n[Outro]\nI will find my way to you",
+        "planning_mode": "full",
+        "seed": 831001,
+        "control_after_generate": "fixed",
+        "cfg_scale": -1,
+        "ode_steps": 32,
+        "filename_prefix": "yue2_starter_song",
+        "style_preset": "Custom / Keep typed style"
+      }
+    },
+    {
+      "id": 11,
+      "type": "SaveAudioAdvanced",
+      "pos": [
+        1330,
+        150
+      ],
+      "size": [
+        270,
+        160
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "audio",
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 9
+        },
+        {
+          "localized_name": "filename_prefix",
+          "name": "filename_prefix",
+          "type": "STRING",
+          "widget": {
+            "name": "filename_prefix"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "format",
+          "name": "format",
+          "type": "COMFY_DYNAMICCOMBO_V3",
+          "widget": {
+            "name": "format"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "quality",
+          "name": "format.quality",
+          "type": "COMBO",
+          "widget": {
+            "name": "format.quality"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audioUI",
+          "name": "audioUI",
+          "type": "AUDIO_UI",
+          "widget": {
+            "name": "audioUI"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "audio",
+          "name": "audio",
+          "type": "AUDIO",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.34.0",
+        "Node name for S&R": "SaveAudioAdvanced"
+      },
+      "widgets_values": [
+        "Yue2/ComfyUI",
+        "mp3",
+        "128k"
+      ],
+      "widgets_values_named": {
+        "filename_prefix": "Yue2/ComfyUI",
+        "format": "mp3",
+        "format.quality": "128k"
+      }
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "VRGDG_YUE2_CONFIG"
+    ],
+    [
+      4,
+      6,
+      0,
+      5,
+      7,
+      "STRING"
+    ],
+    [
+      6,
+      5,
+      0,
+      7,
+      0,
+      "STRING"
+    ],
+    [
+      7,
+      5,
+      0,
+      9,
+      0,
+      "STRING"
+    ],
+    [
+      9,
+      2,
+      0,
+      11,
+      0,
+      "AUDIO"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "YuE2 Full-Song Starter — installer supplies portable settings",
+      "bounding": [
+        70,
+        60,
+        1580,
+        760
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "Optional LLM for creating the style prompt - bypass and use preset or custom",
+      "bounding": [
+        70,
+        840,
+        1390,
+        350
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "workflowRendererVersion": "LG",
+    "ds": {
+      "scale": 0.620921323059155,
+      "offset": [
+        689.3248921306847,
+        140.48858127935313
+      ]
+    },
+    "frontendVersion": "1.51.10",
+    "VHS_latentpreview": true,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": false,
+    "VHS_KeepIntermediate": false
+  },
+  "version": 0.4
+}
