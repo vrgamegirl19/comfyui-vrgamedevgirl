@@ -8,7 +8,7 @@ This guide serves as the definitive technical manual for AI coding agents and hu
 > **Operating the Video Builder through its API or MCP (not editing code)?** Read [Api_Endpoints.md](Api_Endpoints.md) first: every endpoint and what it does. Then follow [MUSIC_VIDEO_AGENT_PROMPT.md](MUSIC_VIDEO_AGENT_PROMPT.md), the step-by-step playbook for turning a song into a finished video. Connected MCP clients get both as resources (`vrgdg://docs/endpoints`, `vrgdg://docs/music-video-playbook`) and the playbook as the `make_music_video` prompt. See [Agent API Subsystem](#agent-api-subsystem-agent_api).
 
 > [!NOTE]
-> Per project directives, legacy and optional standalone modules located in `optional_nodes/` are intentionally omitted from this guide. All documentation here focuses on the active core runtime registered in [__init__.py](__init__.py).
+> Standalone node packs are maintained in [VRGDG_CustomNodePack](https://github.com/vrgamegirl19/VRGDG_CustomNodePack). All documentation here focuses on the active core runtime registered in [__init__.py](__init__.py).
 
 ---
 
@@ -1173,7 +1173,7 @@ python -m unittest discover -s tests -p "test_*.py"
 2. **DO NOT perform raw file writes for project state**: Never do `open("session.json", "w").write(...)`. If the process is terminated mid-write, the project is destroyed. Always use `atomic_write_json`.
 3. **DO NOT block the server event loop**: Never call `time.sleep()`, synchronous `subprocess.run()`, or heavy tensor loops directly inside an async route handler. Use `await asyncio.to_thread(...)`.
 4. **DO NOT hardcode path separators**: Never use string concatenation like `folder + "\\" + filename`. Always use `os.path.join(...)` or `pathlib.Path` to maintain cross-platform compatibility across Windows and Linux.
-5. **DO NOT modify `optional_nodes/`**: The `optional_nodes` folder is deprecated/optional. Put all new nodes in their proper domain packages (`general/`, `builder/`, `runner/`, `minimax/`, `post_process/`, `llm/`).
+5. **Keep standalone node packs separate**: Maintain standalone nodes in [VRGDG_CustomNodePack](https://github.com/vrgamegirl19/VRGDG_CustomNodePack). Put new core nodes in their proper domain packages (`general/`, `builder/`, `runner/`, `minimax/`, `post_process/`, `llm/`).
 6. **DO NOT forget `[VRGDG]` log prefixes**: All stdout/stderr output from custom nodes must begin with `[VRGDG]` so users and developers can filter custom node output from ComfyUI core logs.
 7. **DO NOT create global state without mutex locks**: If shared state must be cached in memory (such as GPU resource readings in `system_routes.py`), protect updates with an `asyncio.Lock()`.
 8. **DO NOT change or load an LLM model from the API.** For LM Studio use the model that is already loaded (`agent_api/llm_runtime.py`). Naming a model that is not loaded makes LM Studio load it and unload the current one.

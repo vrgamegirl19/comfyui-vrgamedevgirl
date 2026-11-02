@@ -63,14 +63,6 @@ test("standalone automation reuses the new Flow domain and recognizes Start gene
   } finally { await browser.close(); }
 });
 
-test("Flow automation copies remain synchronized", async () => {
-  for (const filename of ["flow-poc.mjs", "manual-bridge.mjs", "flow-announcements.mjs", "flow-upload-selection.mjs"]) {
-    const root = fileURLToPath(new URL("../", import.meta.url));
-    assert.deepEqual(await fs.readFile(path.join(root, "flow_automation", filename)),
-      await fs.readFile(path.join(root, "optional_nodes/ui_tools/flow_automation", filename)));
-  }
-});
-
 test("refuses Add to prompt when the selected file still previews the avatar", async () => {
   const browser = await chromium.launch({ channel: "chrome", headless: true });
   try {
