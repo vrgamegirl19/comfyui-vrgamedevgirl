@@ -10,3 +10,4 @@ huggingface_hub
 Cython
 scikit-build-core
 llama-cpp-python
+certifi>=2026.6.17

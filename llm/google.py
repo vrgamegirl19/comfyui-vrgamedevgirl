@@ -12,6 +12,8 @@ import urllib.request
 import urllib.error
 import urllib.parse
 
+from .http_tls import urlopen_verified
+
 
 @lru_cache(maxsize=1)
 def _load_google_genai_client():
@@ -72,7 +74,7 @@ def _google_generate_content_rest(api_key: str, model: str, contents) -> dict:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with urlopen_verified(req, timeout=120) as resp:
             body = resp.read().decode("utf-8", errors="replace")
             return json.loads(body)
     except urllib.error.HTTPError as e:

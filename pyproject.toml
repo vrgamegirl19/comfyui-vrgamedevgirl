@@ -20,6 +20,7 @@ dependencies = [
     "scikit-build-core",
     "voxcpm",
     "llama-cpp-python",
+    "certifi>=2026.6.17",
 ]
 classifiers = [
     "Operating System :: OS Independent",

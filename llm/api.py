@@ -13,6 +13,7 @@ import urllib.request
 import urllib.error
 import urllib.parse
 
+from .http_tls import urlopen_verified
 from .google import _extract_google_inline_image, _google_generate_content
 
 
@@ -514,7 +515,7 @@ class VRGDG_LLM_Multi:
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(url, data=data, headers=headers, method="POST")
         try:
-            with urllib.request.urlopen(req, timeout=90) as resp:
+            with urlopen_verified(req, timeout=90) as resp:
                 body = resp.read().decode("utf-8", errors="replace")
                 return json.loads(body)
         except urllib.error.HTTPError as e:
@@ -526,7 +527,7 @@ class VRGDG_LLM_Multi:
     def _get_json(self, url: str, headers: Optional[dict] = None, timeout: int = 30) -> dict:
         req = urllib.request.Request(url, headers=headers or {}, method="GET")
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with urlopen_verified(req, timeout=timeout) as resp:
                 body = resp.read().decode("utf-8", errors="replace")
                 return json.loads(body)
         except Exception:
@@ -561,7 +562,7 @@ class VRGDG_LLM_Multi:
 
         req = urllib.request.Request(url, data=bytes(body), headers=headers, method="POST")
         try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
+            with urlopen_verified(req, timeout=120) as resp:
                 raw = resp.read().decode("utf-8", errors="replace")
                 return json.loads(raw)
         except urllib.error.HTTPError as e:
