@@ -15,7 +15,7 @@ from .paths import _bool_payload, _first_payload_value, _float_payload, _int_pay
 from .models import _NONE_LORA, _clean_lora_name, _model_choice_exists, _require_model_choice
 from .api_graph import _api_node_id_by_class, _compat_node_inputs, _get_comfy_node_mappings, _load_api_template, _set_api_input
 from .minimax_inputs import _MINIMAX_H3_ASPECT_RATIOS, _minimax_h3_2pass_api_template_path, _minimax_h3_3pass_api_template_path, _minimax_h3_api_template_path, _minimax_h3_built_in_audio_api_template_path, _minimax_h3_image_paths, _minimax_h3_output_location, _minimax_h3_video_references, _patch_minimax_h3_image_to_video_node, _probe_media_duration_seconds, _trim_minimax_h3_audio_context
-from .minimax_patches import _minimax_h3_cooldown_frames, _minimax_h3_effective_warmup_frames, _minimax_h3_is_latent_mode, _minimax_h3_latent_continuation_mode, _patch_minimax_h3_advanced_settings, _patch_minimax_h3_fast_decode, _patch_minimax_h3_latent_continuation, _patch_minimax_h3_loras, _patch_minimax_h3_memory_efficient_sage_attention, _patch_minimax_h3_optional_model_paths, _patch_minimax_h3_save_latent, _patch_minimax_h3_te_speed, _patch_minimax_h3_turbo, _require_minimax_h3_memory_efficient_sage_attention
+from .minimax_patches import _minimax_h3_cooldown_frames, _minimax_h3_effective_warmup_frames, _minimax_h3_is_latent_mode, _minimax_h3_latent_continuation_mode, _patch_minimax_h3_advanced_settings, _patch_minimax_h3_fast_decode, _patch_minimax_h3_latent_continuation, _patch_minimax_h3_loras, _patch_minimax_h3_memory_efficient_sage_attention, _patch_minimax_h3_optional_model_paths, _patch_minimax_h3_save_latent, _patch_minimax_h3_sigma_shift, _patch_minimax_h3_te_speed, _patch_minimax_h3_turbo, _require_minimax_h3_memory_efficient_sage_attention
 
 
 def _build_minimax_h3_api_prompt(payload):
@@ -214,6 +214,15 @@ def _build_minimax_h3_api_prompt(payload):
         model_ref = _patch_minimax_h3_te_speed(prompt, prompt[scheduler_id]["inputs"]["model"], payload, "9210")
         for node_id in (scheduler_id, guider_id):
             _set_api_input(prompt, node_id, "model", list(model_ref))
+    # Sigma shift goes last on the model path, so the scheduler and guider read the shifted model.
+    scheduler_id = _api_node_id_by_class(prompt, "BasicScheduler", fallback="124")
+    guider_id = _api_node_id_by_class(prompt, "BasicGuider", fallback="126")
+    model_ref, sigma_shift = _patch_minimax_h3_sigma_shift(
+        prompt, prompt[scheduler_id]["inputs"]["model"], payload, "pass1", "9401",
+    )
+    if sigma_shift:
+        for node_id in (scheduler_id, guider_id):
+            _set_api_input(prompt, node_id, "model", list(model_ref))
     if _bool_payload(payload, "use_fast_vae_decode", False):
         _patch_minimax_h3_fast_decode(prompt)
     if turbo_settings["enabled"]:
@@ -265,6 +274,7 @@ def _build_minimax_h3_api_prompt(payload):
         "turbo_settings": turbo_settings,
         "memory_efficient_sage_attention": memory_efficient_sage_attention,
         "optional_patch_nodes": optional_patch_nodes,
+        "sigma_shift": sigma_shift,
     }
 
 
@@ -609,6 +619,9 @@ def _build_minimax_h3_2pass_api_prompt(payload):
         ))
         model_refs[target] = branch[target]
     pass1_model, pass2_model = model_refs["pass1"], model_refs["pass2"]
+    # Sigma shift goes last on each pass's model path, so its scheduler and guider read the shifted model.
+    pass1_model, pass1_sigma = _patch_minimax_h3_sigma_shift(prompt, pass1_model, payload, "pass1", "9401")
+    pass2_model, pass2_sigma = _patch_minimax_h3_sigma_shift(prompt, pass2_model, payload, "pass2", "9402")
 
     for node_id in ("124", "126"):
         _set_api_input(prompt, node_id, "model", list(pass1_model))
@@ -659,6 +672,7 @@ def _build_minimax_h3_2pass_api_prompt(payload):
             "te_speed_enabled": any(item["te_speed"] for item in pass_acceleration.values()),
             "pass_acceleration": pass_acceleration,
             "extra_loras": applied_extra_loras,
+            "sigma_shift": {"pass1": pass1_sigma, "pass2": pass2_sigma},
             "feedforward_enabled": any(item["feedforward"] for item in pass_acceleration.values()),
             "block_sparse_attention_enabled": any(item["block_sparse_attention"] for item in pass_acceleration.values()),
             "optional_patch_nodes": optional_patch_nodes,

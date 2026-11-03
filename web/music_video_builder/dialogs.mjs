@@ -1,5 +1,6 @@
 import { getJson, makeEditorImageUrl, postJson } from "./comfy_api.mjs";
 import { makeButton, makeField, makeInput, makeMiniButton, toast } from "./controls.mjs";
+import { renderDmadModelsTab } from "./dmad_models_tab.mjs";
 import {
   ERNIE_MODEL_DOWNLOADS,
   FLUX_KLEIN_4B_MODEL_DOWNLOADS,
@@ -401,6 +402,8 @@ export function showModelDownloadModal({ modelSelections = [] } = {}) {
         { title: "MiniMax H3", note: "Required diffusion model, Qwen3-VL text encoder, video VAE, and audio VAE for MiniMax H3 rendering.", downloads: MINIMAX_H3_MODEL_DOWNLOADS },
       ],
     },
+    // Installs the two DMAD LoRAs into models/loras (dmad_models_tab.mjs). render returns a function that stops its polling.
+    { id: "dmad", label: "Dmad Models", custom: true, render: renderDmadModelsTab },
     { id: "custom-nodes", label: "Custom Nodes", custom: true },
   ];
   const backdrop = document.createElement("div");
@@ -604,7 +607,15 @@ export function showModelDownloadModal({ modelSelections = [] } = {}) {
     await load();
   };
 
+  // A tab can start something that keeps running (the Dmad Models download progress). Leaving the tab or closing the dialog stops it.
+  let stopTabWork = () => {};
   const renderTab = (tab) => {
+    stopTabWork();
+    stopTabWork = () => {};
+    if (tab.render) {
+      stopTabWork = tab.render(body) || (() => {});
+      return;
+    }
     if (tab.custom) {
       renderCustomNodes();
       return;
@@ -726,6 +737,7 @@ export function showModelDownloadModal({ modelSelections = [] } = {}) {
   selectModels.onclick = () => choose("select");
   downloadModels.onclick = () => choose("download");
   const finish = () => {
+    stopTabWork();
     restoreSelection();
     document.removeEventListener("keydown", onKeyDown);
     backdrop.remove();

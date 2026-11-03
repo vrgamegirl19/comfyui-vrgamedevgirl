@@ -21,6 +21,7 @@ import {
   MINIMAX_H3_PIPELINE_OPTIONS,
   MINIMAX_H3_RESOLUTION_PRESETS,
   MINIMAX_H3_SAGE_ATTENTION_OPTIONS,
+  MINIMAX_H3_SAMPLING_OPTIONS,
   MINIMAX_H3_SCENE_IMAGE_USE_OPTIONS,
   MINIMAX_H3_START_FRAME_CHARACTER_INFLUENCE_OPTIONS,
   MINIMAX_H3_VIDEO_REFERENCE_PURPOSES,
@@ -35,9 +36,6 @@ export function buildMiniMaxPanel({
 }) {
   const miniMaxEnginePanel = document.createElement("div");
   miniMaxEnginePanel.style.cssText = "display:none;flex-direction:column;gap:10px;";
-  const miniMaxBanner = document.createElement("div");
-  miniMaxBanner.innerHTML = `<div style="font-size:14px;font-weight:900;color:#cffafe;">MiniMax H3 Project</div><div style="font-size:11px;color:#a5f3fc;margin-top:3px;">Mode, models, and video settings apply to the whole project unless the active scene is locked to custom settings.</div>`;
-  miniMaxBanner.style.cssText = "border:1px solid #0891b2;border-radius:7px;background:#083344;padding:10px;line-height:1.35;";
   // Video profiles: saved sets of video settings shared by every project (see video_profiles.mjs).
   const miniMaxVideoProfileSelect = makeSelect([{ value: "", label: "No profile" }], "");
   miniMaxVideoProfileSelect.style.flex = "1";
@@ -80,6 +78,40 @@ export function buildMiniMaxPanel({
     miniMaxPipelineChooser.append(button);
     return button;
   });
+  // Sampling method, under the pipeline and shared by both: Standard keeps the pass settings, DMAD fills in the DMAD LoRA,
+  // the refiner, the sampler settings and the sigma shift (setMiniMaxH3Dmad in minimax_h3.mjs).
+  const miniMaxSamplingChooser = document.createElement("div");
+  miniMaxSamplingChooser.setAttribute("role", "group");
+  miniMaxSamplingChooser.setAttribute("aria-label", "Sampling method");
+  miniMaxSamplingChooser.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;";
+  const miniMaxSamplingButtons = MINIMAX_H3_SAMPLING_OPTIONS.map((item) => {
+    const button = makeButton(item.value === "dmad" ? "DMAD 4-step" : "Standard sampling");
+    button.dataset.minimaxH3Sampling = item.value;
+    button.title = item.value === "dmad"
+      ? "DMAD: pass 1 uses the DMAD 4-step LoRA (lcm, 4 steps, sigma shift) and pass 2 uses the refiner LoRA. Fills in those settings. Single and 2 Pass only."
+      : "Your own sampler, steps and LoRA settings, as before. Choosing this after DMAD puts back the settings DMAD replaced.";
+    miniMaxSamplingChooser.append(button);
+    return button;
+  });
+  const miniMaxDmadNote = document.createElement("div");
+  miniMaxDmadNote.textContent = "DMAD 4-step: pass 1 uses the DMAD LoRA with lcm, simple, 4 steps and a sigma shift of 12 video / 2 audio. In 2 Pass, pass 2 uses the refiner LoRA at 0.7 for 3 refinement steps. These are filled in for you and stay editable. Single and 2 Pass only.";
+  miniMaxDmadNote.style.cssText = "display:none;font-size:11px;color:#a5f3fc;line-height:1.45;border:1px solid #155e75;border-radius:6px;background:#06202e;padding:7px 9px;";
+  // Steps for each DMAD pass, next to the DMAD button. The panel mirrors them into the Sampler and Pass 1 / Pass 2 step fields.
+  const miniMaxDmadSteps = document.createElement("div");
+  miniMaxDmadSteps.style.cssText = "display:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;";
+  const dmadStepsControls = [1, 2].map((pass) => {
+    const input = makeInput(String(pass === 1 ? DEFAULT_MINIMAX_H3_SETTINGS.steps : DEFAULT_MINIMAX_H3_SETTINGS.two_pass_pass2_steps), "number");
+    input.min = "1";
+    input.max = "1000";
+    input.step = "1";
+    input.title = "More steps take longer. The DMAD LoRA is trained for 4 steps, so raise this a little at a time.";
+    const field = makeField(`Pass ${pass} steps`, input);
+    miniMaxDmadSteps.append(field);
+    return { pass, input, field, label: field.firstElementChild };
+  });
+  const miniMaxDmadStatus = document.createElement("div");
+  miniMaxDmadStatus.setAttribute("role", "status");
+  miniMaxDmadStatus.style.cssText = "display:none;font-size:11px;line-height:1.45;color:#facc15;";
   const miniMaxRefmodNote = document.createElement("div");
   miniMaxRefmodNote.textContent = "RefMod pipeline: one mode, RefMod to Video, with Single or 2 Pass. Every scene uses the saved RefMods picked on its Reference Builder cards, and the prompt names them as <Video n> and <Picture n>.";
   miniMaxRefmodNote.style.cssText = "display:none;font-size:11px;color:#a5f3fc;line-height:1.45;border:1px solid #155e75;border-radius:6px;background:#06202e;padding:7px 9px;";
@@ -249,6 +281,7 @@ export function buildMiniMaxPanel({
   );
   const miniMaxSamplerName = makeSelect([
     "res_multistep",
+    "lcm",
     "euler",
     "euler_ancestral",
     "heun",
@@ -285,6 +318,7 @@ export function buildMiniMaxPanel({
     "euler",
     "euler_ancestral",
     "res_multistep",
+    "lcm",
     "heun",
     "dpmpp_2m",
     "dpmpp_2m_sde",
@@ -530,6 +564,31 @@ export function buildMiniMaxPanel({
     makeField("Steps", miniMaxSteps),
     makeField("Denoise", miniMaxDenoise),
   ]);
+  // Sigma shift: the ModelSamplingMiniMaxH3 node in front of the sampler. Pass 1 is also the single pass.
+  const miniMaxSigmaNote = document.createElement("div");
+  miniMaxSigmaNote.textContent = "Sigma shift sets how the sampler spreads its steps over the noise schedule. Video shift drives the sampler's sigma schedule and audio shift sets the audio side. Leave it off to keep the model's own schedule.";
+  miniMaxSigmaNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.45;";
+  const sigmaControls = [1, 2].map((pass) => {
+    const enabled = makeCheckbox(`Use sigma shift (pass ${pass})`, DEFAULT_MINIMAX_H3_SETTINGS[`sigma_pass${pass}_enabled`]);
+    const video = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS[`sigma_pass${pass}_video`]), "number");
+    const audio = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS[`sigma_pass${pass}_audio`]), "number");
+    for (const input of [video, audio]) {
+      input.min = "0.01";
+      input.max = "100";
+      input.step = "0.01";
+    }
+    const values = document.createElement("div");
+    values.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;";
+    values.append(makeField("Video shift", video), makeField("Audio shift", audio));
+    const group = document.createElement("div");
+    group.style.cssText = "display:flex;flex-direction:column;gap:6px;";
+    group.append(enabled.wrapper, values);
+    return { pass, enabled, video, audio, values, group, label: enabled.wrapper.lastChild };
+  });
+  const miniMaxSigmaSettings = makeSettingsSection("Sigma Shift", [
+    miniMaxSigmaNote,
+    ...sigmaControls.map((control) => control.group),
+  ], false);
   const miniMaxTwoPassLoraPicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_lora_name);
   const miniMaxTwoPassLoraStrength = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_lora_strength), "number");
   miniMaxTwoPassLoraStrength.min = "-10";
@@ -595,6 +654,7 @@ export function buildMiniMaxPanel({
   ]);
   const miniMaxAdvancedSettings = makeSettingsSection("Advanced Settings", [
     miniMaxSamplerSettings,
+    miniMaxSigmaSettings,
     miniMaxReferenceConditioningSettings,
     miniMaxEasyCacheSettings,
     miniMaxModelLoaderSettings,
@@ -777,7 +837,12 @@ export function buildMiniMaxPanel({
     },
   ], { modelSelectionLabel: "MiniMax H3" });
   miniMaxPassButtons.refmod = { pipelineButtons: miniMaxPipelineButtons, modeChooser: miniMaxModeChooser, note: miniMaxRefmodNote };
-  miniMaxEnginePanel.append(miniMaxBanner, miniMaxVideoProfileRow, miniMaxPipelineChooser, miniMaxRefmodNote, miniMaxModeChooser, miniMaxPassChooser, miniMaxSubTabs.wrapper, miniMaxSceneVideoButton);
+  // Carried on the pass buttons like refmod above, so the panel and its events get them without new parameters.
+  miniMaxPassButtons.dmad = {
+    chooser: miniMaxSamplingChooser, buttons: miniMaxSamplingButtons, note: miniMaxDmadNote, status: miniMaxDmadStatus,
+    sigmaSection: miniMaxSigmaSettings, sigmaControls, steps: miniMaxDmadSteps, stepsControls: dmadStepsControls,
+  };
+  miniMaxEnginePanel.append(miniMaxVideoProfileRow, miniMaxPipelineChooser, miniMaxSamplingChooser, miniMaxDmadNote, miniMaxDmadSteps, miniMaxDmadStatus, miniMaxRefmodNote, miniMaxModeChooser, miniMaxPassChooser, miniMaxSubTabs.wrapper, miniMaxSceneVideoButton);
 
   return {
     advancedTwoPassControls, miniMaxAccelerationControls, miniMaxAddSpeakerCueButton,

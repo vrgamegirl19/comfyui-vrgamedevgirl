@@ -1094,6 +1094,10 @@ export function createVideoRender({
         steps: miniMaxSettings.steps,
         denoise: miniMaxSettings.denoise,
         ref_image_size: miniMaxSettings.ref_image_size,
+        // Sigma shift (ModelSamplingMiniMaxH3) for Single and 2 Pass. Pass 1 is also the single pass.
+        ...Object.fromEntries([1, 2].flatMap((pass) => ["enabled", "video", "audio"].map(
+          (field) => [`sigma_pass${pass}_${field}`, miniMaxSettings[`sigma_pass${pass}_${field}`]],
+        ))),
         two_pass_lora_name: miniMaxSettings.two_pass_lora_name,
         two_pass_lora_strength: miniMaxSettings.two_pass_lora_strength,
         final_width: twoPass ? outputFrame.width : undefined,

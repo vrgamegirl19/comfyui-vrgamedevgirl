@@ -460,6 +460,10 @@
             "default": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
             "type": "string"
           },
+          "dmad_backup": {
+            "default": {},
+            "type": "object"
+          },
           "easy_cache_bypass": {
             "default": false,
             "type": "boolean"
@@ -647,6 +651,38 @@
           "seed": {
             "default": 69,
             "type": "integer"
+          },
+          "sigma_pass1_audio": {
+            "default": 3,
+            "maximum": 100,
+            "minimum": 0.01,
+            "type": "number"
+          },
+          "sigma_pass1_enabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "sigma_pass1_video": {
+            "default": 12,
+            "maximum": 100,
+            "minimum": 0.01,
+            "type": "number"
+          },
+          "sigma_pass2_audio": {
+            "default": 3,
+            "maximum": 100,
+            "minimum": 0.01,
+            "type": "number"
+          },
+          "sigma_pass2_enabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "sigma_pass2_video": {
+            "default": 12,
+            "maximum": 100,
+            "minimum": 0.01,
+            "type": "number"
           },
           "steps": {
             "default": 20,
@@ -915,6 +951,10 @@
             "type": "boolean"
           },
           "use_block_sparse_attention": {
+            "default": false,
+            "type": "boolean"
+          },
+          "use_dmad": {
             "default": false,
             "type": "boolean"
           },

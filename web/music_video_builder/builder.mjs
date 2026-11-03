@@ -230,6 +230,7 @@ export function openBuilder(node, options = {}) {
     builderLifecycle.resourceResizeObserver?.disconnect();
     window.removeEventListener("vrgdg:builder-toast", toastNotificationHandler);
     window.removeEventListener("vrgdg:builder-session-saved", videoModeSavedHandler);
+    if (builderLifecycle.modelsChangedHandler) window.removeEventListener("vrgdg-models-changed", builderLifecycle.modelsChangedHandler);
     builderLifecycle.disposeLlmSetup?.();
     builderLifecycle.disposeErrorLog?.();
     builderLifecycle.externalChangeSync?.dispose();
@@ -3166,6 +3167,13 @@ export function openBuilder(node, options = {}) {
     activeSegment, addSegmentButton, builderLifecycle, moveActiveSceneSelection, overlay, playButton, redo,
     segmentTrack, snapSceneEdgeToNearestBeat, undo,
   });
+
+  // The Models dialog's Dmad Models tab finished installing a file: reload the LoRA lists so the pickers and the DMAD
+  // "not found" note see it.
+  builderLifecycle.modelsChangedHandler = () => {
+    refreshLoraChoices().then(() => syncMiniMaxH3Panel()).catch(() => null);
+  };
+  window.addEventListener("vrgdg-models-changed", builderLifecycle.modelsChangedHandler);
 
   loadCustomModelRootSetting().finally(() => {
     refreshGemmaChoices().catch((error) => {

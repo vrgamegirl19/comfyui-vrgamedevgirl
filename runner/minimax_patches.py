@@ -741,6 +741,48 @@ def _patch_minimax_h3_optional_model_paths(prompt, model_refs, use_feedforward, 
     return optional_patch_nodes
 
 
+_SIGMA_SHIFT_CLASS = "MiniMaxH3SigmaShift"
+
+
+def _minimax_h3_sigma_shift(payload, target):
+    """The sigma shift of one pass as ``(video, audio)``, or ``None`` when it is off.
+
+    ``target`` is ``pass1`` (also the single pass) or ``pass2``. The defaults are the node's own.
+    """
+    prefix = f"sigma_{target}_"
+    if not _bool_payload(payload, f"{prefix}enabled", False):
+        return None
+    return (
+        _float_payload(payload, f"{prefix}video", 12.0, 0.01, 100.0),
+        _float_payload(payload, f"{prefix}audio", 3.0, 0.01, 100.0),
+    )
+
+
+def _patch_minimax_h3_sigma_shift(prompt, model_ref, payload, target, node_id):
+    """Put ModelSamplingMiniMaxH3 on a pass's model path and return ``(model_ref, summary)``.
+
+    Off (the default) returns the model reference unchanged and a summary of ``None``. The node is added after the
+    LoRAs and the optional patches, so the scheduler and guider read the shifted model.
+    """
+    shift = _minimax_h3_sigma_shift(payload, target)
+    if shift is None:
+        return list(model_ref), None
+    if _SIGMA_SHIFT_CLASS not in _get_comfy_node_mappings():
+        raise ValueError(
+            "Sigma shift needs the MiniMaxH3SigmaShift (ModelSamplingMiniMaxH3) node, which this ComfyUI does not have. "
+            "Update ComfyUI, or turn off sigma shift in MiniMax Video Settings."
+        )
+    node_id = str(node_id)
+    while node_id in prompt:
+        node_id = str(int(node_id) + 1)
+    prompt[node_id] = {
+        "class_type": _SIGMA_SHIFT_CLASS,
+        "inputs": {"model": list(model_ref), "shift_video": shift[0], "shift_audio": shift[1]},
+        "_meta": {"title": f"MiniMax H3 Sigma Shift - {target}"},
+    }
+    return [node_id, 0], {"node": node_id, "target": target, "shift_video": shift[0], "shift_audio": shift[1]}
+
+
 def _patch_minimax_h3_te_speed(prompt, model_ref, payload, node_id):
     prompt[node_id] = {
         "class_type": "TESpeedMiniMaxH3",

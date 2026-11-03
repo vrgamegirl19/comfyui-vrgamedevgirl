@@ -185,6 +185,8 @@ class NativeAudioTwoPassTests(unittest.TestCase):
             "_patch_minimax_h3_latent_continuation": lambda *args: None,
             "_patch_minimax_h3_save_latent": lambda *args: None,
             "_patch_minimax_h3_optional_model_paths": lambda *args: [],
+            # Sigma shift is off here: the model reference passes through and there is no summary.
+            "_patch_minimax_h3_sigma_shift": lambda prompt, model_ref, *args: (list(model_ref), None),
             "patch_i2v_keyframe_timing": lambda *args: None,
             "calculate_minimax_h3_timing": Mock(return_value=SimpleNamespace(
                 workflow_duration_input_seconds=5, final_trim_start_seconds=0,

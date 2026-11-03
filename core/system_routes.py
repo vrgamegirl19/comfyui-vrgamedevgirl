@@ -1,5 +1,5 @@
 """System routes for the Video Builder: host resource readings and memory cleanup, the update button, and
-allowlisted installs of the custom nodes the builder depends on."""
+allowlisted installs of the custom nodes and model files (the DMAD LoRAs) the builder depends on."""
 
 import asyncio
 import csv
@@ -19,6 +19,8 @@ import folder_paths
 import psutil
 from aiohttp import web
 from server import PromptServer
+
+from . import model_downloads
 
 
 _lock = asyncio.Lock()
@@ -512,6 +514,41 @@ async def custom_nodes_install(request):
         return web.json_response({"ok": True, "results": result, "restart_required": True})
     except Exception as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+def _model_ids(payload):
+    ids = payload.get("ids", []) if isinstance(payload, dict) else []
+    if not isinstance(ids, list):
+        raise ValueError("ids must be a list.")
+    return [str(item) for item in ids]
+
+
+@PromptServer.instance.routes.get("/vrgdg/video_builder/models/status")
+async def models_status(request):
+    """Allowlisted downloadable models (the Models dialog's DMAD Models tab): installed or not, and download progress."""
+    data = await asyncio.to_thread(model_downloads.model_status)
+    return web.json_response({"ok": True, "models": data})
+
+
+@PromptServer.instance.routes.post("/vrgdg/video_builder/models/install")
+async def models_install(request):
+    """Start downloading allowlisted models into ComfyUI's model folders. Poll ``models/status`` for progress."""
+    try:
+        started = await asyncio.to_thread(model_downloads.start_install, _model_ids(await request.json()))
+        data = await asyncio.to_thread(model_downloads.model_status)
+        return web.json_response({"ok": True, "started": started, "models": data})
+    except Exception as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+
+@PromptServer.instance.routes.post("/vrgdg/video_builder/models/cancel")
+async def models_cancel(request):
+    """Stop running model downloads."""
+    try:
+        cancelled = await asyncio.to_thread(model_downloads.cancel_install, _model_ids(await request.json()))
+        return web.json_response({"ok": True, "cancelled": cancelled})
+    except Exception as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
 
 NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}

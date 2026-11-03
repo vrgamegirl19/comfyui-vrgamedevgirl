@@ -7,6 +7,8 @@ import {
   miniMaxH3ContinuationStartLimits,
   miniMaxH3ContinuationStartSeconds,
   isMiniMaxH3LatentContinuationMode,
+  MINIMAX_H3_DMAD_LORA_NAME,
+  MINIMAX_H3_DMAD_REFINER_LORA_NAME,
   miniMaxH3ModeLabel,
   normalizeMiniMaxH3ContinuityMode,
   normalizeMiniMaxH3LocationTransitionPreset,
@@ -340,6 +342,11 @@ export function createMiniMaxPanel({
       scheduler: miniMaxScheduler.value,
       steps: miniMaxSteps.value,
       denoise: miniMaxDenoise.value,
+      ...Object.fromEntries((miniMaxPassButtons.dmad?.sigmaControls || []).flatMap(({ pass, enabled, video, audio }) => [
+        [`sigma_pass${pass}_enabled`, enabled.input.checked],
+        [`sigma_pass${pass}_video`, video.value],
+        [`sigma_pass${pass}_audio`, audio.value],
+      ])),
       ref_image_size: currentSettings.render_pass === "three_pass"
         ? miniMaxThreePassRefImageSize.value
         : currentSettings.render_pass === "two_pass"
@@ -446,6 +453,13 @@ export function createMiniMaxPanel({
       ...sceneSettings,
       // The pipeline belongs to the whole project, so a scene with its own settings follows it.
       pipeline: globalSettings.pipeline,
+      // DMAD and the sigma shift are the scene's own. A scene locked before they existed starts with them off,
+      // not with the project's values over its own sampler settings.
+      use_dmad: sceneSettings.use_dmad ?? false,
+      dmad_backup: sceneSettings.dmad_backup ?? {},
+      ...Object.fromEntries(["sigma_pass1_enabled", "sigma_pass1_video", "sigma_pass1_audio",
+        "sigma_pass2_enabled", "sigma_pass2_video", "sigma_pass2_audio"]
+        .map((key) => [key, sceneSettings[key] ?? DEFAULT_MINIMAX_H3_SETTINGS[key]])),
       video_mode: sceneSettings.video_mode || segment.minimax_h3_mode || globalSettings.video_mode,
       // A migrated project must not opt an older locked T2V scene into two passes.
       t2v_pass_settings_version: sceneSettings.t2v_pass_settings_version ?? 0,
@@ -584,6 +598,12 @@ export function createMiniMaxPanel({
     miniMaxScheduler.value = settings.scheduler;
     miniMaxSteps.value = String(settings.steps);
     miniMaxDenoise.value = String(settings.denoise);
+    for (const { pass, enabled, video, audio } of miniMaxPassButtons.dmad?.sigmaControls || []) {
+      enabled.input.checked = Boolean(settings[`sigma_pass${pass}_enabled`]);
+      video.value = String(settings[`sigma_pass${pass}_video`]);
+      audio.value = String(settings[`sigma_pass${pass}_audio`]);
+      video.disabled = audio.disabled = !enabled.input.checked;
+    }
     miniMaxRefImageSize.value = settings.ref_image_size;
     miniMaxTwoPassRefImageSize.value = settings.ref_image_size;
     miniMaxThreePassRefImageSize.value = settings.ref_image_size;
@@ -754,8 +774,45 @@ export function createMiniMaxPanel({
         button.style.color = active ? "#082f49" : "#f4f4f5";
       }
     }
-    // 2 Pass Advanced is not offered with RefMods.
-    const singleOrTwoPassOnly = refmodPipeline || ["image_to_video", "text_to_video"].includes(mode);
+    // The sampling method row (Standard / DMAD) sits under the pipeline and works with both.
+    const dmadUi = miniMaxPassButtons.dmad;
+    const dmadOn = Boolean(settings.use_dmad);
+    if (dmadUi) {
+      for (const button of dmadUi.buttons) {
+        const active = button.dataset.minimaxH3Sampling === (dmadOn ? "dmad" : "standard");
+        button.setAttribute("aria-pressed", String(active));
+        button.style.background = active ? "#06b6d4" : "#27272a";
+        button.style.borderColor = active ? "#0891b2" : "#3f3f46";
+        button.style.color = active ? "#082f49" : "#f4f4f5";
+      }
+      dmadUi.note.style.display = dmadOn ? "block" : "none";
+      // Steps per DMAD pass. They show the same values as the Sampler (single pass) and Pass 1 / Pass 2 step fields.
+      dmadUi.steps.style.display = dmadOn && !threePass ? "grid" : "none";
+      dmadUi.steps.style.gridTemplateColumns = twoPass ? "repeat(2,minmax(0,1fr))" : "minmax(0,1fr)";
+      for (const control of dmadUi.stepsControls) {
+        control.label.textContent = twoPass ? `Pass ${control.pass} steps` : "Steps";
+        control.field.style.display = control.pass === 2 && !twoPass ? "none" : "";
+        control.input.value = (twoPass ? twoPassControls[control.pass - 1].steps : miniMaxSteps).value;
+      }
+      // The pickers know the installed LoRAs once the list has loaded. Say so when a DMAD file is missing.
+      const installedLoras = (miniMaxTwoPassLoraPicker.options || []).map((name) => String(name).split(/[\\/]/).pop());
+      const missingDmad = !dmadOn || !installedLoras.length ? [] : [
+        ...(installedLoras.includes(MINIMAX_H3_DMAD_LORA_NAME) ? [] : ["the DMAD LoRA"]),
+        ...(twoPass && !installedLoras.includes(MINIMAX_H3_DMAD_REFINER_LORA_NAME) ? ["the refiner LoRA"] : []),
+      ];
+      dmadUi.status.textContent = missingDmad.length
+        ? `Not found in models/loras: ${missingDmad.join(" and ")}. Open Models, then DMAD Models, to install ${missingDmad.length > 1 ? "them" : "it"}.`
+        : "";
+      dmadUi.status.style.display = missingDmad.length ? "block" : "none";
+      // Sigma shift works for Single and 2 Pass. Pass 2 only exists in 2 Pass.
+      dmadUi.sigmaSection.style.display = threePass ? "none" : "";
+      for (const control of dmadUi.sigmaControls) {
+        control.label.textContent = twoPass ? `Use sigma shift (pass ${control.pass})` : "Use sigma shift";
+        control.group.style.display = control.pass === 2 && !twoPass ? "none" : "flex";
+      }
+    }
+    // 2 Pass Advanced is not offered with RefMods or DMAD.
+    const singleOrTwoPassOnly = refmodPipeline || dmadOn || ["image_to_video", "text_to_video"].includes(mode);
     miniMaxPassButtons[2].style.display = singleOrTwoPassOnly ? "none" : "";
     miniMaxPassChooser.style.gridTemplateColumns = singleOrTwoPassOnly ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))";
     miniMaxPassChooser.style.display = ["reference_to_video", "image_to_video", "text_to_video"].includes(mode) ? "grid" : "none";

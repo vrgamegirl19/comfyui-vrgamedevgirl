@@ -77,6 +77,39 @@ export const MINIMAX_H3_PIPELINE_OPTIONS = [
   { value: "standard", label: "Standard" },
   { value: "refmod", label: "RefMod" },
 ];
+// The sampling method sits under the pipeline and works with both. "standard" leaves every pass setting as the user
+// has it. "dmad" fills in the DMAD 4-step LoRA, the refiner LoRA, the sampler settings and the sigma shift
+// (setMiniMaxH3Dmad) and offers Single and 2 Pass only.
+export const MINIMAX_H3_SAMPLING_OPTIONS = [
+  { value: "standard", label: "Standard" },
+  { value: "dmad", label: "DMAD" },
+];
+// The two DMAD files, both in models/loras. Pass 1 gets the DMAD LoRA, pass 2 gets the refiner as its Turbo LoRA.
+// Download links and the installer are in models.mjs (DMAD_MODEL_FILES).
+export const MINIMAX_H3_DMAD_LORA_NAME = "dmad_minimax_h3_4step_full_critic_comfyui.safetensors";
+export const MINIMAX_H3_DMAD_REFINER_LORA_NAME = "minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors";
+// What choosing DMAD writes into the settings. Python twin: DMAD_PRESET in minimax/settings_payload.py.
+export const MINIMAX_H3_DMAD_PRESET = Object.freeze({
+  sampler_name: "lcm",
+  scheduler: "simple",
+  steps: 4,
+  denoise: 1,
+  two_pass_pass1_sampler: "lcm",
+  two_pass_pass1_scheduler: "simple",
+  two_pass_pass1_steps: 4,
+  two_pass_pass1_denoise: 1,
+  two_pass_pass2_sampler: "res_multistep",
+  two_pass_pass2_scheduler: "simple",
+  two_pass_pass2_steps: 3,
+  two_pass_pass2_denoise: 0.2,
+  two_pass_lora_name: MINIMAX_H3_DMAD_REFINER_LORA_NAME,
+  two_pass_lora_strength: 0.7,
+  sigma_pass1_enabled: true,
+  sigma_pass1_video: 12,
+  sigma_pass1_audio: 2,
+  sigma_pass2_enabled: false,
+  use_turbo_lora: false,
+});
 export const MINIMAX_I2V_TRANSITION_OPTIONS = [
   {value: "natural", label: "Natural movement"},
   {value: "surreal_morph", label: "Surreal morph"},
@@ -91,6 +124,9 @@ export function normalizeMiniMaxI2VTransitionStyle(value) {
 }
 export const DEFAULT_MINIMAX_H3_SETTINGS = {
   pipeline: "standard",
+  // DMAD sampling (see MINIMAX_H3_DMAD_PRESET). dmad_backup holds the values DMAD replaced so Standard can restore them.
+  use_dmad: false,
+  dmad_backup: {},
   video_mode: "text_to_video",
   render_pass: "two_pass",
   i2v_transition_style: "natural",
@@ -120,6 +156,14 @@ export const DEFAULT_MINIMAX_H3_SETTINGS = {
   steps: 20,
   steps_before_turbo: 20,
   denoise: 1,
+  // Sigma shift (the ModelSamplingMiniMaxH3 node). Pass 1 is also the single pass. Off by default, which leaves the
+  // model's own schedule alone. The values are the node's own defaults.
+  sigma_pass1_enabled: false,
+  sigma_pass1_video: 12,
+  sigma_pass1_audio: 3,
+  sigma_pass2_enabled: false,
+  sigma_pass2_video: 12,
+  sigma_pass2_audio: 3,
   easy_cache_bypass: false,
   easy_cache_bypass_before_turbo: false,
   easy_cache_reuse_threshold: 0.3,
@@ -334,6 +378,84 @@ export function normalizeMiniMaxH3Pipeline(value) {
   return String(value || "").trim().toLowerCase() === "refmod" ? "refmod" : "standard";
 }
 
+// Settings that choosing DMAD replaces, besides the preset itself. The extra LoRA list gets the DMAD LoRA first.
+const DMAD_LORA_KEYS = ["use_loras", "lora_count", "loras"];
+
+function dmadSettingsObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+// Settings are plain JSON, so a JSON round trip is a full copy.
+function dmadCopy(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
+// The extra LoRAs a settings object really uses (an off list or a [none] row is nothing).
+function activeExtraLoras(settings) {
+  if (!settings.use_loras || !Array.isArray(settings.loras)) return [];
+  return settings.loras
+    .slice(0, Math.max(0, Math.min(4, Math.trunc(Number(settings.lora_count ?? settings.loras.length) || 0))))
+    .filter((item) => item && item.name && item.name !== "[none]");
+}
+
+function applyDmadToProfile(settings) {
+  if (settings.use_dmad) return settings;
+  const backup = {};
+  for (const key of [...Object.keys(MINIMAX_H3_DMAD_PRESET), ...DMAD_LORA_KEYS]) {
+    backup[key] = dmadCopy(settings[key] ?? DEFAULT_MINIMAX_H3_SETTINGS[key]);
+  }
+  // The DMAD LoRA takes the first extra LoRA slot on the first pass. Other extra LoRAs keep the rest (four at most).
+  const others = activeExtraLoras(settings).filter((item) => item.name !== MINIMAX_H3_DMAD_LORA_NAME).slice(0, 3);
+  const result = {
+    ...settings,
+    ...MINIMAX_H3_DMAD_PRESET,
+    use_dmad: true,
+    dmad_backup: backup,
+    use_loras: true,
+    lora_count: others.length + 1,
+    loras: [{ name: MINIMAX_H3_DMAD_LORA_NAME, strength: 1, apply_to: "pass1" }, ...others],
+  };
+  // DMAD has no 2 Pass Advanced.
+  if (settings.render_pass === "three_pass") result.render_pass = "two_pass";
+  return result;
+}
+
+function removeDmadFromProfile(settings) {
+  if (!settings.use_dmad) return settings;
+  const backup = dmadSettingsObject(settings.dmad_backup);
+  const restored = { ...settings };
+  for (const key of Object.keys(MINIMAX_H3_DMAD_PRESET)) {
+    restored[key] = dmadCopy(backup[key] ?? DEFAULT_MINIMAX_H3_SETTINGS[key]);
+  }
+  // Extra LoRAs added while DMAD was on stay. Only the DMAD LoRA goes.
+  const rest = activeExtraLoras(settings).filter((item) => item.name !== MINIMAX_H3_DMAD_LORA_NAME);
+  restored.loras = rest;
+  restored.lora_count = rest.length;
+  restored.use_loras = rest.length > 0;
+  restored.use_dmad = false;
+  restored.dmad_backup = {};
+  return restored;
+}
+
+// Turn DMAD on or off for a settings object and for every saved pass profile in it, so Single and 2 Pass agree.
+// Choosing DMAD fills in its settings and remembers the ones it replaced; choosing Standard puts those back.
+export function setMiniMaxH3Dmad(settings, enabled) {
+  const update = enabled ? applyDmadToProfile : removeDmadFromProfile;
+  const updateProfiles = (profiles) => Object.fromEntries(
+    Object.entries(dmadSettingsObject(profiles)).map(([name, profile]) => [name, profile && typeof profile === "object" ? update(profile) : profile]),
+  );
+  const source = settings && typeof settings === "object" ? settings : {};
+  const profileSets = Object.fromEntries(["ref_pass_profiles", "i2v_pass_profiles"]
+    .filter((key) => source[key] && typeof source[key] === "object")
+    .map((key) => [key, updateProfiles(source[key])]));
+  return cloneMiniMaxH3Settings({ ...update(cloneMiniMaxH3Settings(source)), ...profileSets });
+}
+
+function sigmaShiftValue(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0.01, Math.min(100, number)) : fallback;
+}
+
 export function normalizeMiniMaxH3AudioMode(value) {
   const clean = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
   return ["built_in_audio", "native_audio", "generated_audio"].includes(clean) ? "built_in_audio" : "input_audio";
@@ -502,12 +624,18 @@ export function selectMiniMaxH3PassSettings(settings, passMode) {
   if (profiles.advanced && !profiles.three_pass) profiles.three_pass = profiles.advanced;
   delete profiles.advanced;
   profiles[current.render_pass || "single"] = current;
+  // A saved pass profile made under the other sampling method is out of date (a video profile was applied since, and
+  // it does not carry the pass cache). Its sampler, LoRA and sigma values would not match use_dmad, so it is not used.
+  const saved = profiles[passMode];
+  const savedPass = saved && Boolean(saved.use_dmad) === Boolean(current.use_dmad) ? saved : {};
   return cloneMiniMaxH3Settings({
     ...current,
-    ...(profiles[passMode] || {}),
+    ...savedPass,
     // Pass profiles may contain a different pipeline from an earlier session.
     // The project pipeline controls the video mode and must survive pass changes.
     pipeline: current.pipeline,
+    // So does the sampling method. setMiniMaxH3Dmad fills in every profile, so a profile and the current settings agree.
+    use_dmad: current.use_dmad,
     // The output resolution is shared by every pass mode, not stored per profile.
     i2v_transition_style: current.i2v_transition_style,
     i2v_transition_direction: current.i2v_transition_direction,
@@ -581,6 +709,9 @@ export function cloneMiniMaxH3Settings(value = {}) {
         ? "two_pass"
         : DEFAULT_MINIMAX_H3_SETTINGS.render_pass;
   const pipeline = normalizeMiniMaxH3Pipeline(source.pipeline);
+  const dmad = Boolean(source.use_dmad);
+  // DMAD, like RefMod, has Single and 2 Pass only.
+  if (dmad && renderPass === "three_pass") renderPass = "two_pass";
   const isI2V = pipeline !== "refmod" && normalizeMiniMaxH3Mode(source.video_mode || source.mode) === "image_to_video";
   // I2V previously ignored render_pass, even when a save carried the global two-pass default.
   if (isI2V && Number(source.i2v_pass_settings_version || 0) < 1) renderPass = "single";
@@ -626,6 +757,14 @@ export function cloneMiniMaxH3Settings(value = {}) {
     ...DEFAULT_MINIMAX_H3_SETTINGS,
     ...source,
     pipeline,
+    use_dmad: dmad,
+    dmad_backup: dmad ? dmadSettingsObject(source.dmad_backup) : {},
+    sigma_pass1_enabled: Boolean(source.sigma_pass1_enabled ?? DEFAULT_MINIMAX_H3_SETTINGS.sigma_pass1_enabled),
+    sigma_pass1_video: sigmaShiftValue(source.sigma_pass1_video, DEFAULT_MINIMAX_H3_SETTINGS.sigma_pass1_video),
+    sigma_pass1_audio: sigmaShiftValue(source.sigma_pass1_audio, DEFAULT_MINIMAX_H3_SETTINGS.sigma_pass1_audio),
+    sigma_pass2_enabled: Boolean(source.sigma_pass2_enabled ?? DEFAULT_MINIMAX_H3_SETTINGS.sigma_pass2_enabled),
+    sigma_pass2_video: sigmaShiftValue(source.sigma_pass2_video, DEFAULT_MINIMAX_H3_SETTINGS.sigma_pass2_video),
+    sigma_pass2_audio: sigmaShiftValue(source.sigma_pass2_audio, DEFAULT_MINIMAX_H3_SETTINGS.sigma_pass2_audio),
     // The RefMod pipeline only has one mode.
     video_mode: videoMode,
     // Pre-existing saves never had render_pass; Image + Reference 2 Pass was always a two-pass
