@@ -349,6 +349,52 @@ class VRGDG_MiniMaxH3LoadLatent:
         return (out_latent, tokens_to_slice)
 
 
+class VRGDG_MiniMaxH3LoadLatentFull:
+    """Load a scene's whole saved latent, picture and sound, so it can be decoded again."""
+
+    @classmethod
+    def IS_CHANGED(cls, project_folder, scene_number):
+        path = SceneLatentManager.get_path(str(project_folder or "").strip().strip('"'), scene_number)
+        if not os.path.isfile(path):
+            return "missing"
+        with open(path, "rb") as handle:
+            return hashlib.file_digest(handle, "sha256").hexdigest()
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "project_folder": ("STRING", {"default": "", "tooltip": "Project folder path"}),
+                "scene_number": ("INT", {"default": 1, "min": 1, "max": 999999, "step": 1, "tooltip": "Scene number to load"}),
+            },
+        }
+
+    RETURN_TYPES = ("LATENT", "INT")
+    RETURN_NAMES = ("latent", "frame_count")
+    FUNCTION = "load"
+    CATEGORY = "VRGDG/MiniMax H3 Latent Continuation"
+    DESCRIPTION = (
+        "Loads scene_NNN.latent from disk whole, with its audio, exactly as the sampler produced it. Feed it to the VAE "
+        "decode to make the scene video again at any quality. Unlike Load Latent it does not slice a continuation window."
+    )
+
+    def load(self, project_folder: str = "", scene_number: int = 1) -> tuple[dict[str, Any], int]:
+        clean_folder = str(project_folder or "").strip().strip('"')
+        if not clean_folder:
+            raise ValueError("project_folder is required to load a scene latent")
+        data = SceneLatentManager.load_latent(clean_folder, scene_number)
+        if not data:
+            raise FileNotFoundError(
+                f"No latent found for scene {scene_number:03d} in {clean_folder}/latents/. Render the scene first."
+            )
+        latent = {"samples": data["samples"], "video": data["video"], "audio": data.get("audio")}
+        print(
+            f"[VRGDG Latent Load] Loaded scene {scene_number:03d} whole: {data['token_count']} tokens, "
+            f"{data['frame_count']} frames, audio: {'yes' if data.get('audio') is not None else 'no'}"
+        )
+        return (latent, int(data["frame_count"]))
+
+
 class VRGDG_MiniMaxH3ApplyLatentGuide:
     """Inject a sliced predecessor latent as a native MiniMax H3 AddGuide temporal keyframe."""
 
@@ -639,6 +685,7 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_MiniMaxH3LoadDraft": VRGDG_MiniMaxH3LoadDraft,
     "VRGDG_MiniMaxH3SaveLatent": VRGDG_MiniMaxH3SaveLatent,
     "VRGDG_MiniMaxH3LoadLatent": VRGDG_MiniMaxH3LoadLatent,
+    "VRGDG_MiniMaxH3LoadLatentFull": VRGDG_MiniMaxH3LoadLatentFull,
     "VRGDG_MiniMaxH3ApplyLatentGuide": VRGDG_MiniMaxH3ApplyLatentGuide,
     "VRGDG_MiniMaxH3ApplyMaskedContinuation": VRGDG_MiniMaxH3ApplyMaskedContinuation,
     "VRGDG_MiniMaxH3LoadExactFrame": VRGDG_MiniMaxH3LoadExactFrame,
@@ -649,6 +696,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_MiniMaxH3LoadDraft": "VRGDG H3 Load Draft Checkpoint",
     "VRGDG_MiniMaxH3SaveLatent": "VRGDG H3 Save Latent",
     "VRGDG_MiniMaxH3LoadLatent": "VRGDG H3 Load Latent",
+    "VRGDG_MiniMaxH3LoadLatentFull": "VRGDG H3 Load Whole Latent",
     "VRGDG_MiniMaxH3ApplyLatentGuide": "VRGDG H3 Apply Latent Continuation Guide",
     "VRGDG_MiniMaxH3ApplyMaskedContinuation": "VRGDG H3 Apply Masked Continuation",
     "VRGDG_MiniMaxH3LoadExactFrame": "VRGDG H3 Load Exact Last Frame",

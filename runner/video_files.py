@@ -12,6 +12,68 @@ from fractions import Fraction
 
 from .paths import _bool_payload, _ffprobe_path_for, _find_ffmpeg_path, _int_payload, _resolve_comfy_image_path, _resolve_save_folder, _unique_copy_path
 
+# Scene copies are the files the final video is made of, and a stitch can encode them again (timeline sync, inserts,
+# canvas fit). The MiniMax H3 render is CRF 19, so these stay below it and add no visible loss. Without explicit
+# values x264 falls back to CRF 23 / veryfast and AAC to its default bitrate.
+SCENE_VIDEO_CRF = 16
+SCENE_VIDEO_PRESET = "medium"
+SCENE_AUDIO_BITRATE = "256k"
+
+
+# x264 writes its settings string (``x264 - core 165 ... rc=crf ... crf=19.0 ...``) into the first frame of a stream.
+_X264_SETTINGS_SCAN_BYTES = 1 << 20
+
+
+def _probe_x264_crf(path):
+    """Return the CRF an x264 file was encoded at, read from the settings string x264 stores in it, or None."""
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(_X264_SETTINGS_SCAN_BYTES)
+    except OSError:
+        return None
+    start = head.find(b"x264 - core")
+    if start < 0:
+        return None
+    end = head.find(b"\x00", start)
+    text = head[start:end if end > start else None].decode("latin-1")
+    if not re.search(r"\brc=crf\b", text):
+        return None
+    match = re.search(r"\bcrf=([0-9]+(?:\.[0-9]+)?)", text)
+    return float(match.group(1)) if match else None
+
+
+def _source_crf(paths, explicit=None):
+    """Return the CRF the source clips were written at: ``explicit`` when given, else the lowest CRF the files state."""
+    if explicit not in (None, ""):
+        return explicit
+    found = [crf for crf in (_probe_x264_crf(path) for path in paths) if crf is not None]
+    return min(found) if found else None
+
+
+def _scene_video_crf(render_crf=None) -> int:
+    """Return the CRF for a scene copy: SCENE_VIDEO_CRF, or the source's own CRF when that is lower.
+
+    A copy is never coarser than the clip it is made from, so a render written at CRF 10 or a take re-decoded at CRF 12
+    keeps that quality. Anything that is not a number keeps the default.
+    """
+    try:
+        value = int(float(render_crf))
+    except (TypeError, ValueError):
+        return SCENE_VIDEO_CRF
+    return max(0, min(SCENE_VIDEO_CRF, value))
+
+
+def _scene_video_encode_args(render_crf=None) -> list:
+    """Return the ffmpeg video encoder arguments used for every scene copy and stitch re-encode."""
+    return [
+        "-c:v", "libx264", "-preset", SCENE_VIDEO_PRESET, "-crf", str(_scene_video_crf(render_crf)), "-pix_fmt", "yuv420p",
+    ]
+
+
+def _scene_audio_encode_args() -> list:
+    """Return the ffmpeg AAC encoder arguments used for every scene copy and stitch audio encode."""
+    return ["-c:a", "aac", "-b:a", SCENE_AUDIO_BITRATE]
+
 
 def _save_generated_image(payload):
     image_info = payload.get("image")
@@ -71,7 +133,7 @@ def _probe_output_media(video_path, ffmpeg_path=None):
     return info
 
 
-def _normalize_video_canvas(ffmpeg_path, source_path, target_path, width, height):
+def _normalize_video_canvas(ffmpeg_path, source_path, target_path, width, height, render_crf=None):
     width = int(width or 0)
     height = int(height or 0)
     if width <= 0 or height <= 0:
@@ -92,12 +154,7 @@ def _normalize_video_canvas(ffmpeg_path, source_path, target_path, width, height
         "-an",
         "-vf",
         vf,
-        "-c:v",
-        "libx264",
-        "-pix_fmt",
-        "yuv420p",
-        "-preset",
-        "veryfast",
+        *_scene_video_encode_args(render_crf),
         target_path,
     ]
     subprocess.run(cmd, capture_output=True, text=True, errors="replace", check=True)
@@ -448,14 +505,8 @@ def _trim_scene_video(payload):
         "0:v:0",
         "-map",
         "1:a:0" if restore_audio else "0:a?",
-        "-c:v",
-        "libx264",
-        "-pix_fmt",
-        "yuv420p",
-        "-preset",
-        "veryfast",
-        "-c:a",
-        "aac",
+        *_scene_video_encode_args(_source_crf([source_path], payload.get("crf"))),
+        *_scene_audio_encode_args(),
         "-movflags",
         "+faststart",
         target_path,
@@ -1028,6 +1079,8 @@ def _stitch_scene_videos(payload):
         raise FileNotFoundError(f"Audio file was not found: {audio_path}")
 
     ffmpeg_path = _find_ffmpeg_path()
+    # The CRF the scene clips were written at, so the stitch never encodes them coarser than that.
+    render_crf = _source_crf(scene_paths, payload.get("crf"))
     timeline_sync_paths = []
     timeline_sync_frame_count = 0
     timeline_frame_lengths = []
@@ -1072,12 +1125,7 @@ def _stitch_scene_videos(payload):
                 str(target_frames),
                 "-r",
                 str(timeline_fps),
-                "-c:v",
-                "libx264",
-                "-pix_fmt",
-                "yuv420p",
-                "-preset",
-                "veryfast",
+                *_scene_video_encode_args(render_crf),
                 sync_path,
             ]
             sync_result = subprocess.run(sync_cmd, capture_output=True, text=True, errors="replace")
@@ -1152,12 +1200,7 @@ def _stitch_scene_videos(payload):
                 cmd.extend(["-t", f"{max(0.05, float(duration)):.6f}"])
             cmd.extend([
                 "-an",
-                "-c:v",
-                "libx264",
-                "-pix_fmt",
-                "yuv420p",
-                "-preset",
-                "veryfast",
+                *_scene_video_encode_args(render_crf),
                 part_path,
             ])
             subprocess.run(cmd, capture_output=True, text=True, errors="replace", check=True)
@@ -1204,7 +1247,7 @@ def _stitch_scene_videos(payload):
         temp_video = flattened_video
 
     if target_width > 0 and target_height > 0:
-        normalized_canvas = _normalize_video_canvas(ffmpeg_path, temp_video, normalized_video, target_width, target_height)
+        normalized_canvas = _normalize_video_canvas(ffmpeg_path, temp_video, normalized_video, target_width, target_height, render_crf)
         if normalized_canvas:
             try:
                 os.remove(temp_video)
@@ -1256,7 +1299,7 @@ def _stitch_scene_videos(payload):
                     ]
                     if duration:
                         trim_cmd.extend(["-t", str(duration)])
-                    trim_cmd.extend(["-vn", "-c:a", "aac", part_path])
+                    trim_cmd.extend(["-vn", *_scene_audio_encode_args(), part_path])
                     subprocess.run(trim_cmd, capture_output=True, text=True, errors="replace", check=True)
                     temp_audio_parts.append(part_path)
                     path = part_path
@@ -1271,8 +1314,7 @@ def _stitch_scene_videos(payload):
             "-i",
             audio_concat_file,
             "-vn",
-            "-c:a",
-            "aac",
+            *_scene_audio_encode_args(),
             temp_audio,
         ]
         subprocess.run(audio_concat_cmd, capture_output=True, text=True, errors="replace", check=True)
@@ -1284,7 +1326,7 @@ def _stitch_scene_videos(payload):
         trim_audio_cmd.extend(["-i", audio_path])
         if preview_audio_duration:
             trim_audio_cmd.extend(["-t", f"{preview_audio_duration:.6f}"])
-        trim_audio_cmd.extend(["-vn", "-c:a", "aac", temp_global_audio])
+        trim_audio_cmd.extend(["-vn", *_scene_audio_encode_args(), temp_global_audio])
         subprocess.run(trim_audio_cmd, capture_output=True, text=True, errors="replace", check=True)
         mux_audio_path = temp_global_audio
 
@@ -1297,8 +1339,7 @@ def _stitch_scene_videos(payload):
         mux_audio_path,
         "-c:v",
         "copy",
-        "-c:a",
-        "aac",
+        *_scene_audio_encode_args(),
     ]
     if not timeline_sync_paths and not audio_matches_video:
         # -shortest ends the file at the shorter stream. The joined embedded audio is already exactly the

@@ -36,7 +36,7 @@ Use it to:
 
 📖 **New here? Start with the full [AI Video Builder Guide](Workflows/LTX-2_Workflows/Video_Builder/readme.md).**
 
-Agents can render MiniMax two-pass scenes through the scene-video API using `render_phase: "draft"`, `"finalize"`, or `"full"` (default). Drafts save pass-1 latents for review; finalize runs pass 2 from the saved draft. See [API endpoints](Api_Endpoints.md).
+Agents can render MiniMax two-pass scenes through the scene-video API using `render_phase: "draft"`, `"finalize"`, or `"full"` (default). Drafts save pass-1 latents for review; finalize runs pass 2 from the saved draft. `render_phase: "redecode"` makes a scene's video again from its saved latent at a finer `crf` than the render's, without sampling. See [API endpoints](Api_Endpoints.md).
 
 ✨ **Or chat with a GPT and ask any question about the video builder. [HERE](https://chatgpt.com/g/g-6a6b4799d0e48191acf5a97fb2132ba9-ltx-2-3-music-video-builder-guide)** 
 

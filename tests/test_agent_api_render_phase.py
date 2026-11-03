@@ -137,6 +137,53 @@ class ApiRenderPhaseTests(unittest.TestCase):
         with self.assertRaises(errors_mod.ValidationError):
             self._render({"render_phase": "preview"})
 
+    def _save_latent(self, frames=150):
+        latents = os.path.join(self.project_dir, "latents")
+        os.makedirs(latents, exist_ok=True)
+        Path(latents, "scene_001.latent").write_bytes(b"latent")
+        Path(latents, "scene_001.latent.json").write_text(json.dumps({"frame_count": str(frames)}), encoding="utf-8")
+
+    def test_redecode_decodes_the_saved_latent_and_leaves_the_rest_of_the_project_alone(self):
+        self._save_latent()
+        manager = importlib.import_module(f"{pkg_name}.minimax.latent_manager").SceneLatentManager
+        with patch.object(manager, "mark_successor_dirty") as mark, patch.object(manager, "clear_dirty") as clear:
+            done = self._render({"render_phase": "redecode", "crf": 10, "randomize_seed": True})
+        # No sampling and no latent save: the compiled graph is cut down to the decode.
+        self.assertTrue(done["payload"]["_skip_latent_patches"])
+        queued = done["queued"]["prompt"]
+        classes = {node["class_type"] for node in queued.values()}
+        self.assertIn("VRGDG_MiniMaxH3LoadLatentFull", classes)
+        self.assertNotIn("SamplerCustomAdvanced", classes)
+        self.assertNotIn("VRGDG_MiniMaxH3SaveLatent", classes)
+        self.assertEqual(queued["142"]["inputs"]["crf"], 10)
+        # The old copy is backed up, not overwritten, and the result says what was done.
+        self.assertEqual(done["collect"]["existing_action"], "backup")
+        self.assertEqual(done["result"]["render_phase"], "redecode")
+        self.assertEqual(done["result"]["redecode"]["crf"], 10)
+        # The latent is the same one, so the next scene's continuation from it is still valid.
+        mark.assert_not_called()
+        clear.assert_not_called()
+        # Seeds are not part of a decode, so asking for new ones changes nothing in the project.
+        with open(os.path.join(self.project_dir, "vrgdg_builder_session.json"), "r", encoding="utf-8") as handle:
+            self.assertEqual(json.load(handle)["minimax_h3_settings"], self.session["minimax_h3_settings"])
+
+    def test_redecode_defaults_to_a_crf_finer_than_the_render(self):
+        self._save_latent()
+        done = self._render({"render_phase": "redecode"})
+        self.assertEqual(done["queued"]["prompt"]["142"]["inputs"]["crf"], 12)
+
+    def test_redecode_is_refused_without_a_latent_or_for_a_changed_scene_or_a_bad_crf_or_other_engines(self):
+        with self.assertRaises(errors_mod.ValidationError):
+            self._render({"render_phase": "redecode"})  # nothing saved yet
+        self._save_latent(frames=175)
+        with self.assertRaises(errors_mod.ValidationError):
+            self._render({"render_phase": "redecode"})  # the scene now calls for 150 frames
+        self._save_latent()
+        with self.assertRaises(errors_mod.ValidationError):
+            self._render({"render_phase": "redecode", "crf": 99})
+        with self.assertRaises(errors_mod.ValidationError):
+            self._render({"render_phase": "redecode", "mode": "t2v"})
+
     def test_draft_needs_a_two_pass_workflow(self):
         self.session["minimax_h3_settings"]["render_pass"] = "single"
         with open(os.path.join(self.project_dir, "vrgdg_builder_session.json"), "w", encoding="utf-8") as handle:
