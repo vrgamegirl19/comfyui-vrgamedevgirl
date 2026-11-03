@@ -1250,7 +1250,8 @@ export function createVideoRender({
       const exactTwoPassLoras = (twoPass || threePass)
         ? {
           pass1: exactModelChainLoras(built?.prompt?.["124"]?.inputs?.model),
-          pass2: exactModelChainLoras(built?.prompt?.["192"]?.inputs?.model),
+          // ManualSigmas has no model input; the guider owns the sampled model.
+          pass2: exactModelChainLoras(built?.prompt?.["193"]?.inputs?.model),
         }
         : null;
       const formatExactLoras = (loras) => loras.length
