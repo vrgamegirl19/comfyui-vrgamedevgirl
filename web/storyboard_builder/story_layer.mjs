@@ -13,7 +13,6 @@ import {
   storyboardTimelineNotesForRequest,
 } from "./scenes.mjs";
 import { normalizeStoryboardScriptImportState } from "./script_import.mjs";
-import { hasMappedStoryboardLocation, NO_MAPPED_LOCATIONS_MESSAGE } from "./story_workflow.mjs";
 import {
   storyboardMiniMaxVideoStylePreset,
   storyboardMiniMaxVideoStyleVerbiage,
@@ -268,10 +267,6 @@ export function createStoryLayer({
 
   async function createStoryBriefWithGemma() {
     syncStoryLayerFromInputs();
-    if (!hasMappedStoryboardLocation(state)) {
-      createToast(NO_MAPPED_LOCATIONS_MESSAGE, true);
-      return null;
-    }
     if (!confirmStoryStepRerun("story brief", state.storyLayer.song_story_brief)) return null;
     const authoritativeScript = normalizeStoryboardScriptImportState(state.scriptImport);
     const progress = createStoryboardProgressWindow(`Story Brief — ${promptRunnerName()}`);
@@ -308,10 +303,6 @@ export function createStoryLayer({
 
   async function createStoryArcWithGemma() {
     syncStoryLayerFromInputs();
-    if (!hasMappedStoryboardLocation(state)) {
-      createToast(NO_MAPPED_LOCATIONS_MESSAGE, true);
-      return null;
-    }
     if (!confirmStoryStepRerun("story arc", state.storyLayer.user_story_arc)) return null;
     const authoritativeScript = normalizeStoryboardScriptImportState(state.scriptImport);
     const progress = createStoryboardProgressWindow(`${authoritativeScript.enabled ? "Short Film Premise" : "Story Arc"} — ${promptRunnerName()}`);

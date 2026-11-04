@@ -70,7 +70,7 @@ export function storyLayerGptPayload(state) {
     payload_type: "story_layer_planning",
     execution_mode: "execute_immediately",
     user_request: "Process this story-layer planning payload now. Do not ask what I want done and do not ask for more lyrics or project details. Generate the final story-layer JSON response immediately.",
-    task_instruction: "Use the supplied project context to create or revise a coherent music-video story. The explicit project_inputs fields are the source of truth. Execute this task immediately and return only valid JSON matching output_format. Keep the user's overall story idea when it is present, use the ordered lyric sections as the structural spine, and use the style, subject, location, performance, and camera preset details as creative constraints.",
+    task_instruction: "Use the supplied project context to create or revise a coherent music-video story. The explicit project_inputs fields are the source of truth. Execute this task immediately and return only valid JSON matching output_format. Keep the user's overall story idea when it is present, use the ordered lyric sections as the structural spine, and use the style, subject, location, performance, and camera preset details as creative constraints. Use supplied locations when available. Without locations, invent a small set of consistently named settings with visible details so Reference Builder can extract them later. Reference images and mappings are optional for story planning.",
     output_format: {
       overall_story_idea: "A concise premise or overall story idea. Preserve the supplied idea when it is usable; otherwise create one.",
       user_story_arc: "A section-by-section story arc using the supplied lyric section labels in order.",

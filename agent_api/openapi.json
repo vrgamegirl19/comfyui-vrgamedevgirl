@@ -4112,7 +4112,7 @@
           },
           {}
         ],
-        "summary": "Ask the project's LLM for filming locations (LM Extract) and add them to the Reference Builder. Runs as a job.",
+        "summary": "Extract locations from the saved story, or scout lyrics and scenes without a story (LM Extract). Runs as a job.",
         "tags": [
           "references"
         ]
@@ -6882,7 +6882,7 @@
           },
           {}
         ],
-        "summary": "Create the story arc, story brief or scene beats with the project's LLM. Runs as a job.",
+        "summary": "Create arc, brief or beats with available context; references are optional. Extract story locations afterwards. Runs as a job.",
         "tags": [
           "story"
         ]

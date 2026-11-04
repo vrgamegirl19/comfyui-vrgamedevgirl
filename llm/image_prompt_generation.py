@@ -1571,11 +1571,18 @@ def _generate_flux_reference_locations(payload):
 
 
 def _generate_lm_scout_locations(payload):
-    """LM Extract: location scout over lyrics + scene text, steered by the style/theme field."""
+    """LM Extract: scout the saved story's places, or lyrics + scene text when there is no story."""
     model_file = str(payload.get("model_file", "") or "").strip()
     if not model_file and _llm_runner_from_payload(payload) not in _EXTERNAL_LLM_RUNNERS:
         raise ValueError("Choose a non-vision Gemma model first, or use LM Studio, LLM API, or your own server.")
     lyrics_text = str(payload.get("lyrics_text", "") or "").strip()
+    story_layer = payload.get("story_layer") or {}
+    story_text = "\n\n".join(
+        f"{label}:\n{str(story_layer.get(key) or '').strip()}"
+        for key, label in (("overall_story_idea", "Story idea"), ("user_story_arc", "Story arc"),
+                           ("song_story_brief", "Story brief"))
+        if str(story_layer.get(key) or "").strip()
+    )
     scene_lines = []
     for index, scene in enumerate(payload.get("scenes") or [], start=1):
         if not isinstance(scene, dict):
@@ -1584,8 +1591,8 @@ def _generate_lm_scout_locations(payload):
         notes = str(scene.get("notes", "") or "").strip()
         if concept or notes:
             scene_lines.append(f"Scene {index}: {concept}" + (f" | notes: {notes}" if notes else ""))
-    if not lyrics_text and not scene_lines:
-        raise ValueError("LM Extract needs lyrics, scene notes, or concept prompts first.")
+    if not story_text and not lyrics_text and not scene_lines:
+        raise ValueError("LM Extract needs a story, lyrics, scene notes, or concept prompts first.")
 
     style_theme = _clean_location_context_text(payload.get("style_theme", ""))
     subject_context = _clean_location_context_text(payload.get("subject_context", ""))
@@ -1595,12 +1602,22 @@ def _generate_lm_scout_locations(payload):
         if existing_name:
             existing_lines.append(f"- {existing_name}")
 
+    story_instruction = (
+        "STORY-FIRST OVERRIDE: Extract the physical places used in the saved story below. "
+        "The story is the narrative authority; lyrics supply mood only. Keep the story's place names "
+        "and visual details consistent. Create only the reusable locations the story needs; ignore the "
+        "18–22 count and do not invent unrelated places to fill it. Reuse existing user location names "
+        "when the story uses them, returning their descriptions for missing text. "
+        "Describe environments for reference images, without people or story actions.\n\n"
+        f"Saved story:\n{story_text}\n\n"
+    ) if story_text else ""
+    existing_label = "Existing user locations" if story_text else "Existing user locations (do not repeat these)"
     instruction = (
-        f"{_LM_LOCATION_SCOUT_INSTRUCTIONS}\n"
+        f"{_LM_LOCATION_SCOUT_INSTRUCTIONS}\n{story_instruction}"
         "--- PROJECT INPUTS ---\n\n"
         f"Style/theme notes:\n{style_theme or '(none)'}\n\n"
         f"Character notes:\n{subject_context or '(none)'}\n\n"
-        f"Existing user locations (do not repeat these):\n{chr(10).join(existing_lines) if existing_lines else '(none)'}\n\n"
+        f"{existing_label}:\n{chr(10).join(existing_lines) if existing_lines else '(none)'}\n\n"
         f"Scene concepts and notes (optional extra context):\n{chr(10).join(scene_lines) if scene_lines else '(none)'}\n\n"
         f"Song lyrics:\n{lyrics_text or '(none)'}"
     )

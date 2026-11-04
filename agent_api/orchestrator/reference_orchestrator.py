@@ -150,8 +150,10 @@ def extract_locations(project_id: str, params: Optional[Dict[str, Any]] = None) 
         notes = "\n".join(p for p in (_text(segment.get("notes")), _text(segment.get("timeline_note")), _text(segment.get("i2v_notes"))) if p)
         if concept or notes:
             planning.append({"id": segment.get("id"), "label": segment.get("label") or f"Scene {index}", "concept": concept, "notes": notes})
-    if not lyric_lines and not planning:
-        raise ValidationError("LM Extract needs lyrics, scene notes, or concept prompts first. Create the scenes from the lyrics first.")
+    story_layer = session.get("builder_story_layer") or {}
+    has_story = any(_text(story_layer.get(key)) for key in ("overall_story_idea", "user_story_arc", "song_story_brief"))
+    if not has_story and not lyric_lines and not planning:
+        raise ValidationError("LM Extract needs a story, lyrics, scene notes, or concept prompts first.")
 
     refs = _refs(session)
     local_notes = _text(params.get("style_theme") or refs.get("location_style_theme"))
@@ -159,6 +161,7 @@ def extract_locations(project_id: str, params: Optional[Dict[str, Any]] = None) 
         **llm_payload_from_session(session),
         "lyrics_text": "\n".join(f"Scene {number}: {lyric}" for number, lyric in lyric_lines),
         "scenes": planning,
+        "story_layer": story_layer,
         "style_theme": location_style_theme_text(folder, session, local_notes),
         "subject_context": subject_context_for_locations(refs),
         "existing_locations": [{"name": loc.get("name", ""), "description": loc.get("description", "")} for loc in refs.get("locations") or []],

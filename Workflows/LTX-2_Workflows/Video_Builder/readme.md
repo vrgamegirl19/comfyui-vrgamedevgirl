@@ -2,6 +2,8 @@
 
 This guide is for someone opening the Video Builder for the first time. It explains what each main area does, the usual workflow, and where to look when something is missing.
 
+This repository provides the **AI Video Builder and its core workflow nodes**. Standalone canvas tools, including the separate face-repair, utility, LLM, long-video, LoRA-training, LTX/MiniMax, music/audio, and workflow-UI collection, are maintained in [VRGDG Custom Node Pack](https://github.com/vrgamegirl19/VRGDG_CustomNodePack). Use that repository for those tools and their examples. Integrated Builder features described in this guide remain part of the Builder workflow.
+
 If this guide or the Video Builder helps you, you can support VR Game Dev Girl here: [buymeacoffee.com/vrgamedevgirl](https://buymeacoffee.com/vrgamedevgirl).
 
 ![Full Video Builder Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/Full%20LTX%202.3%20Video%20Builder%20window.png)
@@ -2734,6 +2736,8 @@ Short snippet:
 ## Required Custom Nodes
 
 The Builder UI comes from this repo, but the hidden workflows it launches also use several external custom-node packs. Install these before running full image/video builds.
+
+The separate [VRGDG Custom Node Pack](https://github.com/vrgamegirl19/VRGDG_CustomNodePack) provides the moved standalone canvas nodes. Install it when using an example that requires those nodes. It does not replace the Builder or the external workflow dependencies listed below.
 
 This list was checked against the hidden workflow templates used by the Builder and Prompt Creator, including the ZImage, Krea 2, Ernie, Flux/Klein, Nano B, Enhance, LTX I2V/T2V/reference modes, MiniMax H3 input-audio/built-in-audio modes, Ingredients, ID-LoRA, FLF, Face Fix, cleanup, transcription, and Prompt Creator workflows.
 

@@ -64,7 +64,7 @@ export function buildStoryLayerPanel({
   overallStoryIdeaField.style.gridColumn = "1/-1";
   const overallStoryIdeaHint = document.createElement("div");
   overallStoryIdeaHint.style.cssText = "font-size:11px;font-weight:500;color:#94a3b8;line-height:1.4;";
-  overallStoryIdeaHint.textContent = `Sets the overall premise, world, or theme. ${promptRunnerName()} will develop it through the actual reference-lyric sections; leave blank for a lyric-led idea.`;
+  overallStoryIdeaHint.textContent = `Sets the overall premise, world, or theme. ${promptRunnerName()} uses your existing locations when supplied, or invents settings for the story when none are set. No reference images are required. Save the story, then use Reference Builder → Locations → LM Extract to make location cards from it, create their images, and Auto Map.`;
   overallStoryIdeaField.append(overallStoryIdeaHint);
   const lyricStoryStrengthRow = document.createElement("div");
   lyricStoryStrengthRow.style.cssText = "grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:end;";

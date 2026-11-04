@@ -3,7 +3,6 @@ import { createStoryboardProgressWindow, createToast, makeButton } from "./contr
 import { storyboardGptPayload } from "./gpt_payload.mjs";
 import { isRecoverableStoryboardBatchError, showStoryboardBatchFailures } from "./prompt_generation.mjs";
 import { normalizeScene, normalizeStoryLayer, slimStoryboardForRequest } from "./scenes.mjs";
-import { hasMappedStoryboardLocation, NO_MAPPED_LOCATIONS_MESSAGE } from "./story_workflow.mjs";
 
 export function sceneStoryBeatMissing(scene, flfMode) {
   return !String(scene.story_beat || "").trim()
@@ -79,10 +78,6 @@ export function createSceneBeats({
   }
 
   async function createSceneBeatWithGemma(scene, { quiet = false, unloadAfter = true, previousBeat = "", previousLyrics = "", previousEndState = "", previousCarryForward = "", nextLyrics = "", progress = null, progressPercent = 35, progressLabel = "" } = {}) {
-    if (!hasMappedStoryboardLocation(state)) {
-      if (!quiet) createToast(NO_MAPPED_LOCATIONS_MESSAGE, true);
-      throw new Error(NO_MAPPED_LOCATIONS_MESSAGE);
-    }
     syncStoryLayerFromInputs();
     const normalized = normalizeScene(scene, 0);
     const sceneIndex = state.scenes.findIndex((item) => item.id === scene.id);
@@ -132,10 +127,6 @@ export function createSceneBeats({
   }
 
   async function createAllSceneBeatsWithGemma({ failedSceneIds = [] } = {}) {
-    if (!hasMappedStoryboardLocation(state)) {
-      createToast(NO_MAPPED_LOCATIONS_MESSAGE, true);
-      return null;
-    }
     syncStoryLayerFromInputs();
     const flfMode = state.videoPromptType === "flf";
     const failedIds = new Set(failedSceneIds.map((value) => String(value)));

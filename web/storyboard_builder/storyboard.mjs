@@ -54,7 +54,7 @@ import { wireStoryboardEvents } from "./storyboard_events.mjs";
 import { buildStoryLayerPanel } from "./story_layer_layout.mjs";
 import { buildSceneDefaultsPanel } from "./defaults_panel_layout.mjs";
 import { buildStoryboardShell } from "./storyboard_layout.mjs";
-import { hasMappedStoryboardLocation, NO_MAPPED_LOCATIONS_MESSAGE, runStoryGenerationSequence } from "./story_workflow.mjs";
+import { runStoryGenerationSequence } from "./story_workflow.mjs";
 
 export function openStoryboardBuilder(payload = {}) {
   const promptActionOnly = payload.promptActionOnly === true;
@@ -433,10 +433,6 @@ export function openStoryboardBuilder(payload = {}) {
   });
 
   async function createStorySequenceWithGemma() {
-    if (!hasMappedStoryboardLocation(state)) {
-      createToast(NO_MAPPED_LOCATIONS_MESSAGE, true);
-      return;
-    }
     const buttons = [createStorySequenceButton, createStoryArcButton, createStoryBriefButton, createMissingBeatsButton];
     buttons.forEach((button) => { button.disabled = true; });
     try {

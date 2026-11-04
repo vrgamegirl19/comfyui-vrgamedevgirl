@@ -148,13 +148,22 @@ def _build_story_layer_brief(payload):
                 if isinstance(item, dict) and item.get("name")
             ],
         })
-    if not lyrics and not compact_scenes and not story_layer.get("user_story_arc"):
-        raise ValueError("Lyrics, scene lyrics, or a user story arc are required to create a story brief.")
+    if not lyrics and not compact_scenes and not story_layer.get("user_story_arc") and not story_layer.get("overall_story_idea"):
+        raise ValueError("A story idea, lyrics, scene lyrics, or a user story arc are required to create a story brief.")
     instruction = _storyboard_story_brief_instruction(
         _lyric_story_strength_guidance(story_layer),
         story_layer.get("user_story_arc") or "",
         lyrics,
         json.dumps(compact_scenes, ensure_ascii=False, indent=2),
+    )
+    subjects, locations = _storyboard_dialogue_reference_catalog(payload)
+    instruction += (
+        f"\n\nOverall story idea:\n{story_layer.get('overall_story_idea') or '[none]'}\n\n"
+        f"Available subjects:\n{json.dumps(subjects, ensure_ascii=False)}\n\n"
+        f"Available locations:\n{json.dumps(locations, ensure_ascii=False)}\n\n"
+        "Use only supplied locations when available. Without locations, use the story arc's named settings "
+        "or invent a small set of reusable places from the available story context. Keep place names and "
+        "visual details consistent so they can become location reference cards. No reference images are required."
     )
     from ..llm.builder_runner import _run_builder_text_llm
 
