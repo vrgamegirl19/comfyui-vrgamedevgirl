@@ -469,6 +469,12 @@ export function buildMiniMaxPanel({
   const miniMaxTwoPassResizeMethod = makeSelect(["nvidia_rtx_vsr", "lanczos", "bicubic", "bilinear", "nearest-exact"], DEFAULT_MINIMAX_H3_SETTINGS.two_pass_final_resize_method);
   const miniMaxTwoPassOutputCrf = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.two_pass_output_crf), "number");
   miniMaxTwoPassOutputCrf.min = "0"; miniMaxTwoPassOutputCrf.max = "100"; miniMaxTwoPassOutputCrf.step = "1";
+  const miniMaxTwoPassChunking = makeSelect(["auto", "off"], DEFAULT_MINIMAX_H3_SETTINGS.pass2_chunking);
+  const miniMaxTwoPassChunkMinSeconds = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.pass2_chunking_min_seconds), "number");
+  miniMaxTwoPassChunkMinSeconds.min = "1"; miniMaxTwoPassChunkMinSeconds.max = "15"; miniMaxTwoPassChunkMinSeconds.step = "0.5";
+  const miniMaxTwoPassChunkNote = document.createElement("div");
+  miniMaxTwoPassChunkNote.textContent = "Long scenes: a clip longer than the limit below refines pass 2 in short overlapping windows, so the second pass no longer needs memory for the whole scene. Shorter clips keep one pass. The length counts the rendered clip, which includes any continuation warm-up. Needs Reference to Video or RefMod; other graphs stay whole.";
+  miniMaxTwoPassChunkNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.45;";
   const miniMaxTwoPassSpeedNote = document.createElement("div");
   miniMaxTwoPassSpeedNote.textContent = "The selected Turbo LoRA is applied ONLY to pass 2 and makes the refinement pass MUCH faster. TE-Speed is separate optional acceleration for the model path; uncheck it to bypass the OSS speed node completely.";
   miniMaxTwoPassSpeedNote.style.cssText = "font-size:11px;color:#facc15;line-height:1.45;";
@@ -495,6 +501,11 @@ export function buildMiniMaxPanel({
     makeSettingsSection("Latent Upscale Advanced", [
       miniMaxTwoPassLatentScaleNote,
       makeField("Learned latent scale", miniMaxTwoPassLatentScale),
+    ], false),
+    makeSettingsSection("Long Scenes", [
+      miniMaxTwoPassChunkNote,
+      makeField("Pass 2 in windows", miniMaxTwoPassChunking, "auto splits pass 2 for clips longer than the limit. off always refines the whole clip at once."),
+      makeField("Longer than (seconds)", miniMaxTwoPassChunkMinSeconds, "Default: 8."),
     ], false),
     makeSettingsSection("Output Advanced", [
       makeField("Final resize method", miniMaxTwoPassResizeMethod),
@@ -873,6 +884,7 @@ export function buildMiniMaxPanel({
     miniMaxTwoPassLoraLayout, miniMaxTwoPassLoraPicker, miniMaxTwoPassLoraPreset,
     miniMaxTwoPassLoraPresetButtons, miniMaxTwoPassLoraPresetField, miniMaxTwoPassLoraSection,
     miniMaxTwoPassLoraStatus, miniMaxTwoPassLoraStrength, miniMaxTwoPassOutputCrf, miniMaxTwoPassRefImageSize,
+    miniMaxTwoPassChunking, miniMaxTwoPassChunkMinSeconds,
     miniMaxTwoPassResizeMethod, miniMaxTwoPassSettings, miniMaxTwoPassTeCacheDepth, miniMaxTwoPassTeDevice,
     miniMaxTwoPassTeEnd, miniMaxTwoPassTeMcs, miniMaxTwoPassTeProcessingControl, miniMaxTwoPassTeStart,
     miniMaxTwoPassUseFastVaeDecode, miniMaxUseCurrentSceneVideoButton, miniMaxUseLoras,

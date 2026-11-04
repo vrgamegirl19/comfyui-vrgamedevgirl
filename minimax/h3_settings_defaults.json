@@ -65,6 +65,8 @@
   "use_block_sparse_attention": false,
   "two_pass_use_block_sparse_attention": false,
   "two_pass_use_fast_vae_decode": false,
+  "pass2_chunking": "auto",
+  "pass2_chunking_min_seconds": 8,
   "two_pass_te_speed_processing_control": 0.07,
   "two_pass_te_speed_start_percent": 0.1,
   "two_pass_te_speed_end_percent": 0.9,

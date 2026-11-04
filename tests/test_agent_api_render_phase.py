@@ -78,7 +78,7 @@ class ApiRenderPhaseTests(unittest.TestCase):
         with open(os.path.join(self.project_dir, "vrgdg_builder_session.json"), "r", encoding="utf-8") as handle:
             return json.load(handle)["segments"][0]
 
-    def _render(self, params):
+    def _render(self, params, graph_extra=None):
         """Render scene 1 with a real two-pass template, a mocked ComfyUI and mocked file collection."""
         captured = {}
 
@@ -87,7 +87,7 @@ class ApiRenderPhaseTests(unittest.TestCase):
             captured["payload"] = dict(payload)
             prompt = json.loads(TEMPLATE.read_text(encoding="utf-8"))
             return {"prompt": prompt, "two_pass": {}, "timing": {"h3_frame_count": 150},
-                    "post_render_trim": {"duration": 6.0}, "output_folder": self.project_dir}
+                    "post_render_trim": {"duration": 6.0}, "output_folder": self.project_dir, **(graph_extra or {})}
 
         target = os.path.join(self.project_dir, "rendered_scene_videos", "video_0001-audio.mp4")
         os.makedirs(os.path.dirname(target), exist_ok=True)
@@ -124,6 +124,12 @@ class ApiRenderPhaseTests(unittest.TestCase):
         self.assertIsNone(seg["minimax_h3_draft"])
         self.assertEqual(seg["minimax_h3_stage1_path"], "")
         self.assertTrue(seg["minimax_h3_stage2_path"])
+
+    def test_the_result_says_whether_pass_2_ran_in_windows(self):
+        report = {"mode": "auto", "min_seconds": 5.0, "rendered_seconds": 6.0, "enabled": True, "windows": 4,
+                  "reason": "6.00 s is longer than 5 s, so pass 2 runs in windows."}
+        self.assertEqual(self._render({}, graph_extra={"chunked_pass2": report})["result"]["chunked_pass2"], report)
+        self.assertIsNone(self._render({})["result"]["chunked_pass2"])
 
     def test_full_render_clears_an_old_draft_like_the_builder(self):
         self._render({})

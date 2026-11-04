@@ -33,6 +33,7 @@ SETTINGS_ENUMS: Dict[str, Tuple[str, ...]] = {
     "audio_mode": ("input_audio", "built_in_audio"),
     "i2v_transition_style": ("natural", "surreal_morph", "dreamlike_dissolve", "environment_transformation", "camera_reveal", "custom"),
     "ref_image_size": ("max", "match"),
+    "pass2_chunking": ("auto", "off"),
     "resolution_preset": RESOLUTION_PRESETS,
     "advanced_two_pass_vram_preset": tuple(VRAM_PRESETS),
     "advanced_two_pass_pass1_resolution_preset": RESOLUTION_PRESETS,
@@ -69,6 +70,15 @@ SETTING_NOTES: Dict[str, str] = {
         "Not used by 2 Pass Advanced."
     ),
     "sigma_pass2_enabled": "Sigma shift for pass 2 of 2 Pass. Ignored in single pass.",
+    "pass2_chunking": (
+        "2 Pass only. auto refines pass 2 in short overlapping windows for a clip longer than pass2_chunking_min_seconds, so a long "
+        "scene no longer needs memory for the whole clip in the second pass. off always refines the whole clip at once. "
+        "Needs Reference to Video or the RefMod pipeline (other graphs stay whole), and the VRGDG H3 Chunked Pass 2 node."
+    ),
+    "pass2_chunking_min_seconds": (
+        "A rendered clip longer than this many seconds (1 to 15) is refined in windows when pass2_chunking is auto. The "
+        "clip includes the continuation warm-up and H3's frame padding, so a 7.6 s scene can render as 8.4 s."
+    ),
     "i2v_transition_style": "FLF Create Prompt guidance, global unless scene settings are locked. Regenerate the prompt after changing; does not change sampler settings.",
     "i2v_transition_direction": "Optional FLF transition instructions, global unless scene settings are locked. First and last images remain per scene.",
     "continuity_mode": (
@@ -97,9 +107,12 @@ SETTING_NOTES: Dict[str, str] = {
 
 # (min, max) inclusive. Matches the clamps in cloneMiniMaxH3Settings.
 _EXPLICIT_RANGES: Dict[str, Tuple[float, float]] = {
-    f"sigma_pass{number}_{field}": (0.01, 100)
-    for number in (1, 2)
-    for field in ("video", "audio")
+    **{
+        f"sigma_pass{number}_{field}": (0.01, 100)
+        for number in (1, 2)
+        for field in ("video", "audio")
+    },
+    "pass2_chunking_min_seconds": (1, 15),
 }
 
 # Settings that no longer exist. One output resolution (resolution_preset / megapixels) now drives every
@@ -166,7 +179,9 @@ def _numeric_range(key: str) -> Optional[Tuple[float, float]]:
 
 
 # JSON writes 2.0 as 2, so a whole-number default can still belong to a decimal setting.
-_DECIMAL_KEY_TOKENS = ("megapixels", "denoise", "strength", "scale", "percent", "threshold", "depth", "noise", "sigma")
+_DECIMAL_KEY_TOKENS = (
+    "megapixels", "denoise", "strength", "scale", "percent", "threshold", "depth", "noise", "sigma", "seconds",
+)
 
 
 def _is_decimal_setting(key: str, default: Any) -> bool:
@@ -634,6 +649,8 @@ def build_minimax_render_payload(settings: Dict[str, Any], overrides: Optional[D
     if two_pass:
         payload["final_width"], payload["final_height"] = output_frame_size(s)
         payload["latent_upscale_scale"] = s["two_pass_latent_upscale_scale"]
+        payload["pass2_chunking"] = s["pass2_chunking"]
+        payload["pass2_chunking_min_seconds"] = s["pass2_chunking_min_seconds"]
     if multi:
         payload["latent_upscaler_name"] = s["two_pass_latent_upscaler_name"]
         payload["two_pass_use_feedforward"] = s["two_pass_use_feedforward"]

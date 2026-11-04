@@ -40,6 +40,7 @@ export function wireMiniMaxPanel({
   miniMaxTwoPassLatentScale, miniMaxTwoPassLatentUpscalerPicker, miniMaxTwoPassLoraPicker,
   miniMaxTwoPassLoraPreset, miniMaxTwoPassLoraPresetButtons, miniMaxTwoPassLoraStatus,
   miniMaxTwoPassLoraStrength, miniMaxTwoPassOutputCrf, miniMaxTwoPassRefImageSize, miniMaxTwoPassResizeMethod,
+  miniMaxTwoPassChunking, miniMaxTwoPassChunkMinSeconds,
   miniMaxTwoPassTeCacheDepth, miniMaxTwoPassTeDevice, miniMaxTwoPassTeEnd, miniMaxTwoPassTeMcs,
   miniMaxTwoPassTeProcessingControl, miniMaxTwoPassTeStart, miniMaxTwoPassUseFastVaeDecode,
   miniMaxUseCurrentSceneVideoButton, miniMaxUseLoras, miniMaxVideoReferenceRows,
@@ -138,6 +139,8 @@ export function wireMiniMaxPanel({
     miniMaxTwoPassTeDevice,
     miniMaxTwoPassResizeMethod,
     miniMaxTwoPassOutputCrf,
+    miniMaxTwoPassChunking,
+    miniMaxTwoPassChunkMinSeconds,
     ...twoPassControls.flatMap((pass) => [
       pass.steps,
       pass.denoise,

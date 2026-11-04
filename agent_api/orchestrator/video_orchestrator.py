@@ -697,6 +697,8 @@ async def render_scene_video_async(
         "render_phase": phase,
         "draft_id": graph_res.get("draft_id", "") if phase == "draft" else "",
         "redecode": graph_res.get("redecode") if phase == "redecode" else None,
+        # What the graph builder decided for pass 2 (enabled, windows, reason). None when the graph reports nothing.
+        "chunked_pass2": graph_res.get("chunked_pass2"),
         "revision": save_res.get("revision"),
     }
 

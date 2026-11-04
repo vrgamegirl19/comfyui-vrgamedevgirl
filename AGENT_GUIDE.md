@@ -474,6 +474,15 @@ The `minimax` package implements high-performance conditioning, latent managemen
   - `VRGDG_MiniMaxH3LearnedLatentUpscale`: "MiniMax H3 Learned Latent Upscale"
   - `VRGDG_MiniMaxH3ReplaceUpscaledVideoLatent`: "MiniMax H3 Replace with Upscaled Video Latent"
 
+#### Chunked 2 Pass second pass ([minimax/chunk_plan.py](minimax/chunk_plan.py), [minimax/chunked_pass2.py](minimax/chunked_pass2.py), [runner/minimax_chunked_pass2.py](runner/minimax_chunked_pass2.py))
+- **Purpose**: The normal 2 Pass upscales the whole first-pass clip and refines it in one sampler call, so a long scene needs second-pass memory for every frame. With `pass2_chunking` = `auto` (settings, 2 Pass only) a render longer than `pass2_chunking_min_seconds` (default 8 s of rendered clip, which includes continuation warm-up and H3's 17k+5 frame padding) refines pass 2 in overlapping windows. A shorter clip keeps the single whole-clip pass. `off` always keeps it.
+- **Files**:
+  - `minimax/chunk_plan.py`: pure helpers. The window plan (starts on 5-token groups, `5k+2` tokens, 3 s windows, 1.6 s overlap, locked overlap, 0.7 s tail trim, per-window upscale: the values the Heat A/B test used), the token budget and `chunking_decision`.
+  - `minimax/chunked_pass2.py`: node `VRGDG_MiniMaxH3ChunkedPass2` ("VRGDG H3 Chunked Pass 2"). The normal learned upscale and `SamplerCustomAdvanced` one window at a time, the refined latent assembled on the CPU, first-pass audio kept exactly. An optional `head_latent` (+ `head_vae`) is the masked-continuation predecessor: it becomes the locked first tokens of the refined clip (resized through pictures by the Builder's own Apply Masked Continuation node when its size differs).
+  - `runner/minimax_chunked_pass2.py`: `apply_chunked_pass2`, called at the end of `_build_minimax_h3_2pass_api_prompt` (after every other patch and RefMod) when the payload says `pass2_chunking: "auto"`. It finds the second pass by node class (separate, learned upscale, replace, optional masked-continuation apply, sampler, guider, noise), puts the chunk node in its place and sends the first-pass latent, model, sampler, sigmas, scale and seed through unchanged. Only Reference to Video and RefMod conditioning are chunked. Any other graph, such as Image to Video, stays whole and the summary (`chunked_pass2` in the build result) says why. The scene render job result carries the same summary (`enabled`, `windows`, `rendered_seconds`, `reason`), so an agent can confirm what happened. 2 Pass Advanced forces it off.
+  - The windows restart their clock at 0, so the second pass reads the same prompt with lyric cues, dialogue text and shot start times removed (`strip_prompt_timing`). A multi-shot scene keeps all its `[Shot n]` paragraphs in that prompt.
+- **Tests**: `tests/test_minimax_chunked_pass2.py` (plan, 8 s rule, prompt rewrite, settings, compiled graph) and `tests/test_minimax_chunked_pass2_runtime.py`, which runs `tests/chunked_pass2_runtime_checks.py` under ComfyUI's Python with the sampler stubbed. A GPU render is still needed to judge seams and real VRAM.
+
 ---
 
 ### Post-Processing & Enhancement (`post_process/`)

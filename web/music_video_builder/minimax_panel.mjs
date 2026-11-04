@@ -67,6 +67,7 @@ export function createMiniMaxPanel({
   miniMaxTwoPassLoraLayout, miniMaxTwoPassLoraPicker, miniMaxTwoPassLoraPreset,
   miniMaxTwoPassLoraPresetButtons, miniMaxTwoPassLoraPresetField, miniMaxTwoPassLoraSection,
   miniMaxTwoPassLoraStatus, miniMaxTwoPassLoraStrength, miniMaxTwoPassOutputCrf, miniMaxTwoPassRefImageSize,
+  miniMaxTwoPassChunking, miniMaxTwoPassChunkMinSeconds,
   miniMaxTwoPassResizeMethod, miniMaxTwoPassSettings, miniMaxTwoPassTeCacheDepth, miniMaxTwoPassTeDevice,
   miniMaxTwoPassTeEnd, miniMaxTwoPassTeMcs, miniMaxTwoPassTeProcessingControl, miniMaxTwoPassTeStart,
   miniMaxTwoPassUseFastVaeDecode, miniMaxUseLoras, miniMaxVideoReferenceRows,
@@ -377,6 +378,8 @@ export function createMiniMaxPanel({
       two_pass_te_speed_device: miniMaxTwoPassTeDevice.value,
       two_pass_final_resize_method: miniMaxTwoPassResizeMethod.value,
       two_pass_output_crf: miniMaxTwoPassOutputCrf.value,
+      pass2_chunking: miniMaxTwoPassChunking.value,
+      pass2_chunking_min_seconds: miniMaxTwoPassChunkMinSeconds.value,
       three_pass_lightx_lora_name: miniMaxThreePassLoraPicker.input.value,
       three_pass_lightx_lora_strength: miniMaxThreePassLoraStrength.value,
       advanced_two_pass_vram_preset: miniMaxAdvancedVramPreset.value,
@@ -643,6 +646,8 @@ export function createMiniMaxPanel({
     miniMaxTwoPassTeDevice.value = settings.two_pass_te_speed_device;
     miniMaxTwoPassResizeMethod.value = settings.two_pass_final_resize_method;
     miniMaxTwoPassOutputCrf.value = String(settings.two_pass_output_crf);
+    miniMaxTwoPassChunking.value = settings.pass2_chunking;
+    miniMaxTwoPassChunkMinSeconds.value = String(settings.pass2_chunking_min_seconds);
     miniMaxThreePassLoraPicker.input.value = settings.three_pass_lightx_lora_name;
     miniMaxThreePassLoraStrength.value = String(settings.three_pass_lightx_lora_strength);
     miniMaxAdvancedVramPreset.value = settings.advanced_two_pass_vram_preset;
