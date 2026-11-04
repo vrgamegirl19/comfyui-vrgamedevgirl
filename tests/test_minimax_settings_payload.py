@@ -39,6 +39,10 @@ def _js_payload_keys():
     for key in ("te_speed", "feedforward", "block_sparse_attention"):
         for number in (1, 2):
             keys.add(f"pass{number}_use_{key}")
+    # The sigma shift keys are spread into the payload (sigma_pass{1,2}_{enabled,video,audio}).
+    for number in (1, 2):
+        for field in ("enabled", "video", "audio"):
+            keys.add(f"sigma_pass{number}_{field}")
     return keys - SCENE_SPECIFIC_KEYS
 
 

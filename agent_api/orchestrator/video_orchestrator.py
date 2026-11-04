@@ -15,6 +15,7 @@ from ...builder.audio import _find_ffmpeg_path
 from ...builder import audio_stems, media as builder_media
 from ...runner import ltx_workflows, minimax_inputs, minimax_workflows, video_files
 from ...runner.minimax_drafts import _build_minimax_draft, _build_minimax_finalize
+from ...runner.minimax_redecode import build_redecode_graph, redecode_crf
 from ..errors import (
     ComfyExecutionError,
     JobCancelledError,
@@ -129,12 +130,13 @@ def build_video_graph_for_mode(mode: str, payload: Dict[str, Any]) -> Dict[str, 
     return ltx_workflows._build_i2v_api_prompt(payload)
 
 
-_RENDER_PHASES = ("full", "draft", "finalize")
+_RENDER_PHASES = ("full", "draft", "finalize", "redecode")
 _DRAFT_MODES = ("minimax_h3_2pass", "minimax_h3_advanced_2pass")
 
 
 def _render_phase(value: Any) -> str:
-    """Normalize ``render_phase``: ``full`` (both passes), ``draft`` (pass 1 only) or ``finalize`` (pass 2 only).
+    """Normalize ``render_phase``: ``full`` (both passes), ``draft`` (pass 1 only), ``finalize`` (pass 2 only) or
+    ``redecode`` (no sampling: decode the scene's saved latent again at a chosen ``crf``).
 
     The Video Builder's "Render Draft — Pass 1 Only" and "Finalize Draft — Pass 2 Only" (``video_render.mjs``).
     """
@@ -193,6 +195,24 @@ def _build_finalize_graph(folder: str, seg: Dict[str, Any], scene_number: int, d
     return result
 
 
+def _build_redecode_graph(mode: str, payload: Dict[str, Any], folder: str, scene_number: int, crf: int) -> Dict[str, Any]:
+    """Compile the scene's graph as a render would, then cut it down to decoding the scene's saved latent.
+
+    The latent patches are skipped: a re-decode must neither continue from another scene nor save a latent, because
+    saving would overwrite the one being decoded and mark the next scene's continuation stale.
+
+    Raises:
+        ValidationError: when the scene cannot be re-decoded (see ``build_redecode_graph``).
+    """
+    if "minimax" not in mode:
+        raise ValidationError("render_phase 'redecode' needs a MiniMax H3 scene: only those save a latent.")
+    graph_res = build_video_graph_for_mode(mode, {**payload, "_skip_latent_patches": True})
+    try:
+        return build_redecode_graph(graph_res, folder, scene_number, crf)
+    except ValueError as exc:
+        raise ValidationError(f"Scene {scene_number}: {exc}") from exc
+
+
 def _minimax_stage_fields(phase: str, video_path: str, graph_res: Dict[str, Any]) -> Dict[str, Any]:
     """The pass-1/pass-2 and draft fields the Builder saves on a segment after a MiniMax render (``finishMiniMaxVideoRender``)."""
     draft = phase == "draft"
@@ -239,6 +259,12 @@ async def render_scene_video_async(
     scene_number = idx + 1
     p = dict(params or {})
     phase = _render_phase(p.pop("render_phase", None))
+    redecode_quality = None
+    if phase == "redecode":
+        try:
+            redecode_quality = redecode_crf(p.pop("crf", None))
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
 
     # Timing
     start_sec = float(seg.get("start", 0.0) or 0.0)
@@ -259,6 +285,8 @@ async def render_scene_video_async(
     else:
         # Mode
         mode = str(p.get("mode") or session_video_mode(session)).strip().lower()
+        if phase == "redecode" and "minimax" not in mode:
+            raise ValidationError("render_phase 'redecode' needs a MiniMax H3 scene: only those save a latent.")
 
         if manager and job:
             manager.update_progress(job.id, 5.0, "preparing", scene_id=scene_id, message=f"Preparing {mode} video render...")
@@ -271,7 +299,10 @@ async def render_scene_video_async(
             # so agent and UI renders match. A plain "minimax_h3" mode follows the saved
             # render pass (single, 2 Pass, 2 Pass Advanced); an explicit pass mode wins.
             minimax_settings = minimax_h3_settings_for_scene(session, seg)
-            if p.get("randomize_seed"):
+            if phase == "redecode":
+                # The decoded frames are trimmed exactly as the render's were: with the continuity that render used.
+                p.setdefault("continuity_mode", str(seg.get("minimax_h3_continuity_mode_used") or minimax_settings["continuity_mode"] or "off"))
+            if p.get("randomize_seed") and phase != "redecode":
                 # Same as the Render All "new seeds" option: fresh seeds for every pass, saved with the
                 # project (or the scene, when it has its own MiniMax settings) so the render is reproducible.
                 fresh_seeds = randomize_minimax_seeds(minimax_settings)
@@ -390,7 +421,7 @@ async def render_scene_video_async(
             # The Video Builder's "create each next scene prompt from the previous rendered final frame": a scene continued with
             # latent_continuation_masked is written from the real last frame of the scene before it, right before it renders.
             if (
-                mode_group == "minimax_h3" and scene_number > 1 and not p.get("prompt")
+                mode_group == "minimax_h3" and scene_number > 1 and not p.get("prompt") and phase != "redecode"
                 and str(payload.get("continuity_mode") or "") == "latent_continuation_masked"
                 and minimax_settings.get("continuity_prompt_from_last_frame")
             ):
@@ -501,6 +532,8 @@ async def render_scene_video_async(
         # Compile prompt graph
         if phase == "draft":
             graph_res = await asyncio.to_thread(_build_draft_graph, mode, payload, mask_restore)
+        elif phase == "redecode":
+            graph_res = await asyncio.to_thread(_build_redecode_graph, mode, payload, folder, scene_number, redecode_quality)
         else:
             graph_res = await asyncio.to_thread(build_video_graph_for_mode, mode, payload)
     prompt_graph = graph_res.get("prompt")
@@ -645,7 +678,8 @@ async def render_scene_video_async(
                     thumbs.append(collect_res["backup_thumbnail_path"])
         save_res = _persist_session(folder, session)
 
-    if "minimax" in mode:
+    if "minimax" in mode and phase != "redecode":
+        # A re-decode leaves the latent as it was, so the next scene's continuation from it stays valid.
         from ...minimax.latent_manager import SceneLatentManager
         SceneLatentManager.clear_dirty(folder, scene_number)
         SceneLatentManager.mark_successor_dirty(folder, scene_number, reason=f"Scene {scene_number:03d} re-rendered")
@@ -662,6 +696,7 @@ async def render_scene_video_async(
         "history_count": len(target_seg["video_history"]),
         "render_phase": phase,
         "draft_id": graph_res.get("draft_id", "") if phase == "draft" else "",
+        "redecode": graph_res.get("redecode") if phase == "redecode" else None,
         "revision": save_res.get("revision"),
     }
 

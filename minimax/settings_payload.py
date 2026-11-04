@@ -57,6 +57,18 @@ _INT_CHOICES: Dict[str, Tuple[int, ...]] = {
 
 # One line per setting that agents get wrong without it, shown by minimax_h3_settings_schema.
 SETTING_NOTES: Dict[str, str] = {
+    "use_dmad": (
+        "DMAD 4-step sampling, the Builder's Standard / DMAD buttons. Patching it to true fills in the DMAD LoRA (pass 1, extra LoRA slot 1), "
+        "the refiner LoRA (pass 2 Turbo LoRA, strength 0.7), lcm / simple / 4 steps, 3 refinement steps and a sigma shift of 12 video / 2 audio, "
+        "and remembers the values it replaced in dmad_backup. Patching it to false puts them back. Other keys in the same patch are applied after. "
+        "Single and 2 Pass only: three_pass becomes two_pass. Both LoRA files must be in models/loras."
+    ),
+    "dmad_backup": "Written by use_dmad. The values DMAD replaced, so Standard can put them back. Do not set it.",
+    "sigma_pass1_enabled": (
+        "Sigma shift (the ModelSamplingMiniMaxH3 node) for pass 1, which is also the single pass. Off leaves the model's own schedule. "
+        "Not used by 2 Pass Advanced."
+    ),
+    "sigma_pass2_enabled": "Sigma shift for pass 2 of 2 Pass. Ignored in single pass.",
     "i2v_transition_style": "FLF Create Prompt guidance, global unless scene settings are locked. Regenerate the prompt after changing; does not change sampler settings.",
     "i2v_transition_direction": "Optional FLF transition instructions, global unless scene settings are locked. First and last images remain per scene.",
     "continuity_mode": (
@@ -84,7 +96,11 @@ SETTING_NOTES: Dict[str, str] = {
 }
 
 # (min, max) inclusive. Matches the clamps in cloneMiniMaxH3Settings.
-_EXPLICIT_RANGES: Dict[str, Tuple[float, float]] = {}
+_EXPLICIT_RANGES: Dict[str, Tuple[float, float]] = {
+    f"sigma_pass{number}_{field}": (0.01, 100)
+    for number in (1, 2)
+    for field in ("video", "audio")
+}
 
 # Settings that no longer exist. One output resolution (resolution_preset / megapixels) now drives every
 # pass type, and 2 Pass Advanced derives its tiles, chunks, fades and upscaler device from that resolution
@@ -150,7 +166,7 @@ def _numeric_range(key: str) -> Optional[Tuple[float, float]]:
 
 
 # JSON writes 2.0 as 2, so a whole-number default can still belong to a decimal setting.
-_DECIMAL_KEY_TOKENS = ("megapixels", "denoise", "strength", "scale", "percent", "threshold", "depth", "noise")
+_DECIMAL_KEY_TOKENS = ("megapixels", "denoise", "strength", "scale", "percent", "threshold", "depth", "noise", "sigma")
 
 
 def _is_decimal_setting(key: str, default: Any) -> bool:
@@ -317,6 +333,11 @@ def normalize_minimax_h3_settings(raw: Optional[Dict[str, Any]]) -> Dict[str, An
         elif settings["render_pass"] == "three_pass":
             settings["render_pass"] = "two_pass"
         settings["t2v_pass_settings_version"] = 1
+    # DMAD, like RefMod, has Single and 2 Pass only.
+    if settings.get("use_dmad") and settings.get("render_pass") == "three_pass":
+        settings["render_pass"] = "two_pass"
+    if not settings.get("use_dmad"):
+        settings["dmad_backup"] = {}
     # One output resolution for every pass type; older saves took it from the pass type they rendered with.
     settings["resolution_preset"], settings["megapixels"] = migrate_resolution(raw, settings["render_pass"])
     for key, default in _OPTIONAL_SETTINGS.items():
@@ -334,6 +355,106 @@ def normalize_minimax_h3_settings(raw: Optional[Dict[str, Any]]) -> Dict[str, An
     return settings
 
 
+DMAD_LORA_NAME = "dmad_minimax_h3_4step_full_critic_comfyui.safetensors"
+DMAD_REFINER_LORA_NAME = "minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors"
+
+# What choosing DMAD writes into the settings. Twin of MINIMAX_H3_DMAD_PRESET in web/music_video_builder/minimax_h3.mjs.
+DMAD_PRESET: Dict[str, Any] = {
+    "sampler_name": "lcm",
+    "scheduler": "simple",
+    "steps": 4,
+    "denoise": 1,
+    "two_pass_pass1_sampler": "lcm",
+    "two_pass_pass1_scheduler": "simple",
+    "two_pass_pass1_steps": 4,
+    "two_pass_pass1_denoise": 1,
+    "two_pass_pass2_sampler": "res_multistep",
+    "two_pass_pass2_scheduler": "simple",
+    "two_pass_pass2_steps": 3,
+    "two_pass_pass2_denoise": 0.2,
+    "two_pass_lora_name": DMAD_REFINER_LORA_NAME,
+    "two_pass_lora_strength": 0.7,
+    "sigma_pass1_enabled": True,
+    "sigma_pass1_video": 12,
+    "sigma_pass1_audio": 2,
+    "sigma_pass2_enabled": False,
+    "use_turbo_lora": False,
+}
+_DMAD_LORA_KEYS = ("use_loras", "lora_count", "loras")
+
+
+def _active_extra_loras(settings: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The extra LoRAs a settings dict really uses (an off list or a [none] row is nothing)."""
+    loras = settings.get("loras")
+    if not settings.get("use_loras") or not isinstance(loras, list):
+        return []
+    try:
+        count = int(settings.get("lora_count", len(loras)) or 0)
+    except (TypeError, ValueError):
+        count = 0
+    count = max(0, min(4, count))
+    return [
+        item for item in loras[:count]
+        if isinstance(item, dict) and item.get("name") and item.get("name") != "[none]"
+    ]
+
+
+def _apply_dmad_to_profile(settings: Dict[str, Any], defaults: Dict[str, Any]) -> Dict[str, Any]:
+    if settings.get("use_dmad"):
+        return settings
+    backup = {
+        key: copy.deepcopy(settings.get(key, defaults.get(key)))
+        for key in (*DMAD_PRESET, *_DMAD_LORA_KEYS)
+    }
+    others = [item for item in _active_extra_loras(settings) if item.get("name") != DMAD_LORA_NAME][:3]
+    result = {
+        **settings,
+        **copy.deepcopy(DMAD_PRESET),
+        "use_dmad": True,
+        "dmad_backup": backup,
+        "use_loras": True,
+        "lora_count": len(others) + 1,
+        "loras": [{"name": DMAD_LORA_NAME, "strength": 1, "apply_to": "pass1"}, *others],
+    }
+    # DMAD has no 2 Pass Advanced.
+    if settings.get("render_pass") == "three_pass":
+        result["render_pass"] = "two_pass"
+    return result
+
+
+def _remove_dmad_from_profile(settings: Dict[str, Any], defaults: Dict[str, Any]) -> Dict[str, Any]:
+    if not settings.get("use_dmad"):
+        return settings
+    backup = settings.get("dmad_backup") if isinstance(settings.get("dmad_backup"), dict) else {}
+    restored = dict(settings)
+    for key in DMAD_PRESET:
+        restored[key] = copy.deepcopy(backup.get(key, defaults.get(key)))
+    # Extra LoRAs added while DMAD was on stay. Only the DMAD LoRA goes.
+    rest = [item for item in _active_extra_loras(settings) if item.get("name") != DMAD_LORA_NAME]
+    restored.update({"loras": rest, "lora_count": len(rest), "use_loras": bool(rest), "use_dmad": False, "dmad_backup": {}})
+    return restored
+
+
+def set_minimax_h3_dmad(settings: Optional[Dict[str, Any]], enabled: bool) -> Dict[str, Any]:
+    """Turn DMAD on or off for a settings dict and for every saved pass profile in it.
+
+    Python twin of ``setMiniMaxH3Dmad`` in ``minimax_h3.mjs``. Choosing DMAD fills in its LoRAs, sampler settings
+    and sigma shift and remembers the values it replaced; choosing Standard puts those back.
+    """
+    defaults = minimax_h3_defaults()
+    update = _apply_dmad_to_profile if enabled else _remove_dmad_from_profile
+    source = copy.deepcopy(settings) if isinstance(settings, dict) else {}
+    result = update(source, defaults)
+    for key in ("ref_pass_profiles", "i2v_pass_profiles"):
+        profiles = source.get(key)
+        if isinstance(profiles, dict):
+            result[key] = {
+                name: update(profile, defaults) if isinstance(profile, dict) else profile
+                for name, profile in profiles.items()
+            }
+    return result
+
+
 def apply_minimax_h3_settings_patch(
     current: Optional[Dict[str, Any]],
     patch: Dict[str, Any],
@@ -342,9 +463,13 @@ def apply_minimax_h3_settings_patch(
     """Merge an intentional API edit without treating pass selection as an old save.
 
     Unedited legacy saves still migrate to Single. Explicit pass edits opt into
-    the current pass semantics, like the Builder's pass buttons do.
+    the current pass semantics, like the Builder's pass buttons do. Changing ``use_dmad`` fills in or puts back
+    the DMAD settings first, like the Builder's Standard / DMAD buttons, then the rest of the patch is applied.
     """
-    merged = {**(current or {}), **patch}
+    base = dict(current or {})
+    if "use_dmad" in patch and bool(patch["use_dmad"]) != bool(base.get("use_dmad")):
+        base = set_minimax_h3_dmad(base, bool(patch["use_dmad"]))
+    merged = {**base, **{key: value for key, value in patch.items() if key not in ("use_dmad", "dmad_backup")}}
     if "render_pass" in patch:
         mode = merged.get("video_mode") or inherited_mode or "text_to_video"
         if mode == "text_to_video":
@@ -458,6 +583,12 @@ def build_minimax_render_payload(settings: Dict[str, Any], overrides: Optional[D
         "steps": s["steps"],
         "denoise": s["denoise"],
         "ref_image_size": s["ref_image_size"],
+        # Sigma shift (ModelSamplingMiniMaxH3). Pass 1 is also the single pass; 2 Pass Advanced ignores both.
+        **{
+            f"sigma_pass{number}_{field}": s[f"sigma_pass{number}_{field}"]
+            for number in (1, 2)
+            for field in ("enabled", "video", "audio")
+        },
         "two_pass_lora_name": s["two_pass_lora_name"],
         "two_pass_lora_strength": s["two_pass_lora_strength"],
         "use_fast_vae_decode": s["use_fast_vae_decode"],

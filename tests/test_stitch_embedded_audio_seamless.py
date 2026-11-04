@@ -180,11 +180,18 @@ class EmbeddedAudioSeamlessTests(unittest.TestCase):
     # --- checks -----------------------------------------------------------------------------------
 
     def assert_no_digital_silence_at_cuts(self, audio, cuts):
+        # The bug was 7-50 ms of silence, which fills at least two whole 2 ms blocks. A single quiet block is the
+        # join crossfade where a clip's own audio ends and the song fill ramps in (it is there before AAC; a low
+        # AAC bitrate only smears it, so a per-block minimum passed or failed with the encoder bitrate).
         import numpy as np
         for k, cut in enumerate(cuts[1:-1], start=1):
             seg = audio[cut - 2400: cut + 2400]
             blocks = np.sqrt((seg[: len(seg) // 96 * 96].reshape(-1, 96) ** 2).mean(axis=1))  # 2 ms RMS
-            self.assertGreater(blocks.min(), 0.2 * np.median(blocks), f"silence at cut {k} ({cut / SR:.4f} s)")
+            run = longest = 0
+            for quiet in blocks < 0.2 * np.median(blocks):
+                run = run + 1 if quiet else 0
+                longest = max(longest, run)
+            self.assertLess(longest, 2, f"silence at cut {k} ({cut / SR:.4f} s)")
 
     def assert_length_matches_video(self, out, frames):
         total = sum(frames) / FPS

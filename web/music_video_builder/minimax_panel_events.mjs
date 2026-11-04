@@ -12,7 +12,10 @@ import {
   normalizeMiniMaxH3StartFrameCharacterInfluence,
   normalizeMiniMaxSpeakerAssignments,
   selectMiniMaxH3PassSettings,
+  setMiniMaxH3Dmad,
 } from "./minimax_h3.mjs";
+import { wireMiniMaxDmadSteps } from "./minimax_dmad_steps.mjs";
+import { editableMiniMaxH3Settings } from "./minimax_panel.mjs";
 import { syncMiniMaxSpeakerAssignmentLegacyFields } from "./minimax_speaker_cues.mjs";
 import { wireSearchablePicker } from "./model_pickers.mjs";
 import { selectedSegmentVideoPath } from "./selection_preview.mjs";
@@ -125,6 +128,7 @@ export function wireMiniMaxPanel({
     miniMaxAdvancedVramPreset,
     miniMaxTwoPassLatentScale,
     ...miniMaxAccelerationControls.flatMap(({ single, pass1, pass2 }) => [single.input, pass1.input, pass2.input]),
+    ...(miniMaxPassButtons.dmad?.sigmaControls || []).flatMap(({ enabled, video, audio }) => [enabled.input, video, audio]),
     miniMaxTwoPassUseFastVaeDecode.input,
     miniMaxTwoPassTeProcessingControl,
     miniMaxTwoPassTeStart,
@@ -153,6 +157,11 @@ export function wireMiniMaxPanel({
     control.addEventListener("input", saveMiniMaxH3SettingsFromPanel);
     control.addEventListener("change", persistMiniMaxSettings);
   }
+  wireMiniMaxDmadSteps({
+    stepsControls: miniMaxPassButtons.dmad?.stepsControls || [],
+    twoPassControls, singlePassSteps: miniMaxSteps, state,
+    save: saveMiniMaxH3SettingsFromPanel, persist: persistMiniMaxSettings,
+  });
   for (const control of [miniMaxKeyframes.transitionStyle, miniMaxKeyframes.transitionDirection]) {
     control.addEventListener("input", saveMiniMaxH3SettingsFromPanel);
     control.addEventListener("change", persistMiniMaxSettings);
@@ -203,6 +212,26 @@ export function wireMiniMaxPanel({
       toast(pipeline === "refmod"
         ? "RefMod pipeline on. Every scene now renders from the RefMods picked in the Reference Builder."
         : "Standard pipeline on. Every scene renders from reference images again.");
+    };
+  }
+  // Sampling method: Standard or DMAD. It fills in (or puts back) the DMAD LoRA, the refiner, the sampler settings and
+  // the sigma shift for the settings being edited, which are the project's or, with the scene lock on, the scene's own.
+  for (const button of miniMaxPassButtons.dmad?.buttons || []) {
+    button.onclick = async () => {
+      const enable = button.dataset.minimaxH3Sampling === "dmad";
+      const segment = videoSettingsSegment();
+      const locked = Boolean(segment?.use_scene_minimax_h3_settings);
+      const current = saveMiniMaxH3SettingsFromPanel(locked ? segment : null);
+      if (Boolean(current.use_dmad) === enable) return;
+      pushHistory();
+      const settings = setMiniMaxH3Dmad(editableMiniMaxH3Settings(current), enable);
+      if (locked) segment.minimax_h3_settings = settings;
+      else state.miniMaxH3Settings = settings;
+      syncMiniMaxH3Panel();
+      await autoSaveSessionQuiet(`MiniMax H3 ${enable ? "DMAD" : "standard"} sampling`);
+      toast(enable
+        ? "DMAD on. The DMAD LoRA, the refiner, lcm 4-step sampling and the sigma shift are filled in. Single and 2 Pass only."
+        : "Standard sampling on. The settings DMAD replaced are back.");
     };
   }
   for (const button of miniMaxPassButtons) {

@@ -24,6 +24,26 @@ export const MINIMAX_H3_MODEL_DOWNLOADS = [
   { label: "MMH3 Ultimate Upscale custom nodes", url: "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale" },
   { label: "MiniMax H3 latent upscaler models", url: "https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler" },
 ];
+// The two files DMAD sampling uses (see MINIMAX_H3_DMAD_LORA_NAME in minimax_h3.mjs). The Dmad Models tab installs them
+// into models/loras through the Builder's own routes (core/model_downloads.py, which holds the same ids and urls).
+export const DMAD_MODEL_FILES = [
+  {
+    id: "dmad_lora",
+    label: "DMAD 4-step LoRA",
+    filename: "dmad_minimax_h3_4step_full_critic_comfyui.safetensors",
+    url: "https://huggingface.co/ZhengmingYu/DMAD/resolve/main/minimax_h3/dmad_minimax_h3_4step_full_critic_comfyui.safetensors",
+    page: "https://huggingface.co/ZhengmingYu/DMAD/tree/main/minimax_h3",
+    note: "Pass 1 LoRA. Use the ComfyUI file (name ends in _comfyui). The Diffusers file does not load in ComfyUI.",
+  },
+  {
+    id: "dmad_refiner",
+    label: "Refiner LoRA",
+    filename: "minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors",
+    url: "https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/loras/minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors",
+    page: "https://huggingface.co/Kijai/MiniMax-H3-experimental/blob/main/loras/minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors",
+    note: "Pass 2 LoRA. Restores detail in 2 to 3 steps.",
+  },
+];
 export const VIDEO_BUILDER_CUSTOM_NODES = [
   { id: "vrgdg", label: "VRGameDevGirl Video Builder", note: "The builder’s own custom-node pack. This is the pack currently providing this interface and its VRGDG nodes.", url: "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl", current: true },
   { id: "videohelpersuite", label: "ComfyUI-VideoHelperSuite", note: "Video loading, combining, and output nodes used by the builder workflows.", url: "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite" },
@@ -189,6 +209,13 @@ models/
     ltx-2.5-audio-vae-bf16.safetensors
   latent_upscale_models/
     ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors`,
+  "DMAD Models": `ComfyUI/
+models/
+  loras/
+    dmad_minimax_h3_4step_full_critic_comfyui.safetensors
+    minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors
+
+The Install buttons put both files here for you.`,
   "MiniMax H3": `ComfyUI/
 models/
   diffusion_models/
