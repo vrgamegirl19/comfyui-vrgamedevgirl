@@ -649,7 +649,7 @@ def register_agent_api_routes(server_instance=None):
     @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/references/locations/extract")
     @_api_endpoint
     async def api_reference_extract_locations(request: web.Request):
-        """Ask the project's LLM for filming locations (LM Extract) and add them to the Reference Builder. Runs as a job."""
+        """Extract locations from the saved story, or scout lyrics and scenes without a story (LM Extract). Runs as a job."""
         pid = request.match_info["pid"]
         payload = await request.json() if request.can_read_body else {}
         folder = await asyncio.to_thread(resolve_project_folder, pid)
@@ -678,7 +678,7 @@ def register_agent_api_routes(server_instance=None):
     @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/story/{{step}}")
     @_api_endpoint
     async def api_story_step(request: web.Request):
-        """Create the story arc, story brief or scene beats with the project's LLM. Runs as a job."""
+        """Create arc, brief or beats with available context; references are optional. Extract story locations afterwards. Runs as a job."""
         pid, step = request.match_info["pid"], request.match_info["step"]
         job_types = {"arc": "storyboard.story_arc", "brief": "storyboard.story_brief", "beats": "storyboard.scene_beats",
                      **STORY_MODE_JOB_TYPES}

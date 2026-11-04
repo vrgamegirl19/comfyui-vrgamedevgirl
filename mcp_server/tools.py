@@ -1185,7 +1185,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
     ),
     "story_generate": ToolDefinition(
         name="story_generate",
-        description="Generate story concepts, story arc, or scene beat notes with LLM (T25).",
+        description="Generate a story arc, brief, or beats from available context (T25). Reference images and location mappings are optional. Use existing locations when supplied; otherwise invent story settings, then call reference_extract_locations to create their cards.",
         input_schema={
             "type": "object",
             "properties": {
@@ -1618,8 +1618,8 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
     "reference_extract_locations": ToolDefinition(
         name="reference_extract_locations",
         description=(
-            "Ask the project's LLM for 18-22 filming locations from the lyrics and style notes, like LM Extract, and "
-            "add them to the Reference Builder (T58). Needs scenes with lyrics. Runs as a job (use job_wait)."
+            "Extract the saved Storyboard story's named places into location cards, or scout lyrics and scene notes when no story exists. "
+            "Add them to the Reference Builder (T58), preserving existing cards and images. No reference images or mappings required. Runs as a job (use job_wait)."
         ),
         input_schema={
             "type": "object",

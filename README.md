@@ -1,6 +1,6 @@
-# 🎮 VRGameDevGirl’s AI Video, Image & Creative Workflow Nodes for ComfyUI
+# 🎬 VRGameDevGirl’s AI Video Builder for ComfyUI
 
-A growing collection of custom ComfyUI nodes for **AI video creation, music videos, storyboarding, image generation, video enhancement, face repair, editing, LoRA training, and workflow automation**.
+**Create AI music videos, short films, and scene-based video projects inside ComfyUI.** This repository contains the AI Video Builder, its supporting nodes, and the workflow templates it uses.
 
 The flagship tool is the **AI Video Builder**: a scene-by-scene production workspace for LTX 2.3, MiniMax H3, and future video engines that brings planning, prompting, media generation, timing, review, and final assembly together inside ComfyUI.
 
@@ -42,44 +42,24 @@ Agents can render MiniMax two-pass scenes through the scene-video API using `ren
 
 ---
 
-## 🌟 Useful Nodes & Tools
+## 📦 Which Repository Do I Need?
 
-These are some of the most useful tools included in the pack. Many can be used on their own in a normal ComfyUI workflow.
+| What you want to use | Repository |
+| --- | --- |
+| AI Video Builder, Wizard, Storyboard Builder, Reference Builder, scene rendering, project timing, and final assembly | [AI Video Builder — this repository](https://github.com/vrgamegirl19/comfyui-vrgamedevgirl) |
+| Standalone face-repair, utility, LLM, long-video, LoRA-training, LTX/MiniMax, music/audio, and workflow-UI nodes | [VRGDG Custom Node Pack](https://github.com/vrgamegirl19/VRGDG_CustomNodePack) |
 
-### 🧠 Planning & Project Tools
+The standalone tools moved to **VRGDG Custom Node Pack**. Use that repository for their installation instructions, documentation, and example workflows, including dataset/training tools and standalone speech/music tools.
 
-- **`VRGDG Storyboard Creator with Browser AI — Open This`** — Create project-aware start/end storyboard images with supported browser image tools.
+The Builder keeps its integrated tools and the core nodes needed by its workflows. Features such as scene face repair, enhancement, LLM prompting, and audio preparation remain part of the Builder workflow; they are separate from the standalone canvas-node collection.
 
-### ✨ Repair, Enhance & Finish
-
-- **Face Fix node set** — Detect and track a face, enhance guided anchors, process the crop through LTX, and composite the repaired face back into the source video. Start with the included [Face Fix workflow](Workflows/FaceFix/VRGDG_FaceFix_Workflow.json).
-- **Video Enhance node set** — Create guided enhancement anchors, process a full video through LTX, and restore the exact original resolution and frame count.
-- **Z-Image upscaler workflows** — Upscale and refine images with Z-Image using the included workflows for several source pipelines. Browse the [Z-Image Upscale workflows](Workflows/Z-ImageUpscale/).
-- **Image comparison tools** — Compare an original and processed image directly inside ComfyUI.
-- **Fast Film Grain, Color Match, and Sharpening nodes** — Add cinematic grain, match a reference palette, or restore edge detail efficiently across image batches.
-
-### 🎨 Dataset & LoRA Tools
-
-- **`VRGDG LoRA Dataset Creator UI`** — Build and review captioned datasets for styles, characters, and experimental edit pairs.
-- **MiniMax H3 and LTX 2.3 and Z-Image LoRA training workflows** — Train standard video, audio, audio/video, and Speed LoRAs with the included [updated LoRA training workflows](Workflows/LTX-2_Workflows/Lora_Training/UpdatedWorkflows/).
-- **`VRGDG Musubi-Tuner Installer`** and **Krea 2 tools** — Set up supported training environments and use preset-based training, sampling, and comparison tools.
-- **Preview and grid plot nodes** — Compare checkpoints, prompts, strengths, and generated video folders.
-
-### 🔊 Audio, Prompt & Workflow Utilities
-
-- **`VRGDG VoxCPM2 Voice Clone / TTS`** — Generate speech from text, design a voice, continue spoken audio, or clone a voice from a reference clip. Start with the included [VoxCPM2 Voice Clone / TTS workflow](Workflows/VoxCPM2/VRGDG_VoxCPM_TTS.json).
-- Audio loading, splitting, timing, transcription, and silent-audio helpers.
-- Local and API-based LLM prompt tools for structured image and video prompting.
-- Image, text, switch, folder, workflow-runner, and batch-processing utilities.
-- LUT, color, grain, sharpening, resize, combine, and general video-processing nodes.
-
-> Some advanced tools need additional models or external components. The Builder guide explains the supported workflows, required custom nodes, model locations, and optional setup.
+Some example workflow JSONs remain in the [workflow library](Workflows/README.md). Their presence does not mean every node they use is bundled here. Install the separate pack when an example requires its nodes, along with any other dependencies listed for that workflow.
 
 ---
 
 ## 🚀 Quick Start
 
-1. Install the node pack and restart ComfyUI.
+1. Install this AI Video Builder repository and restart ComfyUI.
 2. Hard refresh the ComfyUI browser page so the latest JavaScript UI files load.
 3. Add **`VRGDG AI Video Builder UI`**.
 4. Create a project and add audio, SRT timing, or scenes.
@@ -128,7 +108,8 @@ Restart ComfyUI and hard refresh the browser page after installation.
 - The **Video Builder guide** is the main source for setup, model paths, screenshots, and step-by-step help.
 - Start with a short project or a few scenes before committing to a long render.
 - Save often, and use **Branch Project** or **Export Shareable Project ZIP** before major experiments.
-- Optional training, Browser AI, face-repair, and enhancement tools may have their own setup requirements.
+- Builder rendering, Browser AI, face-repair, and enhancement workflows may need additional models and custom nodes; see the guide’s [Required Custom Nodes](Workflows/LTX-2_Workflows/Video_Builder/readme.md#required-custom-nodes).
+- For standalone nodes and training tools, install [VRGDG Custom Node Pack](https://github.com/vrgamegirl19/VRGDG_CustomNodePack) and follow its setup instructions.
 
 ---
 

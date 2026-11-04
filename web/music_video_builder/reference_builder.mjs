@@ -258,7 +258,7 @@ export function createReferenceBuilder({
     addLocation.textContent = "Add";
     arrangeLocations.textContent = "Arrange";
     removeAllLocations.textContent = "Remove";
-    extractLocations.title = "Ask your LLM (Gemma, LM Studio, LLM API or own server) to scout 18-22 shootable locations from your lyrics and scenes. The optional style/theme field below steers the result, including banned locations.";
+    extractLocations.title = "Ask your LLM to create location cards from the saved Storyboard story, or scout 18-22 shootable locations from lyrics and scenes when there is no story. The optional style/theme field below steers the result, including banned locations.";
     gptLocationScout.title = "Copy lyrics/dialogue, style/theme, and character descriptions as JSON, then open the Music Video Location Scout GPT.";
     autoMapLocations.title = "Ask Gemma to assign saved locations to each scene.";
     describeMissingLocations.title = referenceImagesEnabled

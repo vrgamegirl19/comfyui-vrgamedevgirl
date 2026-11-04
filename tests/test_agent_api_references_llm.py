@@ -193,6 +193,17 @@ class AssignScenesTests(Base):
 
 
 class ExtractLocationsTests(Base):
+    def test_saved_story_without_lyrics_or_images_supplies_location_context(self):
+        session = self.read_session()
+        session["segments"] = []
+        session["flux_reference_builder"]["subjects"] = []
+        session["builder_story_layer"] = {"user_story_arc": "The journey ends at the glass conservatory."}
+        self.write_session(session)
+        result, request = self.run_extract()
+        self.assertEqual(request["story_layer"], session["builder_story_layer"])
+        self.assertEqual(request["lyrics_text"], "")
+        self.assertEqual(result["added"], 2)
+
     def run_extract(self, scout_result=None, params=None):
         captured = {}
 
@@ -325,6 +336,50 @@ class JobTests(Base):
         job = asyncio.run(go())
         self.assertEqual(job.status, jobs_mod.JobStatus.SUCCEEDED, job.error)
         self.assertEqual(job.result["description"], "d")
+
+class StoryLocationPromptTests(unittest.TestCase):
+    def test_story_only_extracts_named_places_without_filling_a_quota(self):
+        with patch.object(ref_orch.img_gen, "_run_builder_text_llm", return_value=(
+            '{"locations": [{"name": "Glass Conservatory", "description": "Amber windows above tiled floors."}]}', {}
+        )) as runner:
+            result = ref_orch.img_gen._generate_lm_scout_locations({
+                "text_gemma_runner": "lm_studio",
+                "story_layer": {"user_story_arc": "Return to the Glass Conservatory, its amber windows glowing."},
+            })
+        prompt = runner.call_args.args[1]
+        self.assertIn("STORY-FIRST OVERRIDE", prompt)
+        self.assertIn("Return to the Glass Conservatory", prompt)
+        self.assertIn("ignore the 18–22 count", prompt)
+        self.assertEqual(result["locations"][0]["name"], "Glass Conservatory")
+
+    def test_lyrics_only_keeps_the_existing_scout_behavior(self):
+        with patch.object(ref_orch.img_gen, "_run_builder_text_llm", return_value=(
+            '{"locations": [{"name": "Station", "description": "Amber platform lights."}]}', {}
+        )) as runner:
+            ref_orch.img_gen._generate_lm_scout_locations({
+                "text_gemma_runner": "lm_studio", "lyrics_text": "Taking the last train home",
+            })
+        prompt = runner.call_args.args[1]
+        self.assertNotIn("STORY-FIRST OVERRIDE", prompt)
+        self.assertIn("Taking the last train home", prompt)
+
+    def test_brief_accepts_only_an_idea_and_text_only_locations(self):
+        story_funcs = importlib.import_module(f"{pkg_name}.storyboard.story_layer")
+        runner_mod = importlib.import_module(f"{pkg_name}.llm.builder_runner")
+        for locations in ([], [{"id": "glass", "name": "Glass Conservatory", "description": "Amber windows"}]):
+            with self.subTest(locations=locations), patch.object(runner_mod, "_run_builder_text_llm", return_value=(
+                "Story premise: Return to the conservatory.", {}
+            )) as runner:
+                result = story_funcs._build_story_layer_brief({
+                    "story_layer": {"overall_story_idea": "A homecoming after the storm"},
+                    "reference_builder": {"locations": locations},
+                })
+            prompt = runner.call_args.args[1]
+            self.assertIn("A homecoming after the storm", prompt)
+            self.assertIn("Use only supplied locations when available", prompt)
+            if locations:
+                self.assertIn("Glass Conservatory", prompt)
+            self.assertTrue(result["story_brief"])
 
 
 if __name__ == "__main__":

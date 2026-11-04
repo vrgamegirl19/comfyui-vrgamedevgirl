@@ -491,7 +491,10 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     autoMapLocations.disabled = true;
     extractLocations.textContent = "Extracting...";
     progress = createProgressWindow("Extracting locations", { zIndex: 100008 });
-    progress.set("Checking lyrics, scene notes, concept prompts, and location context...", 5);
+    progress.set("Checking saved story, lyrics, scene notes, and location context...", 5);
+    const storyLayer = state.builderStoryLayer || {};
+    const hasStory = [storyLayer.overall_story_idea, storyLayer.user_story_arc, storyLayer.song_story_brief]
+      .some((text) => String(text || "").trim());
     const rawSegments = allEditableSegments();
     const scenes = rawSegments.map((segment, index) => {
       const planningNotes = [
@@ -516,8 +519,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }))
       .filter((scene) => String(scene.concept || scene.notes || "").trim());
     const lyricScenes = scenes.filter((scene) => String(scene.lyric || "").trim());
-    if (!planningScenes.length && !lyricScenes.length) {
-      const message = "LM Extract needs lyrics, scene notes, concept prompts, or timeline notes first.";
+    if (!hasStory && !planningScenes.length && !lyricScenes.length) {
+      const message = "LM Extract needs a story, lyrics, scene notes, concept prompts, or timeline notes first.";
       progress.set(`Error:\n${message}`, 100);
       toast(message, true);
       extractLocations.disabled = false;
@@ -532,6 +535,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       const data = await postJson("/vrgdg/music_builder/lm_scout_locations", {
         ...textGemmaRunnerPayload(),
         model_file: modelFile,
+        story_layer: storyLayer,
         lyrics_text: lyricScenes.map((scene, index) => `Scene ${index + 1}: ${scene.lyric}`).join("\n"),
         scenes: planningScenes,
         style_theme: styleTheme,
