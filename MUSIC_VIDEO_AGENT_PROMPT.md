@@ -138,6 +138,13 @@ Use the project id returned by `project_create` in every later call.
 16. `video_render` for every scene in timeline order, one at a time, with `params: {"mode": "minimax_h3"}`.
     Wait for each job before starting the next. If a scene fails, retry it once, then continue and list it in
     your final report.
+16b. **Long scenes.** 2 Pass refines pass 2 in short overlapping windows for any scene whose rendered clip is longer than
+    8 seconds (`pass2_chunking` `auto`, `pass2_chunking_min_seconds` 8), so leave both as they are. The rendered clip includes
+    the continuation warm-up and H3's frame padding, so a 7.6 s scene can count as 8.4 s. If a scene fails in pass 2 with an
+    out-of-memory error or stalls, fix the cause once (rule 6) before changing the pass 2 size: `project_update_settings` with
+    `{"minimax_h3": {"pass2_chunking_min_seconds": 5}}` (1 to 15, 3 also works), render that scene again, and say so in your
+    report. `minimax_settings_schema` lists both keys. The `video_render` job result has `chunked_pass2` (`enabled`, `windows`,
+    `reason`): read it to confirm pass 2 ran in windows. It is `null` when chunking is off.
 17. `scene_get` on each scene as it finishes: `video_path` is set and the clip length matches the scene length
     within about 0.1 second.
 18. `stitch_final`. Wait for the job, then report the `final_video_path`, the duration, and any scene that failed.

@@ -1,7 +1,7 @@
 import importlib
 
-__version__ = "v9.1.1"
-__updated__ = "2026-08-06"
+__version__ = "v10.0.1"
+__updated__ = "2026-11-04"
 
 _VRGDG_SUBMODULES = (
     ".general.lyrics",
@@ -29,6 +29,7 @@ _VRGDG_SUBMODULES = (
     ".core.static_cache",
     ".minimax.latent_manager",
     ".minimax.latent_continuation",
+    ".minimax.chunked_pass2",
     ".agent_api",
 )
 

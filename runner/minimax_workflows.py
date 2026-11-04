@@ -650,11 +650,19 @@ def _build_minimax_h3_2pass_api_prompt(payload):
         from .minimax_refmod import apply_refmod_pipeline
 
         refmod_summary = apply_refmod_pipeline(prompt, payload)
+    # Long clips refine their second pass in windows. Every other patch has already been applied, so the rewrite only
+    # swaps the whole-clip upscale and sampler. The payload must ask for it, so direct callers keep the normal graph.
+    chunked_pass2 = None
+    if str(payload.get("pass2_chunking") or "off").strip().lower() == "auto":
+        from .minimax_chunked_pass2 import apply_chunked_pass2
+
+        chunked_pass2 = apply_chunked_pass2(prompt, payload, timing)
     return {
         "workflow_path": workflow_path,
         "output_folder": output_folder,
         "prompt": prompt,
         "refmod": refmod_summary,
+        "chunked_pass2": chunked_pass2,
         "latent_continuation_settings": latent_continuation_settings,
         "save_latent_settings": save_latent_settings,
         "used_seed": seed,
@@ -728,6 +736,8 @@ def _build_minimax_h3_advanced_2pass_api_prompt(payload):
     base_payload.setdefault("pass2_sampler_name", "sa_solver")
     base_payload.setdefault("pass2_scheduler", "simple")
     base_payload["_skip_latent_patches"] = True
+    # Advanced replaces the whole second pass with its own tiled one, so the windowed second pass has nothing to swap.
+    base_payload["pass2_chunking"] = "off"
     result = _build_minimax_h3_2pass_api_prompt(base_payload)
     prompt = result["prompt"]
 

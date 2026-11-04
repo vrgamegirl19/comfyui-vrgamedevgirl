@@ -1122,6 +1122,8 @@ export function createVideoRender({
         te_speed_device: miniMaxSettings.two_pass_te_speed_device,
         final_resize_method: (twoPass || threePass) ? miniMaxSettings.two_pass_final_resize_method : undefined,
         output_crf: (twoPass || threePass) ? miniMaxSettings.two_pass_output_crf : undefined,
+        pass2_chunking: twoPass ? miniMaxSettings.pass2_chunking : undefined,
+        pass2_chunking_min_seconds: twoPass ? miniMaxSettings.pass2_chunking_min_seconds : undefined,
         three_pass_lightx_lora_name: miniMaxSettings.three_pass_lightx_lora_name,
         three_pass_lightx_lora_strength: miniMaxSettings.three_pass_lightx_lora_strength,
         pass1_steps: twoPass ? (requestedTwoPassSteps?.pass1 ?? miniMaxSettings.two_pass_pass1_steps) : threePass ? (requestedTwoPassSteps?.pass1 ?? miniMaxSettings.advanced_two_pass_pass1_steps) : miniMaxSettings.steps,

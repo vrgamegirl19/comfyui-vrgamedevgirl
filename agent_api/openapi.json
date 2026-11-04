@@ -574,6 +574,20 @@
             "default": false,
             "type": "boolean"
           },
+          "pass2_chunking": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "off"
+            ],
+            "type": "string"
+          },
+          "pass2_chunking_min_seconds": {
+            "default": 8,
+            "maximum": 15,
+            "minimum": 1,
+            "type": "number"
+          },
           "pass2_use_block_sparse_attention": {
             "default": false,
             "type": "boolean"
