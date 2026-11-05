@@ -11,7 +11,7 @@ let knownRunner = null;
 
 // [session key, state key]. The custom server timeout is seconds in the session and minutes in the state.
 const RUNNER_FIELDS = [
-  ["text_gemma_runner", "textGemmaRunner"], ["gemma_model_file", "gemmaModelFile"],
+  ["text_gemma_runner", "textGemmaRunner"], ["gemma_model_file", "gemmaModelFile"], ["gemma_vision_model_file", "gemmaVisionModelFile"],
   ["qwen_model_file", "qwenModelFile"], ["qwen_mmproj_file", "qwenMmprojFile"],
   ["gemma_context_limit", "gemmaContextLimit"], ["gemma_output_token_limit", "gemmaOutputTokenLimit"],
   ["gemma_gpu_layers", "gemmaGpuLayers"], ["gemma_gpu_device", "gemmaGpuDevice"], ["lm_studio_base_url", "lmStudioBaseUrl"], ["lm_studio_model", "lmStudioModel"],
@@ -20,6 +20,12 @@ const RUNNER_FIELDS = [
   ["llm_api_model", "llmApiModel"], ["own_server_url", "ownServerUrl"], ["own_server_model", "ownServerModel"],
   ["own_server_output_token_limit", "ownServerOutputTokenLimit"], ["own_server_timeout", "ownServerTimeoutMinutes"],
 ];
+
+// Gemma Local's model for image requests: "same" (the default) keeps the main model, for a main model that has vision.
+export function gemmaVisionModelFile(state) {
+  const file = String(state.gemmaVisionModelFile || "same");
+  return file === "same" ? "" : file;
+}
 
 export function bindGlobalLlmKeys(state) {
   boundState = state;

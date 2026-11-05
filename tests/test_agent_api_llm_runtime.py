@@ -120,6 +120,15 @@ class LoadedModelTests(unittest.TestCase):
         payload = {"text_runner": "own_server", "own_server_url": "http://x/v1", "lmstudio_model": "bonsai-27b"}
         self.assertEqual(rt.prepare_llm_payload(payload), payload)
 
+    def test_gemma_local_reports_its_text_and_vision_models(self):
+        session = {"text_gemma_runner": "builtin", "gemma_model_file": "supergemma.gguf"}
+        info = rt.describe_active_llm(rt.llm_payload_from_session(session))
+        self.assertEqual((info["model"], info["vision_model"]), ("supergemma.gguf", "supergemma.gguf"))
+        info = rt.describe_active_llm(rt.llm_payload_from_session({**session, "gemma_vision_model_file": "same"}))
+        self.assertEqual(info["vision_model"], "supergemma.gguf")
+        info = rt.describe_active_llm(rt.llm_payload_from_session({**session, "gemma_vision_model_file": "gemma-4-E4B.gguf"}))
+        self.assertEqual(info["vision_model"], "gemma-4-E4B.gguf")
+
     def test_describe_reports_what_would_be_used(self):
         fake = self.serve([model("gemma-4-e4b-it")])
         info = rt.describe_active_llm(self.payload(fake, lmstudio_model="bonsai-27b"))

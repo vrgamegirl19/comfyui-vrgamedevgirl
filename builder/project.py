@@ -1004,6 +1004,7 @@ _MODEL_DEFAULT_KEYS = (
     "qwen_model_file",
     "qwen_mmproj_file",
     "gemma_model_file",
+    "gemma_vision_model_file",
     "llm_max_tokens",
     "gemma_context_limit",
     "gemma_output_token_limit",
@@ -1038,7 +1039,7 @@ GLOBAL_LLM_KEY_FIELDS = ("llm_api_key", "own_server_api_key", "elevenlabs_api_ke
 # LLM runner settings kept for every project, in session key names. Projects still record them, but the global copy
 # always wins, so switching runners or projects never loses a server, model or limit.
 GLOBAL_LLM_RUNNER_FIELDS = (
-    "text_gemma_runner", "gemma_model_file", "qwen_model_file", "qwen_mmproj_file",
+    "text_gemma_runner", "gemma_model_file", "gemma_vision_model_file", "qwen_model_file", "qwen_mmproj_file",
     "gemma_context_limit", "gemma_output_token_limit", "gemma_gpu_layers", "gemma_gpu_device",
     "lm_studio_base_url", "lm_studio_model", "lm_studio_api_key", "lm_studio_context_limit", "lm_studio_output_token_limit",
     "llm_api_provider", "llm_api_model",

@@ -2,6 +2,7 @@ import { normalizeOwnServerTimeoutMinutes, postJson } from "./comfy_api.mjs";
 import { DEFAULT_NB_IMAGE_MODEL } from "./constants.mjs";
 import { toast } from "./controls.mjs";
 import { createBaseProgressWindow } from "./dialogs.mjs";
+import { gemmaVisionModelFile } from "./llm_global_keys.mjs";
 import {
   gemmaLocalTokenLimits,
   normalizeGemmaContextLimit,
@@ -58,6 +59,7 @@ export function createLlmRunner({
       qwen_model_file: state.qwenModelFile || "",
       qwen_mmproj_file: state.qwenMmprojFile || "",
       gemma_model_file: state.gemmaModelFile || "",
+      gemma_vision_model_file: gemmaVisionModelFile(state),
       model_file: qwenLocal ? (state.qwenModelFile || "") : "",
       n_ctx: localLimits.context,
       gemma_output_token_limit: localLimits.output,

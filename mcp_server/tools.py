@@ -1661,7 +1661,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
     ),
     "llm_active": ToolDefinition(
         name="llm_active",
-        description="Show which LLM the API will use (T60). For LM Studio this is the model currently loaded; the API never loads or switches models.",
+        description="Show which LLM the API will use (T60). For LM Studio this is the model currently loaded; for Gemma Local, model (text) and vision_model (image steps). The API never loads or switches models.",
         input_schema={"type": "object", "properties": {"project_id": {"type": "string"}}},
         handler=_t60_llm_active,
     ),

@@ -58,6 +58,7 @@ def llm_payload_from_session(session: Dict[str, Any], overrides: Optional[Dict[s
         "qwen_model_file": s.get("qwen_model_file") or "",
         "qwen_mmproj_file": s.get("qwen_mmproj_file") or "",
         "gemma_model_file": s.get("gemma_model_file") or "",
+        "gemma_vision_model_file": "" if s.get("gemma_vision_model_file") in (None, "", "same") else s["gemma_vision_model_file"],
         "n_ctx": s.get("gemma_context_limit") or 8000,
         "gemma_output_token_limit": s.get("gemma_output_token_limit") or 8192,
         "n_gpu_layers": s.get("gemma_gpu_layers", 99),
@@ -194,4 +195,7 @@ def describe_active_llm(payload: Dict[str, Any], timeout: float = 10.0) -> Dict[
             "uses_saved_setting": loaded["saved_model"] == loaded["model"],
             "base_url": _api_root(prepared),
         })
+    elif runner == "builtin":
+        info["model"] = prepared.get("gemma_model_file") or ""
+        info["vision_model"] = prepared.get("gemma_vision_model_file") or info["model"]
     return info

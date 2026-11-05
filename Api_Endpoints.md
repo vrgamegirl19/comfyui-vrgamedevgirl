@@ -260,7 +260,7 @@ or its 1-based number.
 | `GET` | `/instructions/{key}` | One instruction's current text, its default and whether a project override is set. |
 | `PUT` | `/instructions/{key}` | Save an instruction override for a project or for all projects. _(body: `key`, `project_folder`)_ |
 | `DELETE` | `/instructions/{key}/override` | Remove an override and return to the built-in instruction. _(body: `key`, `project_folder`)_ |
-| `GET` | `/llm/active` | Which LLM the API would use right now, for a project (`project_id`) or, with none, for a new project (your saved model defaults). For LM Studio this is the model that is loaded. The API never loads or switches a model. _(query: `project_id`)_ |
+| `GET` | `/llm/active` | Which LLM the API would use right now, for a project (`project_id`) or, with none, for a new project (your saved model defaults). For LM Studio this is the model that is loaded. For Gemma Local it lists `model` (text) and `vision_model` (image steps; the same file unless the LLM Runner sets a separate vision model). The API never loads or switches a model. _(query: `project_id`)_ |
 | `GET` | `/llm/models` | Models the configured LLM provider offers. `provider` selects LM Studio, an own server or an API provider. _(query: `provider`)_ |
 | `POST` | `/llm/test` | Send a short test request to the configured LLM runner and report whether it answers. _(body: `provider`, `text_runner`)_ |
 | `POST` | `/llm/unload` | Free the memory held by the built-in LLM runners (clears their caches and the CUDA cache). It does not touch LM Studio. |

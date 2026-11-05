@@ -8,6 +8,7 @@ const { functionSource, readBuilderModule } = require('./builder_source.cjs');
 const context = vm.createContext({});
 vm.runInContext(readBuilderModule('prompt_text.mjs'), context);
 vm.runInContext(functionSource(readBuilderModule('comfy_api.mjs'), 'normalizeOwnServerTimeoutMinutes'), context);
+vm.runInContext(functionSource(readBuilderModule('llm_global_keys.mjs'), 'gemmaVisionModelFile'), context);
 vm.runInContext(readBuilderModule('llm_runner.mjs'), context);
 const payload = (state) => vm.runInContext('(state) => createLlmRunner({ state }).textGemmaRunnerPayload()', context)(state);
 
@@ -20,6 +21,12 @@ test('no choice, or one that is not a GPU number, is automatic', () => {
   assert.equal(payload({ textGemmaRunner: 'builtin' }).gpu_device, -1);
   assert.equal(payload({ textGemmaRunner: 'builtin', gemmaGpuDevice: 'auto' }).gpu_device, -1);
   assert.equal(payload({ textGemmaRunner: 'builtin', gemmaGpuDevice: -3 }).gpu_device, -1);
+});
+
+test('a request carries the vision model only when one is chosen', () => {
+  assert.equal(payload({ textGemmaRunner: 'builtin' }).gemma_vision_model_file, '');
+  assert.equal(payload({ textGemmaRunner: 'builtin', gemmaVisionModelFile: 'same' }).gemma_vision_model_file, '');
+  assert.equal(payload({ textGemmaRunner: 'builtin', gemmaVisionModelFile: 'gemma-4-E4B-it-Q8_0.gguf' }).gemma_vision_model_file, 'gemma-4-E4B-it-Q8_0.gguf');
 });
 
 test('the GPU layers still travel with it', () => {

@@ -734,7 +734,7 @@ export function createWizardBridge({
           const settings = { performance: state.videoType, engine: state.projectVideoEngine, mode: state.videoModelMode, mini: cloneMiniMaxH3Settings(state.miniMaxH3Settings), ltx: cloneI2VVideoSettings(state.i2vVideoSettings), imageMode: state.imageModelMode,
             z: state.zimageSettings, flux: state.fluxKleinSettings, ernie: state.ernieImageSettings, krea: state.krea2TwoPassSettings, nb: state.nbImageSettings, flow: state.flowGptBrowserSettings,
             runner: Object.fromEntries([
-              "textGemmaRunner", "qwenModelFile", "qwenMmprojFile", "gemmaModelFile", "gemmaContextLimit", "gemmaOutputTokenLimit", "gemmaGpuLayers", "gemmaGpuDevice",
+              "textGemmaRunner", "qwenModelFile", "qwenMmprojFile", "gemmaModelFile", "gemmaVisionModelFile", "gemmaContextLimit", "gemmaOutputTokenLimit", "gemmaGpuLayers", "gemmaGpuDevice",
               "lmStudioBaseUrl", "lmStudioModel", "lmStudioContextLimit", "lmStudioOutputTokenLimit", "llmApiProvider", "llmApiModel",
               "ownServerUrl", "ownServerModel", "ownServerOutputTokenLimit", "ownServerTimeoutMinutes",
             ].map(key => [key, state[key]])) };

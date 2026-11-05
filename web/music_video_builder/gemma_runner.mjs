@@ -102,6 +102,8 @@ export function createGemmaRunner({
     const chooseGemmaModel = makeButton("Choose GGUF file");
     const gemmaLocalRow = document.createElement("div");
     gemmaLocalRow.style.cssText = "display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;";
+    const gemmaVisionSelect = makeSelect(["same"], state.gemmaVisionModelFile || "same");
+    gemmaVisionSelect.options[0].textContent = "Same as main model (it has vision)";
     const builtinPanel = document.createElement("div");
     builtinPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;";
     const builtinNote = document.createElement("div");
@@ -112,6 +114,7 @@ export function createGemmaRunner({
     gemmaLocalPanel.append(
       makeField("Gemma Local model in models/LLM", gemmaLocalSelect),
       gemmaLocalRow,
+      makeField("Gemma vision model (image steps, when the main model has no vision)", gemmaVisionSelect),
       makeField("Gemma vision mmproj (for image-reference prompts)", mmprojSelect),
     );
     const qwenLocalPanel = document.createElement("div");
@@ -139,6 +142,10 @@ export function createGemmaRunner({
     gemmaLocalSelect.onchange = () => {
       gemmaLocalPath.value = gemmaLocalSelect.value || "";
       state.gemmaModelFile = gemmaLocalPath.value;
+      syncBuilderLlmModelSelectsFromRunner();
+    };
+    gemmaVisionSelect.onchange = () => {
+      state.gemmaVisionModelFile = gemmaVisionSelect.value || "same";
       syncBuilderLlmModelSelectsFromRunner();
     };
     gemmaLocalPath.oninput = () => {
@@ -185,6 +192,10 @@ export function createGemmaRunner({
       gemmaModels.forEach((item) => { const option = document.createElement("option"); option.value = item; option.textContent = item; gemmaLocalSelect.append(option); });
       if (state.gemmaModelFile && gemmaModels.includes(state.gemmaModelFile)) gemmaLocalSelect.value = state.gemmaModelFile;
       else if (gemmaModels.length && !state.gemmaModelFile) { gemmaLocalSelect.value = gemmaModels[0]; gemmaLocalPath.value = gemmaModels[0]; state.gemmaModelFile = gemmaModels[0]; }
+      gemmaVisionSelect.length = 1;
+      gemmaModels.forEach((item) => { const option = document.createElement("option"); option.value = item; option.textContent = item; gemmaVisionSelect.append(option); });
+      gemmaVisionSelect.value = gemmaModels.includes(state.gemmaVisionModelFile) ? state.gemmaVisionModelFile : "same";
+      state.gemmaVisionModelFile = gemmaVisionSelect.value;
       const models = Array.isArray(data.qwen_models) ? data.qwen_models.filter((item) => item && !/^\[No Qwen/i.test(item)) : [];
       const mmproj = Array.isArray(data.qwen_mmproj) ? data.qwen_mmproj.filter((item) => item && !/^\[No Qwen/i.test(item)) : [];
       qwenModelSelect.innerHTML = "";
