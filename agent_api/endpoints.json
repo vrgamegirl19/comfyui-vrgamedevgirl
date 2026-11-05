@@ -174,7 +174,7 @@
     },
     {
       "body_keys": [],
-      "description": "Which LLM the API would use right now, for a project (`project_id`) or, with none, for a new project (your saved model defaults). For LM Studio this is the model that is loaded. The API never loads or switches a model.",
+      "description": "Which LLM the API would use right now, for a project (`project_id`) or, with none, for a new project (your saved model defaults). For LM Studio this is the model that is loaded. For Gemma Local it lists `model` (text) and `vision_model` (image steps; the same file unless the LLM Runner sets a separate vision model). The API never loads or switches a model.",
       "if_match": false,
       "job": false,
       "method": "GET",
