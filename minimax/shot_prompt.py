@@ -428,6 +428,19 @@ def enforce_cue_shot(description: str, cue: Dict[str, Any]) -> str:
     return normalize_description(f"{clean}. {contract}")
 
 
+def speaking_wording(description: str, built_in_audio: bool) -> str:
+    """A speaking scene's shot says its ``<d>`` lines instead of singing them.
+
+    ``sings <d>`` becomes ``says <d>``, a ``singing`` delivery mark inside the tag becomes ``speaking``, and with
+    built-in audio (nothing to sync to) ``in sync with <Audio 1>`` is dropped.
+    """
+    text = re.sub(r"\bsings(\s+<d>)", r"says\1", str(description or ""), flags=re.I)
+    text = re.sub(r"(<d>\[[^\]]*?)\bsinging\b", r"\1speaking", text, flags=re.I)
+    if built_in_audio:
+        text = re.sub(r"\s+in sync with <Audio 1>", "", text, flags=re.I)
+    return text
+
+
 def literal_scene_instruction() -> str:
     """Require natural action-led prose with clear actors and placement."""
     return (
@@ -1190,8 +1203,14 @@ def build_shot_task(
     continuity: str = "",
     storyboard_context: str = "",
     cues: Optional[List[Dict[str, Any]]] = None,
+    performance_mode: str = "singing",
+    dialogue: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """The ``MiniMax H3 shot-description task`` text the saved instruction expects.
+
+    ``performance_mode`` ``"speaking"`` with ``dialogue`` (the scene's speaker assignments, each with
+    ``speaker_name`` and ``text``) writes the Builder's speaking task: only the assigned speakers talk, and their
+    exact lines go in ``<d>`` tags (``minimax_prompt.mjs``).
 
     ``cues`` are the scene's timed cue rows (``timed_cue_rows``), one per shot, with ``label`` set to the singer's
     subject label. With them each shot gets its own words and vocal window, like the Builder's cue map.
@@ -1205,6 +1224,15 @@ def build_shot_task(
     budget = character_budget(cut_plan, style, target_limit)
     per_shot = max(1, budget["shot_chars"] // max(1, len(plan)))
     cast = [l for l in labels if l["kind"] in ("subject", "extra")] if not no_character else []
+    speaking = performance_mode == "speaking" and bool(lyric_text) and not visual_only and not no_character
+    dialogue_rows = [d for d in (dialogue or []) if isinstance(d, dict) and str(d.get("text") or "").strip()
+                     and str(d.get("type") or "dialogue") != "instrumental"]
+
+    def speaker_label(name: Any) -> str:
+        key = str(name or "").strip().lower()
+        return next((l["label"] for l in cast if key and l["name"] and l["name"].strip().lower() == key), "")
+
+    speaker_labels = {speaker_label(d.get("speaker_name")) for d in dialogue_rows} - {""}
 
     def compact(value: Any, limit: int = 900) -> str:
         text = re.sub(r"\s+", " ", str(value or "")).strip()
@@ -1256,6 +1284,10 @@ def build_shot_task(
         for item in cast:
             if visual_only or not lyric_text:
                 role = "does not sing, speak, or lip sync; acts and reacts silently with a relaxed closed mouth"
+            elif speaking and speaker_labels:
+                role = ("SPEAKS only its own assigned lines from the Exact dialogue order, with visible lip sync"
+                        if item["label"] in speaker_labels
+                        else "does not speak or lip sync; listens and reacts silently with a relaxed closed mouth")
             elif audio_mode == "built_in_audio":
                 role = "SINGS and lip-syncs the exact lyric line with visible mouth, lip, and jaw movement"
             else:
@@ -1273,6 +1305,16 @@ def build_shot_task(
         parts.append("Vocal performance: no visible character / no lip sync. Do not invent a visible singer or speaker.")
     elif visual_only or not lyric_text:
         parts.append("Vocal performance: no exact lyric is assigned to this scene. Do not add singing, speaking, or lip sync.")
+    elif speaking:
+        parts.append("Vocal performance: speaking with exact dialogue lip sync. Use the stable visible subject label, and place every "
+                     "spoken cue inside <d>[English] exact words with final punctuation.</d>. Mention the visible speaking action "
+                     "naturally in the shot descriptions. The characters speak; they never sing."
+                     + (" Show clear, natural mouth, lip, jaw, and facial movement synchronized to the audible speech."
+                        if audio_mode == "built_in_audio" else ""))
+        order = [f"{i}. {speaker_label(d.get('speaker_name')) or str(d.get('speaker_name') or '').strip() or 'The assigned speaker'}"
+                 f" says exactly: “{str(d.get('text')).strip()}”" for i, d in enumerate(dialogue_rows, start=1)]
+        parts.append("Exact dialogue order:\n" + ("\n".join(order) if order
+                                                  else f'The assigned speaker says exactly: "{compact(lyric_text)}"'))
     elif cues:
         parts.append("TIMED VOCAL CUES ONLY: Follow the timed singer/shot contract exactly. Never place, anticipate, continue, or repeat a lyric in an "
                      "instrumental shot. A performer sings only inside the specifically assigned vocal cue shot.")
@@ -1282,10 +1324,12 @@ def build_shot_task(
         singer = f"{cast[0]['label']} ({cast[0]['name']})" if cast and cast[0]["name"] else (cast[0]["label"] if cast else "the singer")
         mouth = ("Show clear, natural mouth, lip, jaw, and facial movement synchronized to the audible vocal. " if audio_mode == "built_in_audio"
                  else "Audio 1 drives the singer's mouth, so act the line with the face and body. ")
+        # Built-in audio has no <Audio 1> to sync to (the Builder's native-audio wording).
+        sync = "" if audio_mode == "built_in_audio" else " in sync with <Audio 1>"
         parts.append("MANDATORY VOCAL PERFORMANCE: The assigned subject is visibly singing the exact supplied lyric/audio during this scene. "
                      f"Use the stable visible subject label. {mouth}"
                      "LYRIC IN THE SHOT — MANDATORY: write the exact lyric words, unchanged, inside <d>[English] exact words with final punctuation.</d>, "
-                     f"introduced like this: {singer} sings <d>[English] the exact words.</d> in sync with <Audio 1>. "
+                     f"introduced like this: {singer} sings <d>[English] the exact words.</d>{sync}. "
                      "Every lyric line given below must appear in a shot, in order.")
         if len(chunks) == 1:
             parts.append(f"Exact lyric line:\n{compact(chunks[0])}")

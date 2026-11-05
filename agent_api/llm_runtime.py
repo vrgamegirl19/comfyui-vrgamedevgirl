@@ -78,6 +78,10 @@ def llm_payload_from_session(session: Dict[str, Any], overrides: Optional[Dict[s
     }
     if runner == "qwen_local":
         payload["model_file"] = payload["qwen_model_file"]
+    elif runner == "builtin":
+        # The Builder sends the chosen Gemma (or the first one found) as model_file with every local call.
+        payload["model_file"] = payload["gemma_model_file"] or _first_local_choice("_list_local_gemma_gguf_choices")
+        payload["mmproj_file"] = _first_local_choice("_list_local_mmproj_choices")
     _fill_api_keys(payload)
     for key, value in (overrides or {}).items():
         if value not in (None, ""):
@@ -86,6 +90,16 @@ def llm_payload_from_session(session: Dict[str, Any], overrides: Optional[Dict[s
         payload["n_ctx"], payload["gemma_output_token_limit"] = gemma_local_token_limits(
             payload.get("n_ctx"), payload.get("gemma_output_token_limit"))
     return payload
+
+
+def _first_local_choice(lister: str) -> str:
+    """The first Gemma Local file a ``VRGDG_SuperGemmaGGUFChat`` lister finds under models/LLM, or ``""``."""
+    try:
+        from ..llm.gguf import VRGDG_SuperGemmaGGUFChat
+        choices = getattr(VRGDG_SuperGemmaGGUFChat, lister)()
+    except Exception:
+        return ""
+    return next((str(c) for c in choices if c and not str(c).startswith("[")), "")
 
 
 def global_llm_runner() -> Dict[str, Any]:

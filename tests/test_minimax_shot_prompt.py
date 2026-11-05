@@ -125,6 +125,38 @@ class ShotPromptTests(unittest.TestCase):
         self.assertIn("repeat a label when the actor or speaker changes", task)
         self.assertNotIn("Never refer to a character only by name or pronoun", task)
 
+    def test_built_in_audio_singing_has_no_audio_1_to_sync_to(self):
+        labels = sp.reference_labels([{"kind": "subject", "label": "dave"}])
+        task = sp.build_shot_task(mode_label="Reference to Video", duration=4, aspect_ratio="16:9", audio_mode="built_in_audio",
+                                  cut_plan=self.plan(4.0), style="s", labels=labels, camera_speed=3, character_speed=3,
+                                  lyric_text="line one")
+        self.assertIn("<Subject 1> (dave) sings <d>[English] the exact words.</d>. ", task)
+        self.assertNotIn("<Audio 1>", task)
+
+    def test_speaking_scenes_speak_their_exact_lines_like_the_builder(self):
+        labels = sp.reference_labels([{"kind": "subject", "label": "Mortimer"}, {"kind": "subject", "label": "Biscuit"}])
+        dialogue = [{"speaker_name": "Mortimer", "text": "Silence, Brother Biscuit!", "type": "dialogue"}]
+        task = sp.build_shot_task(mode_label="Reference to Video", duration=6.5, aspect_ratio="16:9", audio_mode="built_in_audio",
+                                  cut_plan=self.plan(6.5), style="s", labels=labels, camera_speed=3, character_speed=3,
+                                  lyric_text="Silence, Brother Biscuit!", performance_mode="speaking", dialogue=dialogue)
+        self.assertIn("<Subject 1> (Mortimer): SPEAKS only its own assigned lines", task)
+        self.assertIn("<Subject 2> (Biscuit): does not speak or lip sync; listens", task)
+        self.assertIn("Vocal performance: speaking with exact dialogue lip sync.", task)
+        self.assertIn("Exact dialogue order:\n1. <Subject 1> says exactly: “Silence, Brother Biscuit!”", task,
+                      "the spoken words stay as written, names inside the line included")
+        self.assertNotIn("sings", task)
+        self.assertNotIn("<Audio 1>", task)
+        no_rows = sp.build_shot_task(mode_label="Reference to Video", duration=6.5, aspect_ratio="16:9", audio_mode="input_audio",
+                                     cut_plan=self.plan(6.5), style="s", labels=labels, camera_speed=3, character_speed=3,
+                                     lyric_text="Hello there.", performance_mode="speaking")
+        self.assertIn('Exact dialogue order:\nThe assigned speaker says exactly: "Hello there."', no_rows)
+
+    def test_speaking_wording_turns_a_sung_line_into_speech(self):
+        shot = "<Subject 1> sings <d>[English, grave, singing] Brothers.</d> in sync with <Audio 1>, raising the scythe."
+        self.assertEqual(sp.speaking_wording(shot, True),
+                         "<Subject 1> says <d>[English, grave, speaking] Brothers.</d>, raising the scythe.")
+        self.assertIn("in sync with <Audio 1>", sp.speaking_wording(shot, False))
+
     def test_too_long_and_incomplete_prompts_fail_validation(self):
         plan = self.plan(4.0)
         with self.assertRaises(sp.ShotPromptError) as ctx:

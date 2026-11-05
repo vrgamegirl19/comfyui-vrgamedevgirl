@@ -825,6 +825,7 @@ def bulk_scene_operations(
 
         segments = session.setdefault("segments", [])
         applied = 0
+        card_writes: List[tuple] = []
         for position, op in enumerate(operations):
             where = f"operations[{position}]"
             if not isinstance(op, dict):
@@ -856,13 +857,39 @@ def bulk_scene_operations(
                 fields = op.get("fields")
                 if not isinstance(fields, dict) or not fields:
                     raise ValidationError(f"{where} (patch) needs fields: an object of scene fields to set.")
-                for k, v in fields.items():
+                # Scene-card fields are saved like PATCH /scenes/{sid}: the Builder's keys, the Reference Builder
+                # maps for subject_ids / location_id, and the Storyboard card. Other fields are copied as they are.
+                try:
+                    values, legacy = card_fields.parse_scene_card_patch(fields)
+                except card_fields.SceneCardFieldError as exc:
+                    raise ValidationError(f"{where} (patch): {exc}") from None
+                references_changed = _apply_scene_references(session, scene_id, values)
+                card_fields.apply_to_segment(
+                    scene,
+                    {name: value for name, value in values.items() if name not in ("subject_ids", "location_id")},
+                    video_engine=session_sync.video_engine(session),
+                    image_mode=session_sync.image_mode(session),
+                )
+                for k, v in legacy.items():
                     scene[k] = v
-                if "lyric_text" in fields and "lyric_no_lip_sync" not in fields:
+                if ("lyric_text" in values or "lyric_text" in legacy) and "lyric_no_lip_sync" not in fields:
                     scene["lyric_no_lip_sync"] = is_instrumental_lyric_text(scene.get("lyric_text"))
+                card_writes.append((scene_id, scene, values, legacy, references_changed))
             applied += 1
 
-        save_result = _persist_session(folder, session)
+        undos = []
+        try:
+            for card_scene_id, card_scene, values, legacy, references_changed in card_writes:
+                updates = _storyboard_card_updates(session, card_scene, values, legacy, references_changed)
+                _, undo = _write_storyboard_card(folder, session, card_scene_id, updates,
+                                                 card_fields.card_only_names(values))
+                if undo:
+                    undos.append(undo)
+            save_result = _persist_session(folder, session)
+        except Exception:
+            for undo in reversed(undos):
+                undo()
+            raise
         return {
             "applied_operations": applied,
             "revision": save_result.get("revision", current_rev + 1),
