@@ -264,9 +264,12 @@ def _patch_krea2_api_prompt(prompt, payload):
     _set_api_input(prompt, "193:82", "end_at_step", enhance_steps)
 
     if not use_zimage_enhance:
-        # PreviewImage is the workflow output. Pointing it at the Krea decode
-        # removes the unreferenced ZImage branch from ComfyUI execution.
+        # PreviewImage is the workflow output. Point it at the Krea decode and drop the
+        # ZImage branch (and the resize that only feeds it): ComfyUI validates every node
+        # in a prompt, so its custom scheduler node would fail even when unused.
         _set_api_input(prompt, "199", "images", ["30:8", 0])
+        for node_id in [key for key in prompt if str(key).startswith("193:") or str(key) == "201"]:
+            del prompt[node_id]
 
     aspect_node = prompt.get("49")
     if isinstance(aspect_node, dict):

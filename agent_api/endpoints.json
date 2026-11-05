@@ -849,7 +849,7 @@
       "body_keys": [
         "operations"
       ],
-      "description": "Apply several scene operations in one atomic change. `operations` is a non-empty list of objects: `{\"op\": \"move\", \"scene_id\", \"start\", \"ripple\"}`, `{\"op\": \"resize\", \"scene_id\", \"duration\" or \"end\", \"ripple\"}` or `{\"op\": \"patch\", \"scene_id\", \"fields\": {...}}`. `scene_id` is a scene id or its number on the timeline. An operation with another `op`, a missing field or an unknown scene fails the whole batch with a 400 or 404 and saves nothing.",
+      "description": "Apply several scene operations in one atomic change. `operations` is a non-empty list of objects: `{\"op\": \"move\", \"scene_id\", \"start\", \"ripple\"}`, `{\"op\": \"resize\", \"scene_id\", \"duration\" or \"end\", \"ripple\"}` or `{\"op\": \"patch\", \"scene_id\", \"fields\": {...}}`. `scene_id` is a scene id or its number on the timeline. A patch saves scene-card fields like PATCH /scenes/{sid} (the Builder's keys, `subject_ids` / `location_id` in the Reference Builder maps, and the Storyboard card); other fields are copied onto the scene as they are. An operation with another `op`, a missing field, an invalid card field or an unknown scene fails the whole batch with a 400 or 404 and saves nothing.",
       "if_match": true,
       "job": false,
       "method": "POST",

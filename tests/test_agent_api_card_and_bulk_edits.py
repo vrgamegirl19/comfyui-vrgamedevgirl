@@ -72,6 +72,33 @@ class CardAndBulkEditTests(unittest.TestCase):
         self.assertEqual(self.segment("seg_0001")["notes"], "Open on the door")
         self.assertEqual(self.segment("seg_0003")["end"], 10.0)
 
+    def test_a_bulk_patch_saves_card_fields_like_a_scene_patch(self):
+        session = self.saved()
+        session["flux_reference_builder"] = {"subjects": [{"id": "ava", "name": "Ava"}, {"id": "bo", "name": "Bo"}],
+                                             "locations": [{"id": "roof", "name": "Roof"}]}
+        with open(self.session_file, "w", encoding="utf-8") as handle:
+            json.dump(session, handle)
+        cue = {"speaker_id": "ava", "speaker_name": "Ava", "text": "Hello, Bo.", "type": "dialogue"}
+        mutations.bulk_scene_operations("Test_Track", [
+            {"op": "patch", "scene_id": "1", "fields": {"subject_ids": ["ava", "bo"], "location_id": "roof",
+                                                       "speaker_assignments": [cue], "custom_flag": 7}},
+        ])
+        segment = self.segment("seg_0001")
+        self.assertEqual([(c["speaker_name"], c["text"]) for c in segment["minimax_speaker_assignments"]], [("Ava", "Hello, Bo.")])
+        self.assertNotIn("subject_ids", segment)
+        self.assertEqual(segment["custom_flag"], 7, "fields that are not on the card are still copied")
+        saved = self.saved()
+        self.assertEqual(mutations._reference_map(saved, "subjects").get("seg_0001"), ["ava", "bo"])
+        self.assertEqual(mutations._reference_map(saved, "locations").get("seg_0001"), "roof")
+        self.assertTrue(saved["flux_reference_builder"]["use_subject_reference"])
+        before = self.saved()
+        with self.assertRaises(errors.ValidationError):
+            mutations.bulk_scene_operations("Test_Track", [
+                {"op": "patch", "scene_id": "2", "fields": {"notes": "kept?"}},
+                {"op": "patch", "scene_id": "3", "fields": {"subject_ids": ["nobody"]}},
+            ])
+        self.assertEqual(self.saved(), before)
+
     def test_a_bad_operation_fails_the_batch_and_saves_nothing(self):
         before = self.saved()
         bad = [
