@@ -1101,6 +1101,16 @@ class VRGDG_ManualLyricsExtractor_SRT_Advanced:
                 pass
 
 
+# The Builder times many scenes in a row, so it can keep one stable-ts model loaded between runs.
+_STABLE_TS_MODELS = {}
+
+
+def unload_stable_ts_models():
+    count = len(_STABLE_TS_MODELS)
+    _STABLE_TS_MODELS.clear()
+    return count
+
+
 class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced):
     """
     Transcribes or aligns full audio and preserves lyric timestamps as JSON.
@@ -1132,7 +1142,10 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
                 "min_scene_seconds": ("FLOAT", {"default": 2.0, "min": 0.1, "max": 30.0}),
                 "max_scene_seconds": ("FLOAT", {"default": 10.0, "min": 1.0, "max": 60.0}),
                 "vocal_tail_padding_seconds": ("FLOAT", {"default": 0.6, "min": 0.0, "max": 3.0}),
-            }
+            },
+            "optional": {
+                "unload_after": ("BOOLEAN", {"default": True, "tooltip": "Turn off to keep stable-ts loaded for the next run."}),
+            },
         }
 
     def _segment_words(self, seg):
@@ -1997,6 +2010,7 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
         min_scene_seconds=1.0,
         max_scene_seconds=8.0,
         vocal_tail_padding_seconds=0.6,
+        unload_after=True,
         **kwargs
     ):
         try:
@@ -2018,8 +2032,12 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
         lang = self._normalize_language(language)
 
         print(f"[TimestampedLyrics] Processing audio: {total_duration:.2f}s @ {sample_rate}Hz")
-        print(f"[TimestampedLyrics] Loading stable-ts model: {model_name} ({device})")
-        model = stable_whisper.load_model(model_name, device=device)
+        model_key = (str(model_name), device)
+        model = _STABLE_TS_MODELS.pop(model_key, None)
+        if model is None:
+            _STABLE_TS_MODELS.clear()
+            print(f"[TimestampedLyrics] Loading stable-ts model: {model_name} ({device})")
+            model = stable_whisper.load_model(model_name, device=device)
 
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             tmp_wav_path = tmp.name
@@ -2120,6 +2138,8 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
             return (json.dumps(payload, ensure_ascii=False, indent=2),)
 
         finally:
+            if not unload_after:
+                _STABLE_TS_MODELS[model_key] = model
             try:
                 if os.path.exists(tmp_wav_path):
                     os.remove(tmp_wav_path)

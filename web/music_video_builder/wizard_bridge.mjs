@@ -361,19 +361,33 @@ export function createWizardBridge({
     const failurePrefix = `storyboard:${videoMode}`;
     try {
       progress.set(`${options.failedIds?.length ? "Retrying failed Storyboard scenes" : `Starting Storyboard ${runnerName} All`}...\nScenes: ${targetScenes.length}\nUsing the same prompt writer as Storyboard Builder.`, 5);
+      const sceneSegments = targetScenes.map((scene, index) => segmentById.get(String(scene.id || ""))
+        || segments.find((item) => String(item.id || "") === String(scene.id || "")) || segments[index]);
+      // Time every singing scene first so Whisper loads once, then free it before the LLM writes the prompts.
+      const timingErrors = new Map();
+      const singing = miniMaxProject
+        ? sceneSegments.filter((segment) => segment && !segment.no_character_present
+          && normalizeVideoType(segment.performance_mode || state.videoType) === "singing")
+        : [];
+      for (let index = 0; index < singing.length; index += 1) {
+        progress.set(`Timing the sung lines: scene ${index + 1}/${singing.length}...`, 5);
+        try {
+          await ensureAutoTimedSingerCuesBeforePrompt(singing[index], { unloadAfter: false });
+        } catch (error) {
+          timingErrors.set(singing[index], error);
+        }
+      }
+      if (singing.length) await postJson("/vrgdg/music_builder/clear_memory_direct", {}, 120000);
       for (let index = 0; index < targetScenes.length; index += 1) {
         stoppedAt = index;
         const scene = targetScenes[index];
-        const segment = segmentById.get(String(scene.id || "")) || segments.find((item) => String(item.id || "") === String(scene.id || "")) || segments[index];
+        const segment = sceneSegments[index];
         const base = 8 + Math.round((index / Math.max(1, targetScenes.length)) * 84);
         const label = `Storyboard ${runnerName} All ${index + 1}/${targetScenes.length}: ${scene.label || `Scene ${scene.scene_number || index + 1}`}`;
         try {
           progress.set(`${label}\nCreating storyboard video prompt...`, base);
-          if (miniMaxProject && segment && !segment.no_character_present
-            && normalizeVideoType(segment.performance_mode || state.videoType) === "singing") {
-            const timed = await ensureAutoTimedSingerCuesBeforePrompt(segment);
-            if (timed === false) throw new Error(`${label}: Whisper timing did not complete; prompt generation was stopped.`);
-          }
+          const timingError = timingErrors.get(segment);
+          if (timingError) throw new Error(`${label}: ${String(timingError?.message || timingError)}`);
           const promptCueMap = segment && Array.isArray(segment.lyric_cue_map)
             ? normalizeLyricCueMapForSegment(segment, undefined, { preserveBlank: true })
             : [];

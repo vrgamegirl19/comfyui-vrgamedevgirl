@@ -2820,7 +2820,7 @@ export function createMiniMaxPrompt({
         end: null,
       }];
     }
-    const timed = await autoTimeMiniMaxSingerCuesForSegment(segment);
+    const timed = await autoTimeMiniMaxSingerCuesForSegment(segment, { unloadAfter: options.unloadAfter });
     if (!timed) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Whisper timing did not complete; prompt generation was stopped.`);
     return true;
   }
