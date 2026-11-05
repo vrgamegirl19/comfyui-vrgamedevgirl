@@ -28,6 +28,7 @@ from .video_profiles import (
 from .export_video import _export_final_video
 from .paths import _open_local_file, _open_native_picker, _resolve_existing_file
 from .elevenlabs import list_voices
+from ..general.lyrics import unload_stable_ts_models
 from .elevenlabs_voice_design import create_designed_voice, design_voice
 from ..llm.voice_design import generate_voice_description
 from ..llm.scene_dialogue import craft_dialogue
@@ -1125,7 +1126,9 @@ def _ensure_music_builder_routes():
     @server_instance.routes.post("/vrgdg/music_builder/clear_memory_direct")
     async def vrgdg_music_builder_clear_memory_direct(request):
         try:
+            whisper_count = unload_stable_ts_models()
             result = await asyncio.to_thread(_clear_builder_memory_direct)
+            result["message"] += f"\nWhisper models unloaded: {whisper_count}"
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})

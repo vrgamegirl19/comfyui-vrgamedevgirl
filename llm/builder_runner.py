@@ -173,11 +173,15 @@ def _builder_local_llm(payload):
     return llm
 
 
-def _builder_local_model_file(payload, current=""):
+def _builder_local_model_file(payload, current="", vision=False):
     if _llm_runner_from_payload(payload) == "qwen_local":
         return str(payload.get("qwen_model_file") or current or "").strip()
-    if _llm_runner_from_payload(payload) == "builtin" and payload.get("gemma_model_file"):
-        return str(payload.get("gemma_model_file") or current or "").strip()
+    if _llm_runner_from_payload(payload) == "builtin":
+        # Image requests use the runner's vision model when the main model has no vision.
+        if vision and payload.get("gemma_vision_model_file"):
+            return str(payload.get("gemma_vision_model_file")).strip()
+        if payload.get("gemma_model_file"):
+            return str(payload.get("gemma_model_file")).strip()
     return str(current or "").strip()
 
 

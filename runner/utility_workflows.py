@@ -103,6 +103,7 @@ def _patch_timestamped_transcribe_api_prompt(prompt, payload):
     _set_api_input(prompt, extractor_id, "min_scene_seconds", _float_payload(payload, "min_scene_seconds", 1.0, minimum=1.0, maximum=30.0))
     _set_api_input(prompt, extractor_id, "max_scene_seconds", _float_payload(payload, "max_scene_seconds", 8.0, minimum=1.0, maximum=60.0))
     _set_api_input(prompt, extractor_id, "vocal_tail_padding_seconds", _float_payload(payload, "vocal_tail_padding_seconds", 0.6, minimum=0.0, maximum=3.0))
+    _set_api_input(prompt, extractor_id, "unload_after", _bool_payload(payload, "unload_after", True))
     model_name = str(payload.get("model_name", "") or "large-v3").strip()
     if model_name:
         _set_api_input(prompt, extractor_id, "model_name", model_name)

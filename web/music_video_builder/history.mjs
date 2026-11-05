@@ -115,6 +115,7 @@ export function createHistory({
       qwenModelFile: state.qwenModelFile,
       qwenMmprojFile: state.qwenMmprojFile,
       gemmaModelFile: state.gemmaModelFile,
+      gemmaVisionModelFile: state.gemmaVisionModelFile,
       gemmaContextLimit: normalizeGemmaContextLimit(state.gemmaContextLimit),
       gemmaOutputTokenLimit: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit),
       gemmaGpuLayers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
@@ -229,6 +230,7 @@ export function createHistory({
     state.qwenModelFile = data.qwenModelFile || data.qwen_model_file || state.qwenModelFile || "";
     state.qwenMmprojFile = data.qwenMmprojFile || data.qwen_mmproj_file || state.qwenMmprojFile || "";
     state.gemmaModelFile = data.gemmaModelFile || data.gemma_model_file || state.gemmaModelFile || "";
+    state.gemmaVisionModelFile = data.gemmaVisionModelFile || data.gemma_vision_model_file || state.gemmaVisionModelFile || "same";
     syncBuilderLlmModelSelectsFromRunner();
     state.gemmaContextLimit = normalizeGemmaContextLimit(data.gemmaContextLimit ?? data.gemma_context_limit ?? data.n_ctx ?? legacyLlmMaxTokens ?? state.gemmaContextLimit);
     state.gemmaOutputTokenLimit = normalizeOutputTokenLimit(data.gemmaOutputTokenLimit ?? data.gemma_output_token_limit ?? legacyLlmMaxTokens ?? state.gemmaOutputTokenLimit);

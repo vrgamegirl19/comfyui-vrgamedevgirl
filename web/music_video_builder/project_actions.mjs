@@ -484,6 +484,7 @@ export function createProjectActions({
       qwen_model_file: state.qwenModelFile || "",
       qwen_mmproj_file: state.qwenMmprojFile || "",
       gemma_model_file: state.gemmaModelFile || "",
+      gemma_vision_model_file: state.gemmaVisionModelFile || "same",
         gemma_context_limit: normalizeGemmaContextLimit(state.gemmaContextLimit),
         gemma_output_token_limit: normalizeOutputTokenLimit(state.gemmaOutputTokenLimit),
         gemma_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),

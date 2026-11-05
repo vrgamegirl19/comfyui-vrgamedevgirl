@@ -10,6 +10,7 @@ import {
   makeSettingsSection,
   makeSubTabs,
 } from "./controls.mjs";
+import { gemmaVisionModelFile } from "./llm_global_keys.mjs";
 
 export function makeImageModelCard(label, value) {
   const card = document.createElement("button");
@@ -665,8 +666,12 @@ export function createInspector({
     const runner = String(state.textGemmaRunner || "builtin").toLowerCase();
     if (!["builtin", "qwen_local"].includes(runner)) return;
     const modelFile = runner === "qwen_local" ? state.qwenModelFile : state.gemmaModelFile;
-    for (const select of [...builderTextLlmModelSelects, ...builderVisionLlmModelSelects]) {
+    for (const select of builderTextLlmModelSelects) {
       selectBuilderLlmValue(select, modelFile);
+    }
+    const visionModelFile = runner === "qwen_local" ? modelFile : gemmaVisionModelFile(state) || modelFile;
+    for (const select of builderVisionLlmModelSelects) {
+      selectBuilderLlmValue(select, visionModelFile);
     }
     const mmprojFile = runner === "qwen_local" ? state.qwenMmprojFile : mmprojSelect.value;
     for (const select of builderVisionMmprojSelects) {

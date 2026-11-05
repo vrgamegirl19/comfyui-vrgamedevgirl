@@ -601,7 +601,7 @@ def _generate_builder_i2v_prompt(payload):
     user_notes = "\n\n".join([mode_note, user_notes]).strip()
 
     llm = _builder_local_llm(payload) if text_runner not in _EXTERNAL_LLM_RUNNERS else None
-    model_file = _builder_local_model_file(payload, model_file)
+    model_file = _builder_local_model_file(payload, model_file, vision=has_image_reference)
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else ""
     mmproj_file = _builder_local_mmproj_file(payload, mmproj_file)
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if has_image_reference and llm else ""
@@ -961,7 +961,7 @@ def _generate_builder_chained_i2v_prompt(payload):
     )
 
     llm = _builder_local_llm(payload) if text_runner not in _EXTERNAL_LLM_RUNNERS else None
-    model_file = _builder_local_model_file(payload, model_file)
+    model_file = _builder_local_model_file(payload, model_file, vision=True)
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else ""
     mmproj_file = _builder_local_mmproj_file(payload, mmproj_file)
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
@@ -1409,7 +1409,7 @@ def _generate_builder_t2v_prompt(payload):
             atomic_write_json(llm_request_audit_path, llm_request_audit)
 
     llm = _builder_local_llm(payload) if has_image_reference and text_runner not in _EXTERNAL_LLM_RUNNERS else None
-    model_file = _builder_local_model_file(payload, model_file)
+    model_file = _builder_local_model_file(payload, model_file, vision=has_image_reference)
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else ""
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     n_ctx = int(payload.get("n_ctx") or 8000)
@@ -1625,7 +1625,7 @@ def _edit_builder_video_prompt(payload):
             if not model_file.lower().endswith(".gguf"):
                 raise ValueError("The I2V model field is not a GGUF model.")
             llm = _builder_local_llm(payload)
-            model_file = _builder_local_model_file(payload, model_file)
+            model_file = _builder_local_model_file(payload, model_file, vision=True)
             model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
             mmproj_file = _builder_local_mmproj_file(payload, mmproj_file)
             mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file)

@@ -17,7 +17,7 @@ import { normalizedLyricMatchText, normalizeFluxReferenceBuilder, normalizeLyric
 import { newSegment, sortSegments } from "./segments.mjs";
 import { audioChunkDuration, audioSourceStart, timelineSegmentDuration } from "./timeline_state.mjs";
 
-export async function runTimestampedCueWorkflow(audioPath, referenceLyrics, progress = null, maxSceneSeconds = 8) {
+export async function runTimestampedCueWorkflow(audioPath, referenceLyrics, progress = null, maxSceneSeconds = 8, unloadAfter = true) {
   progress?.set("Building Stable-ts timestamp workflow...", 22);
   const built = await postJson("/vrgdg/workflow_runner/build_timestamped_transcribe_prompt", {
     audio_path: audioPath,
@@ -31,6 +31,7 @@ export async function runTimestampedCueWorkflow(audioPath, referenceLyrics, prog
     max_scene_seconds: Math.max(1, Number(maxSceneSeconds || 8)),
     vocal_tail_padding_seconds: 0.0,
     model_name: "large-v3",
+    unload_after: unloadAfter,
   }, 60000);
   progress?.set("Queueing Stable-ts timestamp workflow...", 32);
   const queued = await queueWorkflowPrompt(built.prompt, {
@@ -674,13 +675,15 @@ export function createLyricTranscription({
           continue;
         }
         try {
-          const timed = await ensureAutoTimedSingerCuesBeforePrompt(segment, { force: true });
+          const timed = await ensureAutoTimedSingerCuesBeforePrompt(segment, { force: true, unloadAfter: false });
           if (timed) completed += 1;
           else failures.push(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: no usable lyric timing was created.`);
         } catch (error) {
           failures.push(String(error?.message || error));
         }
       }
+      // Whisper stayed loaded across the scenes; free it now.
+      await postJson("/vrgdg/music_builder/clear_memory_direct", {}, 120000);
       renderMiniMaxSpeakerAssignmentPanel();
       syncInspector();
       render();
@@ -1582,7 +1585,7 @@ export function createLyricTranscription({
     return String(prepared.audio_path || "").trim();
   }
 
-  async function autoTimeMiniMaxSingerCuesForSegment(segment) {
+  async function autoTimeMiniMaxSingerCuesForSegment(segment, options = {}) {
     if (!segment) return false;
     const progress = createProgressWindow("Auto Time Singer Cues");
     try {
@@ -1598,7 +1601,7 @@ export function createLyricTranscription({
       progress.set("Preparing lyric cue text...", 5);
       const referenceLyrics = vocalCues.map((cue) => flattenLyricForPrompt(cue.text)).filter(Boolean).join("\n");
       const audioPath = await prepareSceneAudioClipForTimestamping(segment, progress);
-      const payload = await runTimestampedCueWorkflow(audioPath, referenceLyrics, progress, timelineSegmentDuration(segment));
+      const payload = await runTimestampedCueWorkflow(audioPath, referenceLyrics, progress, timelineSegmentDuration(segment), options.unloadAfter !== false);
       const timestamped = timestampedCueSegments(payload);
       if (!timestamped.length) throw new Error("Stable-ts did not return usable cue timestamps for this scene.");
       progress.set("Applying timestamped cue rows...", 88);

@@ -210,7 +210,7 @@ def _generate_builder_t2i_prompt(payload):
         raise ValueError("Enter scene notes or provide a reference image.")
 
     llm = _builder_local_llm(payload) if has_ref_image and text_runner not in _EXTERNAL_LLM_RUNNERS else None
-    model_file = _builder_local_model_file(payload, model_file)
+    model_file = _builder_local_model_file(payload, model_file, vision=has_ref_image)
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else ""
     mmproj_file = _builder_local_mmproj_file(payload, mmproj_file)
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
@@ -451,7 +451,7 @@ def _edit_builder_image_prompt(payload):
             if not model_file.lower().endswith(".gguf"):
                 raise ValueError("The vision Gemma model field is not a GGUF model.")
             llm = _builder_local_llm(payload)
-            model_file = _builder_local_model_file(payload, model_file)
+            model_file = _builder_local_model_file(payload, model_file, vision=True)
             model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
             mmproj_file = _builder_local_mmproj_file(payload, mmproj_file)
             mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file)
@@ -597,7 +597,7 @@ def _generate_builder_reference_description(payload):
             instruction += f"\nUse this label only as the reference name if needed: {name_hint}"
 
     llm = _builder_local_llm(payload) if text_runner not in _EXTERNAL_LLM_RUNNERS else None
-    model_file = _builder_local_model_file(payload, model_file)
+    model_file = _builder_local_model_file(payload, model_file, vision=True)
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else str(payload.get("lmstudio_model") or "").strip()
     mmproj_file = _builder_local_mmproj_file(payload, mmproj_file)
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
@@ -785,7 +785,7 @@ def _generate_flux_klein_prompt(payload):
     )
 
     llm = _builder_local_llm(payload) if text_runner not in _EXTERNAL_LLM_RUNNERS else None
-    model_file = _builder_local_model_file(payload, model_file)
+    model_file = _builder_local_model_file(payload, model_file, vision=True)
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else str(payload.get("lmstudio_model") or "").strip()
     mmproj_file = _builder_local_mmproj_file(payload, mmproj_file)
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
@@ -879,7 +879,7 @@ def _analyze_builder_story_references(payload):
         raise ValueError("Add at least one Story Builder reference image first.")
     batches = [images[index:index + 4] for index in range(0, len(images), 4)]
     llm = _builder_local_llm(payload) if text_runner not in _EXTERNAL_LLM_RUNNERS else None
-    model_file = _builder_local_model_file(payload, model_file)
+    model_file = _builder_local_model_file(payload, model_file, vision=True)
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else str(payload.get("lmstudio_model") or "").strip()
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     n_ctx = int(payload.get("n_ctx") or 4096)
@@ -1194,7 +1194,7 @@ def _generate_nb_image_prompt(payload):
 
     combined_image = _combine_flux_ingredient_images(images)
     llm = _builder_local_llm(payload) if text_runner not in _EXTERNAL_LLM_RUNNERS else None
-    model_file = _builder_local_model_file(payload, model_file)
+    model_file = _builder_local_model_file(payload, model_file, vision=True)
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else str(payload.get("lmstudio_model") or "").strip()
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     try:

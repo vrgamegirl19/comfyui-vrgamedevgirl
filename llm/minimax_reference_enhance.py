@@ -60,7 +60,7 @@ def run_reference_vision(payload, instruction, images):
             temperature=temperature, top_p=top_p, max_new_tokens=tokens,
         )
     llm = _builder_local_llm(payload)
-    model_file = _builder_local_model_file(payload, str(payload.get("model_file") or ""))
+    model_file = _builder_local_model_file(payload, str(payload.get("model_file") or ""), vision=True)
     if not model_file.lower().endswith(".gguf"):
         raise ValueError("Choose a vision-capable GGUF model and its mmproj for enhancement with reference images.")
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
