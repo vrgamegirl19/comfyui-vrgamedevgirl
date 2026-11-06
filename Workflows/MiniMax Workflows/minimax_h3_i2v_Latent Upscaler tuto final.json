@@ -764,8 +764,6 @@
       ],
       "title": "pirate ships",
       "properties": {
-        "cnr_id": "comfyui-workflow-encrypt",
-        "ver": "1.0.0",
         "Node name for S&R": "String",
         "ue_properties": {
           "widget_ue_connectable": {},
@@ -804,8 +802,6 @@
       ],
       "title": "samurai",
       "properties": {
-        "cnr_id": "comfyui-workflow-encrypt",
-        "ver": "1.0.0",
         "Node name for S&R": "String",
         "ue_properties": {
           "widget_ue_connectable": {},
@@ -844,8 +840,6 @@
       ],
       "title": "hours",
       "properties": {
-        "cnr_id": "comfyui-workflow-encrypt",
-        "ver": "1.0.0",
         "Node name for S&R": "String",
         "ue_properties": {
           "widget_ue_connectable": {},
@@ -886,8 +880,6 @@
       ],
       "title": "astronaut",
       "properties": {
-        "cnr_id": "comfyui-workflow-encrypt",
-        "ver": "1.0.0",
         "Node name for S&R": "String",
         "ue_properties": {
           "widget_ue_connectable": {},
@@ -1567,8 +1559,6 @@
               }
             ],
             "properties": {
-              "cnr_id": "comfyui-workflow-encrypt",
-              "ver": "1.0.0",
               "Node name for S&R": "easy showAnything",
               "ue_properties": {
                 "widget_ue_connectable": {},
@@ -2352,8 +2342,6 @@
               }
             ],
             "properties": {
-              "cnr_id": "comfyui-workflow-encrypt",
-              "ver": "1.0.0",
               "Node name for S&R": "H3SLAAttention",
               "ue_properties": {
                 "widget_ue_connectable": {},
@@ -2414,8 +2402,6 @@
               }
             ],
             "properties": {
-              "cnr_id": "comfyui-workflow-encrypt",
-              "ver": "1.0.0",
               "Node name for S&R": "SolAttnH3",
               "ue_properties": {
                 "widget_ue_connectable": {},
@@ -2646,8 +2632,6 @@
               }
             ],
             "properties": {
-              "cnr_id": "comfyui-workflow-encrypt",
-              "ver": "1.0.0",
               "Node name for S&R": "easy cleanGpuUsed",
               "ue_properties": {
                 "widget_ue_connectable": {},
@@ -2689,8 +2673,6 @@
               }
             ],
             "properties": {
-              "cnr_id": "comfyui-workflow-encrypt",
-              "ver": "1.0.0",
               "Node name for S&R": "easy cleanGpuUsed",
               "ue_properties": {
                 "widget_ue_connectable": {},
@@ -2946,8 +2928,6 @@
               }
             ],
             "properties": {
-              "cnr_id": "comfyui-workflow-encrypt",
-              "ver": "1.0.0",
               "Node name for S&R": "H3SLAAttention",
               "ue_properties": {
                 "widget_ue_connectable": {},
@@ -3007,8 +2987,6 @@
               }
             ],
             "properties": {
-              "cnr_id": "comfyui-workflow-encrypt",
-              "ver": "1.0.0",
               "Node name for S&R": "SolAttnH3",
               "ue_properties": {
                 "widget_ue_connectable": {},
@@ -3158,8 +3136,6 @@
               }
             ],
             "properties": {
-              "cnr_id": "comfyui-workflow-encrypt",
-              "ver": "1.0.0",
               "Node name for S&R": "easy cleanGpuUsed",
               "ue_properties": {
                 "widget_ue_connectable": {},
@@ -4024,8 +4000,6 @@
               }
             ],
             "properties": {
-              "cnr_id": "comfyui-workflow-encrypt",
-              "ver": "1.0.0",
               "Node name for S&R": "easy cleanGpuUsed",
               "ue_properties": {
                 "widget_ue_connectable": {},
@@ -4393,8 +4367,6 @@
               }
             ],
             "properties": {
-              "cnr_id": "comfyui-workflow-encrypt",
-              "ver": "1.0.0",
               "Node name for S&R": "MiniMaxH3TurboLoRA",
               "ue_properties": {
                 "widget_ue_connectable": {},
