@@ -10,7 +10,7 @@ from ...runner.image_workflows import (
     _build_ernie_image_api_prompt,
     _build_flux_klein_api_prompt,
     _build_krea2_2pass_api_prompt,
-    _build_krea2_api_prompt,
+    _build_krea2_reference_api_prompt,
     _build_nb_image_api_prompt,
     _build_z_upscale_enhance_prompt,
     _build_zimage_api_prompt,
@@ -43,7 +43,7 @@ def build_image_graph_for_mode(mode: str, payload: Dict[str, Any]) -> Dict[str, 
     if m in ("krea2_2pass",):
         return _build_krea2_2pass_api_prompt(payload)
     if m in ("krea2",):
-        return _build_krea2_api_prompt(payload)
+        return _build_krea2_reference_api_prompt(payload)
     if m in ("ernie_image", "ernie"):
         return _build_ernie_image_api_prompt(payload)
     if m in ("nano_banana", "nb"):
@@ -84,7 +84,14 @@ async def generate_scene_image_async(
 
     # Merge effective settings with parameter overrides
     effective_settings = extract_effective_settings(session)
-    payload = dict(effective_settings.get(mode, {}))
+    if mode == "krea2":
+        payload = dict(session.get("reference_krea2_settings") or {})
+    elif mode == "krea2_2pass":
+        payload = dict(session.get("krea2_2pass_settings") or {})
+        if seg.get("use_scene_krea2_2pass_settings"):
+            payload.update(seg.get("krea2_2pass_settings") or {})
+    else:
+        payload = dict(effective_settings.get(mode, {}))
     payload.update(p)
     payload["prompt"] = prompt
     payload["project_folder"] = folder

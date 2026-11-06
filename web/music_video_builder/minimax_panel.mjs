@@ -1,3 +1,4 @@
+import { miniMaxPickerLoraName, syncInstalledMiniMaxLoraPicker } from "./minimax_lora_validation.mjs";
 import { postJson } from "./comfy_api.mjs";
 import { applyCompactButtonLabel, normalizeProjectVideoEngine, toast } from "./controls.mjs";
 import {
@@ -312,7 +313,7 @@ export function createMiniMaxPanel({
     const loras = miniMaxLoraSlots
       .slice(0, loraCount)
       .map((slot) => ({
-        name: String(slot.picker.input.value || "").trim(),
+        name: miniMaxPickerLoraName(slot.picker),
         strength: Math.max(-10, Math.min(10, Number(slot.strength.value || 1))),
         apply_to: slot.applyTo.value,
       }))
@@ -353,7 +354,7 @@ export function createMiniMaxPanel({
         : currentSettings.render_pass === "two_pass"
           ? miniMaxTwoPassRefImageSize.value
           : miniMaxRefImageSize.value,
-      two_pass_lora_name: miniMaxTwoPassLoraPicker.input.value,
+      two_pass_lora_name: miniMaxPickerLoraName(miniMaxTwoPassLoraPicker),
       two_pass_lora_strength: miniMaxTwoPassLoraStrength.value,
       two_pass_lora_preset: Number(miniMaxTwoPassLoraPreset.dataset.preset || 4),
       two_pass_defaults_version: DEFAULT_MINIMAX_H3_SETTINGS.two_pass_defaults_version,
@@ -380,7 +381,7 @@ export function createMiniMaxPanel({
       two_pass_output_crf: miniMaxTwoPassOutputCrf.value,
       pass2_chunking: miniMaxTwoPassChunking.value,
       pass2_chunking_min_seconds: miniMaxTwoPassChunkMinSeconds.value,
-      three_pass_lightx_lora_name: miniMaxThreePassLoraPicker.input.value,
+      three_pass_lightx_lora_name: miniMaxPickerLoraName(miniMaxThreePassLoraPicker),
       three_pass_lightx_lora_strength: miniMaxThreePassLoraStrength.value,
       advanced_two_pass_vram_preset: miniMaxAdvancedVramPreset.value,
       advanced_two_pass_defaults_version: DEFAULT_MINIMAX_H3_SETTINGS.advanced_two_pass_defaults_version,
@@ -610,7 +611,7 @@ export function createMiniMaxPanel({
     miniMaxRefImageSize.value = settings.ref_image_size;
     miniMaxTwoPassRefImageSize.value = settings.ref_image_size;
     miniMaxThreePassRefImageSize.value = settings.ref_image_size;
-    miniMaxTwoPassLoraPicker.input.value = settings.two_pass_lora_name;
+    syncInstalledMiniMaxLoraPicker(miniMaxTwoPassLoraPicker, settings.two_pass_lora_name);
     miniMaxTwoPassLoraStrength.value = String(settings.two_pass_lora_strength);
     miniMaxTwoPassLoraStatus.textContent = "";
     miniMaxTwoPassLoraPreset.dataset.preset = String(settings.two_pass_lora_preset);
@@ -648,7 +649,7 @@ export function createMiniMaxPanel({
     miniMaxTwoPassOutputCrf.value = String(settings.two_pass_output_crf);
     miniMaxTwoPassChunking.value = settings.pass2_chunking;
     miniMaxTwoPassChunkMinSeconds.value = String(settings.pass2_chunking_min_seconds);
-    miniMaxThreePassLoraPicker.input.value = settings.three_pass_lightx_lora_name;
+    syncInstalledMiniMaxLoraPicker(miniMaxThreePassLoraPicker, settings.three_pass_lightx_lora_name);
     miniMaxThreePassLoraStrength.value = String(settings.three_pass_lightx_lora_strength);
     miniMaxAdvancedVramPreset.value = settings.advanced_two_pass_vram_preset;
     twoPassControls.forEach((control) => {
@@ -695,7 +696,7 @@ export function createMiniMaxPanel({
     miniMaxLoraSlots.forEach((slot, index) => {
       const item = settings.loras?.[index] || {};
       slot.row.style.display = settings.use_loras && index < Number(settings.lora_count || 0) ? "grid" : "none";
-      slot.picker.input.value = item.name || slot.picker.input.value || "[none]";
+      syncInstalledMiniMaxLoraPicker(slot.picker, item.name || "[none]");
       slot.strength.value = String(item.strength ?? slot.strength.value ?? 1);
       slot.applyTo.value = ["both", "pass1", "pass2"].includes(item.apply_to) ? item.apply_to : "pass1";
     });
@@ -801,7 +802,7 @@ export function createMiniMaxPanel({
       }
       // The pickers know the installed LoRAs once the list has loaded. Say so when a DMAD file is missing.
       const installedLoras = (miniMaxTwoPassLoraPicker.options || []).map((name) => String(name).split(/[\\/]/).pop());
-      const missingDmad = !dmadOn || !installedLoras.length ? [] : [
+      const missingDmad = !dmadOn ? [] : [
         ...(installedLoras.includes(MINIMAX_H3_DMAD_LORA_NAME) ? [] : ["the DMAD LoRA"]),
         ...(twoPass && !installedLoras.includes(MINIMAX_H3_DMAD_REFINER_LORA_NAME) ? ["the refiner LoRA"] : []),
       ];

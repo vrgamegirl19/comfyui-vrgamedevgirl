@@ -115,6 +115,22 @@ function setReferenceGeneratorOptions(picker, options = [], preferred = "") {
   wireSearchablePicker(picker);
 }
 
+function krea2ReferencePayload(prompt, settings = {}) {
+  return {
+    prompt: String(prompt || "").trim(),
+    unet_name: settings.krea_unet_name || "krea2_turbo_fp8_scaled.safetensors",
+    clip_name: settings.krea_clip_name || "qwen3vl_4b_fp8_scaled.safetensors",
+    vae_name: settings.krea_vae_name || "qwen_image_vae.safetensors",
+    first_pass_width: Number(settings.first_pass_width || 1024),
+    first_pass_height: Number(settings.first_pass_height || 576),
+    width: Number(settings.width || 1920),
+    height: Number(settings.height || 1080),
+    seed: Number(settings.seed ?? 1),
+    seed_mode: settings.seed_mode || "fixed",
+    batch_size: 1,
+  };
+}
+
 export function createReferenceGeneration({
   activeSegment, advanceZImageSeedAfterRun, autoMapLocations, autoSaveSessionQuiet,
   createAllMissingLocationZImages, createAllMissingSubjectImages, createProgressWindow,
@@ -147,23 +163,6 @@ export function createReferenceGeneration({
     return settings;
   }
 
-  const krea2ReferencePayload = (prompt, settings = {}) => ({
-    prompt: String(prompt || "").trim(),
-    krea_unet_name: settings.krea_unet_name || "krea2_turbo_fp8_scaled.safetensors",
-    krea_clip_name: settings.krea_clip_name || "qwen3vl_4b_fp8_scaled.safetensors",
-    krea_vae_name: settings.krea_vae_name || "qwen_image_vae.safetensors",
-    z_unet_name: settings.z_unet_name || "z_image_turbo_bf16.safetensors",
-    z_clip_name: settings.z_clip_name || "qwen_3_4b.safetensors",
-    z_vae_name: settings.z_vae_name || "ae.safetensors",
-    first_pass_width: Number(settings.first_pass_width || 1024),
-    first_pass_height: Number(settings.first_pass_height || 576),
-    width: Number(settings.width || 1920),
-    height: Number(settings.height || 1080),
-    seed: Number(settings.seed || 1),
-    seed_mode: settings.seed_mode || "fixed",
-    batch_size: 1,
-  });
-
   function currentKrea2ReferenceSettings() {
     state.referenceKrea2Settings = cloneKrea2ReferenceSettings(state.referenceKrea2Settings);
     return state.referenceKrea2Settings;
@@ -177,16 +176,16 @@ export function createReferenceGeneration({
   function buildReferenceGeneratorControls() {
     const zSettings = currentZImageReferenceSettings();
     const kreaSettings = currentKrea2ReferenceSettings();
-    const zModel = makeSearchableLoraPicker(kreaSettings.z_unet_name || zSettings.unet_name || DEFAULT_KREA2_REFERENCE_SETTINGS.z_unet_name);
-    const zClip = makeSearchableLoraPicker(kreaSettings.z_clip_name || zSettings.clip_name || DEFAULT_KREA2_REFERENCE_SETTINGS.z_clip_name);
-    const zVae = makeSearchableLoraPicker(kreaSettings.z_vae_name || zSettings.vae_name || DEFAULT_KREA2_REFERENCE_SETTINGS.z_vae_name);
+    const zModel = makeSearchableLoraPicker(zSettings.unet_name);
+    const zClip = makeSearchableLoraPicker(zSettings.clip_name);
+    const zVae = makeSearchableLoraPicker(zSettings.vae_name);
     const kreaModel = makeSearchableLoraPicker(kreaSettings.krea_unet_name || DEFAULT_KREA2_REFERENCE_SETTINGS.krea_unet_name);
     const kreaClip = makeSearchableLoraPicker(kreaSettings.krea_clip_name || DEFAULT_KREA2_REFERENCE_SETTINGS.krea_clip_name);
     const kreaVae = makeSearchableLoraPicker(kreaSettings.krea_vae_name || DEFAULT_KREA2_REFERENCE_SETTINGS.krea_vae_name);
 
-    setReferenceGeneratorOptions(zModel, zUnetPicker.options || [], DEFAULT_KREA2_REFERENCE_SETTINGS.z_unet_name);
-    setReferenceGeneratorOptions(zClip, zClipPicker.options || [], DEFAULT_KREA2_REFERENCE_SETTINGS.z_clip_name);
-    setReferenceGeneratorOptions(zVae, zVaePicker.options || [], DEFAULT_KREA2_REFERENCE_SETTINGS.z_vae_name);
+    setReferenceGeneratorOptions(zModel, zUnetPicker.options || [], zSettings.unet_name);
+    setReferenceGeneratorOptions(zClip, zClipPicker.options || [], zSettings.clip_name);
+    setReferenceGeneratorOptions(zVae, zVaePicker.options || [], zSettings.vae_name);
     setReferenceGeneratorOptions(kreaModel, zUnetPicker.options || [], DEFAULT_KREA2_REFERENCE_SETTINGS.krea_unet_name);
     setReferenceGeneratorOptions(kreaClip, zClipPicker.options || [], DEFAULT_KREA2_REFERENCE_SETTINGS.krea_clip_name);
     setReferenceGeneratorOptions(kreaVae, zVaePicker.options || [], DEFAULT_KREA2_REFERENCE_SETTINGS.krea_vae_name);
@@ -213,9 +212,6 @@ export function createReferenceGeneration({
       krea_unet_name: kreaModel.input.value,
       krea_clip_name: kreaClip.input.value,
       krea_vae_name: kreaVae.input.value,
-      z_unet_name: zModel.input.value,
-      z_clip_name: zClip.input.value,
-      z_vae_name: zVae.input.value,
       first_pass_width: Number(firstWidth.value || DEFAULT_KREA2_REFERENCE_SETTINGS.first_pass_width),
       first_pass_height: Number(firstHeight.value || DEFAULT_KREA2_REFERENCE_SETTINGS.first_pass_height),
       width: Number(width.value || DEFAULT_KREA2_REFERENCE_SETTINGS.width),
@@ -312,12 +308,11 @@ export function createReferenceGeneration({
           makeField("Diffusion model", c.zModel.wrapper),
           makeField("Text encoder", c.zClip.wrapper),
           makeField("VAE", c.zVae.wrapper),
-          help("Krea2 also uses these three models for its enhancer pass."),
         ],
         settings: () => ({ zimage: c.readZImage() }),
       },
       {
-        key: "krea2", heading: "Krea2 + Enhancer", tagline: "Local. Krea2 draws it, then ZImage refines it.", actionLabel: `Use Krea2${all}`,
+        key: "krea2", heading: "Krea 2", tagline: "Local. Krea 2 generates, upscales and refines in two passes.", actionLabel: `Use Krea 2${all}`,
         body: [
           makeField("Krea2 diffusion model", c.kreaModel.wrapper),
           makeField("Krea2 text encoder", c.kreaClip.wrapper),
@@ -605,7 +600,7 @@ export function createReferenceGeneration({
     const browserSettings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
     const workflowLabel = useFlowGpt
       ? browserImageProviderLabel(browserSettings.provider)
-      : useOwnServer ? "Custom Server" : useKrea2 ? "Krea2 + ZImage enhancer" : useMoss ? "MOSS-Image" : "ZImage";
+      : useOwnServer ? "Custom Server" : useKrea2 ? "Krea 2" : useMoss ? "MOSS-Image" : "ZImage";
     const missingLocations = refs.locations
       .map((location, index) => ({ location, index }))
       .filter(({ location }) => {
@@ -681,7 +676,7 @@ export function createReferenceGeneration({
             timeout_seconds: browserImageProviderTimeout(browserSettings),
           })
           : useKrea2
-            ? await postJson("/vrgdg/workflow_runner/build_krea2_prompt", krea2ReferencePayload(prompt, kreaSettings))
+            ? await postJson("/vrgdg/workflow_runner/build_krea2_2pass_prompt", krea2ReferencePayload(prompt, kreaSettings))
             : useMoss
               ? await postJson("/vrgdg/workflow_runner/build_moss_image_prompt", mossReferencePayload(prompt, generatorSettings?.moss || {}))
               : await postJson("/vrgdg/workflow_runner/build_zimage_prompt", zimageReferencePayload(prompt, zSettings));
@@ -759,7 +754,7 @@ export function createReferenceGeneration({
     const browserSettings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
     const workflowLabel = useFlowGpt
       ? browserImageProviderLabel(browserSettings.provider)
-      : useOwnServer ? "Custom Server" : useKrea2 ? "Krea2 + ZImage enhancer" : useMoss ? "MOSS-Image" : "ZImage";
+      : useOwnServer ? "Custom Server" : useKrea2 ? "Krea 2" : useMoss ? "MOSS-Image" : "ZImage";
     const missingSubjects = refs.subjects
       .map((subject, index) => ({ subject, index }))
       .filter(({ subject }) => {
@@ -835,7 +830,7 @@ export function createReferenceGeneration({
             timeout_seconds: browserImageProviderTimeout(browserSettings),
           })
           : useKrea2
-            ? await postJson("/vrgdg/workflow_runner/build_krea2_prompt", krea2ReferencePayload(prompt, kreaSettings))
+            ? await postJson("/vrgdg/workflow_runner/build_krea2_2pass_prompt", krea2ReferencePayload(prompt, kreaSettings))
             : useMoss
               ? await postJson("/vrgdg/workflow_runner/build_moss_image_prompt", mossReferencePayload(prompt, generatorSettings?.moss || {}))
               : await postJson("/vrgdg/workflow_runner/build_zimage_prompt", zimageReferencePayload(prompt, zSettings));
@@ -975,8 +970,8 @@ export function createReferenceGeneration({
   function runFluxReferenceWithKrea2(referenceType, target, sourceText, name = "", generatorSettings = {}) {
     return runFluxReferenceWithComfyGraph(referenceType, target, sourceText, name, {
       label: "Krea2",
-      workflowLabel: "Krea2 + ZImage enhancer",
-      build: (prompt) => postJson("/vrgdg/workflow_runner/build_krea2_prompt", krea2ReferencePayload(prompt, generatorSettings.krea2 || {})),
+      workflowLabel: "Krea 2",
+      build: (prompt) => postJson("/vrgdg/workflow_runner/build_krea2_2pass_prompt", krea2ReferencePayload(prompt, generatorSettings.krea2 || {})),
     });
   }
 

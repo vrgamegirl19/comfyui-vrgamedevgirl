@@ -33,6 +33,8 @@ SERVER_INSTRUCTIONS = (
     "A scene is named by its id (seg_...) or by its number on the timeline, the one the Video Builder shows. When the user "
     "says Scene 11, pass scene_id \"11\" to any tool (scene_get reads it, scene_update edits it) and do not search the "
     "scene list for it. Numbers move when scenes are added or removed, ids do not.\n"
+    "Reference Builder images: use reference_image_generate with a saved card ID and prompt (or its description). Krea 2 generates and refines in two passes, with no Z-image.\n"
+    "DMAD needs its installed pass-one LoRA; inspect installed models before selecting files. Missing, disabled or zero-strength adapters block rendering; never substitute a similarly named file.\n"
     "Long operations (LLM steps, renders, stitch) return a job id. Call `job_wait` until the job is succeeded or failed."
 )
 

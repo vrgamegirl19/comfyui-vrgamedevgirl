@@ -15,10 +15,11 @@ from .paths import _bool_payload, _first_payload_value, _float_payload, _int_pay
 from .models import _NONE_LORA, _clean_lora_name, _model_choice_exists, _require_model_choice
 from .api_graph import _api_node_id_by_class, _compat_node_inputs, _get_comfy_node_mappings, _load_api_template, _set_api_input
 from .minimax_inputs import _MINIMAX_H3_ASPECT_RATIOS, _minimax_h3_2pass_api_template_path, _minimax_h3_3pass_api_template_path, _minimax_h3_api_template_path, _minimax_h3_built_in_audio_api_template_path, _minimax_h3_image_paths, _minimax_h3_output_location, _minimax_h3_video_references, _patch_minimax_h3_image_to_video_node, _probe_media_duration_seconds, _trim_minimax_h3_audio_context
-from .minimax_patches import _minimax_h3_cooldown_frames, _minimax_h3_effective_warmup_frames, _minimax_h3_is_latent_mode, _minimax_h3_latent_continuation_mode, _patch_minimax_h3_advanced_settings, _patch_minimax_h3_fast_decode, _patch_minimax_h3_latent_continuation, _patch_minimax_h3_loras, _patch_minimax_h3_memory_efficient_sage_attention, _patch_minimax_h3_optional_model_paths, _patch_minimax_h3_save_latent, _patch_minimax_h3_sigma_shift, _patch_minimax_h3_te_speed, _patch_minimax_h3_turbo, _require_minimax_h3_memory_efficient_sage_attention
+from .minimax_patches import _validate_minimax_h3_dmad_lora, _minimax_h3_cooldown_frames, _minimax_h3_effective_warmup_frames, _minimax_h3_is_latent_mode, _minimax_h3_latent_continuation_mode, _patch_minimax_h3_advanced_settings, _patch_minimax_h3_fast_decode, _patch_minimax_h3_latent_continuation, _patch_minimax_h3_loras, _patch_minimax_h3_memory_efficient_sage_attention, _patch_minimax_h3_optional_model_paths, _patch_minimax_h3_save_latent, _patch_minimax_h3_sigma_shift, _patch_minimax_h3_te_speed, _patch_minimax_h3_turbo, _require_minimax_h3_memory_efficient_sage_attention
 
 
 def _build_minimax_h3_api_prompt(payload):
+    _validate_minimax_h3_dmad_lora(payload)
     if _bool_payload(payload, "use_memory_efficient_sage_attention", False):
         _require_minimax_h3_memory_efficient_sage_attention()
     raw_audio_mode = str(payload.get("audio_mode") or payload.get("audioMode") or "input_audio").strip().lower().replace("-", "_").replace(" ", "_")
@@ -351,6 +352,7 @@ def _build_minimax_h3_2pass_api_prompt(payload):
     This intentionally has its own adapter instead of reusing the one-pass
     node IDs or mutating the existing MiniMax template path.
     """
+    _validate_minimax_h3_dmad_lora(payload)
     video_mode = (
         str(payload.get("video_mode") or payload.get("mode") or "reference_to_video")
         .strip().lower().replace("-", "_").replace(" ", "_")
@@ -551,7 +553,9 @@ def _build_minimax_h3_2pass_api_prompt(payload):
         for item in raw_loras[:lora_count]:
             if not isinstance(item, dict):
                 continue
-            name = _clean_lora_name(item.get("name") or item.get("lora_name") or item.get("loraName") or _NONE_LORA)
+            # Validate the requested name before any cleanup can turn a
+            # missing selection into [none] and silently omit it.
+            name = str(item.get("name") or item.get("lora_name") or item.get("loraName") or _NONE_LORA).strip()
             if not name or name == _NONE_LORA:
                 continue
             if not _model_choice_exists("loras", name):

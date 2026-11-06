@@ -16,6 +16,7 @@ from ...builder import audio_stems, media as builder_media
 from ...runner import ltx_workflows, minimax_inputs, minimax_workflows, video_files
 from ...runner.minimax_drafts import _build_minimax_draft, _build_minimax_finalize
 from ...runner.minimax_redecode import build_redecode_graph, redecode_crf
+from ...runner.minimax_patches import _validate_minimax_h3_dmad_lora
 from ..errors import (
     ComfyExecutionError,
     JobCancelledError,
@@ -318,6 +319,8 @@ async def render_scene_video_async(
                 mode = minimax_workflow_key(minimax_settings)
             try:
                 payload = build_minimax_render_payload(minimax_settings)
+                if phase != "redecode":
+                    _validate_minimax_h3_dmad_lora({**payload, **p})
             except ValueError as exc:
                 raise ValidationError(str(exc)) from exc
             pass2_prompt = str(seg.get("minimax_h3_pass2_prompt") or "").strip()
@@ -1105,6 +1108,18 @@ async def run_batch_video_render_job(job: Job, manager: JobManager) -> Dict[str,
     total = len(target_segments)
     if total == 0:
         return {"processed": 0, "message": "No scenes matched batch video render criteria."}
+
+    # Like Render All in the UI, validate every targeted DMAD scene before
+    # starting any render. A locked later scene must not fail after earlier
+    # scenes have already consumed GPU time.
+    mode = str(job.params.get("mode") or session_video_mode(session)).lower()
+    if "minimax" in mode and _render_phase(job.params.get("render_phase")) not in {"finalize", "redecode"}:
+        try:
+            for segment in target_segments:
+                settings = minimax_h3_settings_for_scene(session, segment)
+                _validate_minimax_h3_dmad_lora({**build_minimax_render_payload(settings), **job.params})
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
 
     manager.update_progress(job.id, 0.0, "batch_videos", stage_index=0, stage_count=total, message=f"Starting batch render for {total} scene(s)...")
 

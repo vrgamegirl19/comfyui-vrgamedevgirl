@@ -39,7 +39,7 @@ OPENAPI_PATH = AGENT_API_DIR / "openapi.json"
 API_PREFIX = "/vrgdg/api/v1"
 HTTP_METHODS = {"get", "post", "put", "patch", "delete"}
 # Bump when the contract changes in a way clients must notice (Apireport 11, item 4).
-CONTRACT_VERSION = "1.0.0"
+CONTRACT_VERSION = "1.1.0"
 _PATH_PARAM = re.compile(r"{([A-Za-z_][A-Za-z0-9_]*)}")
 
 

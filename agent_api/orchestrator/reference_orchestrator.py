@@ -5,13 +5,18 @@ use the project's saved runner settings and, for LM Studio, the model that is al
 ``agent_api.llm_runtime``): the API never loads or switches a model.
 """
 
+import asyncio
+import math
 import os
 import random
 import time
 from typing import Any, Dict, List, Optional
 
 from ...llm import image_prompt_generation as img_gen
-from ..errors import ValidationError
+from ..errors import ComfyExecutionError, JobCancelledError, ValidationError
+from ...builder.media import _save_flux_reference_image
+from ...runner.image_workflows import _build_krea2_reference_api_prompt
+from .comfy_client import extract_images_from_history, get_comfy_client
 from ..jobs.manager import JobManager, get_job_manager
 from ..jobs.models import Job
 from ..llm_runtime import llm_payload_from_session, prepare_llm_payload
@@ -343,6 +348,75 @@ def assign_scenes(project_id: str, params: Optional[Dict[str, Any]] = None) -> D
 # Jobs
 # ---------------------------------------------------------------------------
 
+def prepare_reference_image_request(project_id: str, kind: str, ref_id: str, params: Dict[str, Any]):
+    """Resolve a saved card and its Krea settings without changing the project."""
+    if not isinstance(params, dict):
+        raise ValidationError("Request body must be an object.")
+    list_key = REFERENCE_KINDS.get(str(kind or "").strip().lower())
+    if not list_key:
+        raise ValidationError("kind must be 'subjects' or 'locations'.")
+    if str(params.get("mode") or "krea2").lower() not in {"krea2", "krea2_2pass"}:
+        raise ValidationError("Reference image mode must be 'krea2' or 'krea2_2pass' (Krea 2 only, two passes).")
+    overrides = params.get("settings", {})
+    if not isinstance(overrides, dict):
+        raise ValidationError("settings must be an object.")
+    try:
+        timeout = float(params.get("timeout_seconds", 600))
+    except (TypeError, ValueError) as exc:
+        raise ValidationError("timeout_seconds must be a positive finite number.") from exc
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ValidationError("timeout_seconds must be a positive finite number.")
+    folder, session = _get_active_session_and_folder(project_id)
+    item = next((r for r in _refs(session).get(list_key) or [] if isinstance(r, dict) and r.get("id") == ref_id), None)
+    if item is None:
+        raise ValidationError(f"Reference '{ref_id}' was not found in {list_key}.")
+    prompt = _text(params.get("prompt") or item.get("description"))
+    if not prompt:
+        raise ValidationError("Provide a prompt or save a description on the reference first.")
+    settings = dict(session.get("reference_krea2_settings") or {})
+    settings.update(overrides)
+    settings["prompt"] = prompt
+    return folder, list_key, item, settings
+
+
+async def run_reference_image_job(job: Job, manager: JobManager) -> Dict[str, Any]:
+    params = dict(job.params or {})
+    ref_id = params.get("ref_id", "")
+    folder, list_key, item, request = prepare_reference_image_request(job.project_id, params.get("kind", "subjects"), ref_id, params)
+    manager.update_progress(job.id, 10.0, "compiling_graph", message="Building Krea 2 reference image (two passes)...")
+    try:
+        built = await asyncio.to_thread(_build_krea2_reference_api_prompt, request)
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+    if job.cancel_requested:
+        raise JobCancelledError(job.id)
+    client = get_comfy_client()
+    queued = await asyncio.to_thread(client.queue_prompt, built["prompt"])
+    prompt_id = queued["prompt_id"]
+    manager.set_current_comfy_prompt(job.id, prompt_id, project_folder=folder)
+    manager.update_progress(job.id, 30.0, "generating", message="Generating and refining with Krea 2...")
+    history = await client.wait_for_prompt(prompt_id, timeout_seconds=float(params.get("timeout_seconds", 600)), check_cancel=lambda: job.cancel_requested)
+    images = extract_images_from_history(history, prompt_id)
+    if not images:
+        raise ComfyExecutionError("Krea 2 produced no reference image.", prompt_id=prompt_id)
+    if job.cancel_requested:
+        raise JobCancelledError(job.id)
+    saved = await asyncio.to_thread(_save_flux_reference_image, {
+        "project_folder": folder, "reference_type": "subject" if list_key == "subjects" else "location",
+        "name": item.get("name") or ref_id, "image": images[-1],
+    })
+    with _BUILDER_SAVE_LOCK:
+        folder, session = _get_active_session_and_folder(job.project_id)
+        target = next((r for r in _refs(session).get(list_key) or [] if isinstance(r, dict) and r.get("id") == ref_id), None)
+        if target is None:
+            raise ValidationError(f"Reference '{ref_id}' was removed while its image was generating.")
+        target["image"] = {"path": saved["saved_path"], "data": "", "name": os.path.basename(saved["saved_path"])}
+        result = _persist_session(folder, session)
+    manager.update_progress(job.id, 100.0, "completed", message="Reference image saved.")
+    return {"id": ref_id, "kind": list_key, "image": target["image"], "saved_path": saved["saved_path"],
+            "mode": "krea2_2pass", "used_seed": built.get("used_seed"), "revision": result.get("revision")}
+
+
 def run_reference_describe_job(job: Job, manager: JobManager) -> Dict[str, Any]:
     params = dict(job.params or {})
     manager.update_progress(job.id, 10.0, "describing", message="Describing the reference image...")
@@ -357,4 +431,5 @@ def run_extract_locations_job(job: Job, manager: JobManager) -> Dict[str, Any]:
 def register_reference_orchestrator_handlers(manager: Optional[JobManager] = None) -> None:
     manager = manager or get_job_manager()
     manager.register_handler("reference.describe", run_reference_describe_job)
+    manager.register_handler("reference.image_generate", run_reference_image_job)
     manager.register_handler("reference.extract_locations", run_extract_locations_job)

@@ -1,5 +1,6 @@
+import { assertMiniMaxLorasInstalled } from "./minimax_lora_validation.mjs";
 import { storyboardGptPayload } from "../storyboard_builder/gpt_payload.mjs";
-import { cancelComfyExecutionAndWaitIdle, postJson } from "./comfy_api.mjs";
+import { cancelComfyExecutionAndWaitIdle, getJson, postJson } from "./comfy_api.mjs";
 import { escapeHtml, normalizeProjectVideoEngine, toast } from "./controls.mjs";
 import { showFinalVideoReadyModal } from "./dialogs.mjs";
 import { sceneImagePromptForEnhanceAll } from "./image_generation.mjs";
@@ -32,6 +33,7 @@ export function createBatchRender({
   i2vTextGemmaModelSelect, imageAllSegmentsForMode, imageModeDisplayLabel, imageModeImg2ImgContinuityLabel,
   imageModeSupportsImg2ImgContinuity, img2imgContinuityEnabled, krea2TwoPassCreateButtons,
   krea2TwoPassCreateT2IButton, loadSessionFromProject, miniMaxBatchReferenceProblems, miniMaxH3ModeForSegment,
+  miniMaxH3SettingsForSegment,
   miniMaxSceneVideoButtons, nbCreateButtons, persistRenderLog, prepareAutoChainedNextScene,
   prepareAutoImg2ImgContinuityForScene, prepareFLFRenderedFrameNextScene, prepareSceneAudioMix,
   previousAutoChainSourceSegment, previousSceneStartImageIngredient, projectInput, pushHistory,
@@ -64,6 +66,18 @@ export function createBatchRender({
     let currentSceneLog = null;
     const renderWarnings = [];
     let previousRenderEndedMs = 0;
+    if (miniMaxProject && !finalizeDrafts) {
+      try {
+        const inventory = await getJson("/vrgdg/workflow_runner/lora_list");
+        for (const { segment } of batchTargetItems(sceneScope)) {
+          if (!forceVideos && String(selectedSegmentVideoPath(segment) || "").trim()) continue;
+          assertMiniMaxLorasInstalled(miniMaxH3SettingsForSegment(segment), inventory.loras || []);
+        }
+      } catch (error) {
+        toast(String(error?.message || error), true);
+        return;
+      }
+    }
     if (!forceVideos && !finalizeDrafts) {
       try {
         await recoverSceneVideosFromProject({

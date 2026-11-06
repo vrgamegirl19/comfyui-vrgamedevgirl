@@ -62,7 +62,7 @@ SETTING_NOTES: Dict[str, str] = {
         "DMAD 4-step sampling, the Builder's Standard / DMAD buttons. Patching it to true fills in the DMAD LoRA (pass 1, extra LoRA slot 1), "
         "the refiner LoRA (pass 2 Turbo LoRA, strength 0.7), lcm / simple / 4 steps, 3 refinement steps and a sigma shift of 12 video / 2 audio, "
         "and remembers the values it replaced in dmad_backup. Patching it to false puts them back. Other keys in the same patch are applied after. "
-        "Single and 2 Pass only: three_pass becomes two_pass. Both LoRA files must be in models/loras."
+        "Single and 2 Pass only: three_pass becomes two_pass. Both LoRA files must be in models/loras. Rendering is refused when the selected LoRA is missing, or the DMAD pass-1 adapter is disabled, assigned only to pass 2 or has zero strength. Use GET /models to inspect installed filenames; unavailable names are never silently substituted."
     ),
     "dmad_backup": "Written by use_dmad. The values DMAD replaced, so Standard can put them back. Do not set it.",
     "sigma_pass1_enabled": (
@@ -629,6 +629,7 @@ def build_minimax_render_payload(settings: Dict[str, Any], overrides: Optional[D
         "use_memory_efficient_sage_attention": s["use_memory_efficient_sage_attention"],
         "enable_fp16_accumulation": s["enable_fp16_accumulation"],
         "use_loras": s["use_loras"],
+        "use_dmad": s["use_dmad"],
         "lora_count": s["lora_count"],
         "loras": s["loras"],
         "use_turbo_lora": s["use_turbo_lora"],

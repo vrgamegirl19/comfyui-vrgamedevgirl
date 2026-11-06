@@ -1,6 +1,8 @@
+import { assertMiniMaxLorasInstalled } from "./minimax_lora_validation.mjs";
 import { cloneSceneAsOverlay, overlayClipIsEnabled } from "../VRGDG_OverlayTrack.js";
 import { seedanceSceneAudioInput, seedanceSettings, seedanceStitchAudioItems, validateApiVideoScene } from "./api_video.mjs";
 import {
+  getJson,
   postJson,
   queueWorkflowPrompt,
   resolveComfyVideoPath,
@@ -849,12 +851,14 @@ export function createVideoRender({
         throw error;
       }
     }
-    const editedAudio = await prepareEditedAudio(state, projectInput.value || state.projectFolder, { generation: true });
     // The panel can still contain a newer value than the project object when a
     // render is started immediately after editing a field. Flush the active
     // scene one last time before taking the settings snapshot used to build
     // the hidden workflow.
     if (segment?.id === activeSegment()?.id) saveMiniMaxH3SettingsFromPanel();
+    const loraInventory = await getJson("/vrgdg/workflow_runner/lora_list");
+    assertMiniMaxLorasInstalled(miniMaxH3SettingsForSegment(segment), loraInventory.loras || []);
+    const editedAudio = await prepareEditedAudio(state, projectInput.value || state.projectFolder, { generation: true });
     const panelSegmentId = activeSegment()?.id;
     const progressBase = Number(options.progressBase ?? 0);
     const progressSpan = Number(options.progressSpan ?? 100);
@@ -1168,6 +1172,7 @@ export function createVideoRender({
         sage_attention: miniMaxSettings.sage_attention,
         use_memory_efficient_sage_attention: miniMaxSettings.use_memory_efficient_sage_attention,
         enable_fp16_accumulation: miniMaxSettings.enable_fp16_accumulation,
+        use_dmad: miniMaxSettings.use_dmad,
         use_loras: miniMaxSettings.use_loras,
         lora_count: miniMaxSettings.lora_count,
         loras: miniMaxSettings.loras,

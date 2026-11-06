@@ -635,6 +635,19 @@ def register_agent_api_routes(server_instance=None):
         return api_success(res, revision=res.get("revision"))
 
     # 6. Timeline Batch Operations
+    @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/references/{{kind}}/{{rid}}/image/generate")
+    @_api_endpoint
+    async def api_reference_image_generate(request: web.Request):
+        """Generate a reference-card image with Krea 2 only (two passes). Runs as a GPU job."""
+        from .orchestrator.reference_orchestrator import prepare_reference_image_request
+
+        pid, kind, rid = request.match_info["pid"], request.match_info["kind"], request.match_info["rid"]
+        payload = await request.json() if request.can_read_body else {}
+        await asyncio.to_thread(prepare_reference_image_request, pid, kind, rid, payload)
+        params = {**payload, "kind": kind, "ref_id": rid}
+        job = get_job_manager().submit_job("reference.image_generate", project_id=pid, params=params, is_gpu=True)
+        return api_success({"job_id": job.id, "status": job.status, "job": job.to_dict()}, status=202)
+
     @server_instance.routes.post(f"{_API_V1_PREFIX}/projects/{{pid}}/references/{{kind}}/{{rid}}/describe")
     @_api_endpoint
     async def api_reference_describe(request: web.Request):

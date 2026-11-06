@@ -250,6 +250,18 @@ class SigmaGraphTests(unittest.TestCase):
         self.assertEqual(graph["191"]["inputs"]["value"], 0.2)
         self.assertEqual(graph["210"]["inputs"]["sampler_name"], "res_multistep")
 
+    def test_missing_selected_dmad_lora_is_rejected_instead_of_silently_removed(self) -> None:
+        dmad = payload_mod.set_minimax_h3_dmad({"video_mode": "reference_to_video", "render_pass": "two_pass"}, True)
+        # Reproduce the installed filename differing from the selected preset.
+        installed = models._folder_choices("loras")
+        installed = [name for name in installed if name != DMAD_LORA]
+        installed.append("dmad_minimax_h3_4step_full_critic.safetensors")
+        with patch.object(models, "_folder_choices", return_value=installed), patch.object(models, "_lora_choices", return_value=installed):
+            for builder in (workflows._build_minimax_h3_2pass_api_prompt, workflows._build_minimax_h3_api_prompt):
+                with self.subTest(builder=builder.__name__):
+                    with self.assertRaisesRegex(ValueError, DMAD_LORA):
+                        builder({**payload_mod.build_minimax_render_payload(_settings(**dmad)), **self.scene})
+
     def test_dmad_single_pass_graph_has_the_lora_lcm_and_sigma_shift(self) -> None:
         dmad = payload_mod.set_minimax_h3_dmad({"video_mode": "reference_to_video", "render_pass": "single"}, True)
         built = workflows._build_minimax_h3_api_prompt({
@@ -262,6 +274,21 @@ class SigmaGraphTests(unittest.TestCase):
         self.assertEqual(graph["124"]["inputs"]["model"], ["9401", 0])
         self.assertEqual(graph["123"]["inputs"]["sampler_name"], "lcm")
         self.assertEqual(graph["124"]["inputs"]["steps"], 4)
+
+    def test_dmad_cannot_render_without_an_enabled_first_pass_adapter(self) -> None:
+        dmad = payload_mod.set_minimax_h3_dmad({"video_mode": "reference_to_video", "render_pass": "two_pass"}, True)
+        payload = {**payload_mod.build_minimax_render_payload(_settings(**dmad)), **self.scene}
+        self.assertTrue(payload["use_dmad"])
+        invalid = [
+            {"use_loras": False}, {"lora_count": 0}, {"loras": []},
+            {"loras": [{"name": DMAD_LORA, "apply_to": "pass2", "strength": 1}]},
+            {"loras": [{"name": DMAD_LORA, "apply_to": "pass1", "strength": 0}]},
+        ]
+        for builder in (workflows._build_minimax_h3_api_prompt, workflows._build_minimax_h3_2pass_api_prompt):
+            for patch in invalid:
+                with self.subTest(builder=builder.__name__, patch=patch):
+                    with self.assertRaisesRegex(ValueError, "DMAD rendering requires"):
+                        builder({**payload, **patch})
 
 
 if __name__ == "__main__":
