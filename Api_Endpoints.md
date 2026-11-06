@@ -26,7 +26,7 @@ never load or switch models. They answer `503 LLM_UNAVAILABLE` when nothing is l
 or its 1-based number.
 
 
-**Total:** 156 endpoints.
+**Total:** 157 endpoints.
 
 ## Service and discovery
 
@@ -164,12 +164,13 @@ or its 1-based number.
 
 | Method | Path | What it does |
 |---|---|---|
-| `POST` | `/projects/{project_id}/images/generate` | Generate images for many scenes. _(**job**)_ |
+| `POST` | `/projects/{pid}/references/{kind}/{rid}/image/generate` | Generate and save a subject or location reference-card image with Krea 2 only (two passes), as a GPU job. kind is subjects or locations; rid is the saved card ID. prompt defaults to its description. Optional settings overrides reference_krea2_settings for this run: krea_unet_name, krea_clip_name, krea_vae_name, first_pass_width/height, width/height (final), seed and seed_mode; old Z-image settings are ignored. Existing image files are preserved. Poll the returned job_id. Invalid cards, modes or settings shapes return 400 before a job is submitted. _(**job**)_ |
+| `POST` | `/projects/{project_id}/images/generate` | Generate images for many scenes. Krea 2 modes use Krea-only generation and refinement; the krea2 alias uses reference_krea2_settings. _(**job**)_ |
 | `DELETE` | `/projects/{project_id}/scenes/{scene_id}/image` | Remove the scene's image. |
 | `PUT` | `/projects/{project_id}/scenes/{scene_id}/image` | Set the scene image from a file (`source_path`) or upload (`image_data`). _(body: `image_data`, `source_path`)_ |
 | `POST` | `/projects/{project_id}/scenes/{scene_id}/image/approve` | Approve one generated image as the scene's image (`image_path`). _(body: `image_path`)_ |
 | `POST` | `/projects/{project_id}/scenes/{scene_id}/image/from-video-frame` | Take the scene image from a frame of a video (`source_video_path`). _(body: `source_video_path`)_ |
-| `POST` | `/projects/{project_id}/scenes/{scene_id}/image/generate` | Generate a scene image with ComfyUI. _(**job**)_ |
+| `POST` | `/projects/{project_id}/scenes/{scene_id}/image/generate` | Generate a scene image with ComfyUI. mode krea2 now uses the Reference Builder Krea 2 two-pass settings and no Z-image; krea2_2pass uses saved scene Krea settings. For reference-card images use POST /projects/{pid}/references/{kind}/{rid}/image/generate. _(**job**)_ |
 | `POST` | `/projects/{project_id}/scenes/{scene_id}/image/revert` | Step through the scene's image history (`index` or `delta`). _(body: `delta`, `index`)_ |
 
 ### Video, stitch and finals

@@ -144,7 +144,7 @@ export function createReferenceBuilder({
     describeMissingSubjects.title = referenceImagesEnabled
       ? "Use vision Gemma to describe character reference images that do not already have descriptions."
       : "Use Gemma to create missing subject descriptions from the current prompts, lyrics, and scene notes.";
-    createAllMissingSubjectImages.title = "Batch-create missing subject/reference images. You will choose ZImage, Krea2 + ZImage enhancer, or Flow/GPT before generation starts.";
+    createAllMissingSubjectImages.title = "Batch-create missing subject/reference images. You will choose ZImage, Krea 2, or Flow/GPT before generation starts.";
     importSubjects.title = "Import subject images and matching .txt descriptions from this project's subject_location/subject folder.";
     addSubjectButton.title = "Add one blank subject/reference row.";
     arrangeSubjects.title = "Open a reorder window for subject/reference image cards.";
@@ -196,7 +196,7 @@ export function createReferenceBuilder({
     const describeSubjectImage = makeButton("Gemma Describe", "primary");
     const uploadSubject = makeButton("Upload Subject Image", "primary");
     const clearSubject = makeButton("Clear Subject");
-    createSubjectZImage.title = "Choose ZImage, Krea2 + ZImage enhancer, or Flow/GPT for this subject reference.";
+    createSubjectZImage.title = "Choose ZImage, Krea 2, or Flow/GPT for this subject reference.";
     describeSubjectImage.title = "Use vision Gemma to write the reference description from this image.";
     subjectButtons.append(createSubjectZImage, describeSubjectImage, uploadSubject, clearSubject);
     const subjectsList = document.createElement("div");
@@ -267,7 +267,7 @@ export function createReferenceBuilder({
     importLocations.title = "Paste a location list, scene map, or combined location + scene JSON.";
     exportLocations.title = "Save the current location list and scene-location map as JSON in this project folder.";
     uploadLocationImages.title = "Select one or more location reference images and create location cards from them.";
-    createAllMissingLocationZImages.title = "Batch-create missing location images. You will choose ZImage, Krea2 + ZImage enhancer, or Flow/GPT before generation starts.";
+    createAllMissingLocationZImages.title = "Batch-create missing location images. You will choose ZImage, Krea 2, or Flow/GPT before generation starts.";
     addLocation.title = "Add one location card manually.";
     arrangeLocations.title = "Open a reorder window for location cards.";
     removeAllLocations.title = "Remove every location card and clear location mappings.";

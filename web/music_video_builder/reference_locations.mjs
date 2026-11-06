@@ -792,7 +792,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       const buttons = document.createElement("div");
       buttons.style.cssText = "display:grid;grid-template-columns:1fr;gap:6px;align-self:stretch;";
       const createZImage = makeButton("Generate Location", "primary");
-      createZImage.title = "Choose ZImage or Krea2 + ZImage enhancer for this location reference.";
+      createZImage.title = "Choose ZImage or Krea 2 for this location reference.";
       const describeImage = makeButton("Gemma Describe", "primary");
       const upload = makeButton("Upload", "primary");
       const detailedDescription = makeButton("Detailed Description", "primary");

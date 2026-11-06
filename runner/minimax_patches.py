@@ -13,6 +13,29 @@ from ..minimax.latent_manager import (
 from .paths import _bool_payload, _first_payload_value, _float_payload, _int_payload
 from .models import _NONE_LORA, _clean_lora_name, _model_choice_exists
 from .api_graph import _api_node_id_by_class, _find_final_vae_decode_id, _get_comfy_node_mappings, _optional_api_node_id_by_class, _replace_api_input_refs, _set_api_input
+from ..minimax.settings_payload import DMAD_LORA_NAME
+
+
+def _validate_minimax_h3_dmad_lora(payload):
+    """DMAD's four-step sampler must never run without its pass-one adapter."""
+    if not _bool_payload(payload, "use_dmad", False):
+        return
+    enabled = _bool_payload(payload, "use_loras", False) or _bool_payload(payload, "use_custom_loras", False)
+    loras = payload.get("loras") if isinstance(payload.get("loras"), list) else []
+    active = loras[:_int_payload(payload, "lora_count", len(loras), 0, 4)] if enabled else []
+    for item in active:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or item.get("lora_name") or item.get("loraName") or "").strip()
+        if os.path.basename(name.replace("\\", "/")) != DMAD_LORA_NAME:
+            continue
+        target = str(item.get("apply_to") or item.get("applyTo") or "pass1").lower()
+        if target in {"pass1", "both"} and _float_payload(item, "strength", 1.0, -10.0, 10.0) != 0 and _model_choice_exists("loras", name):
+            return
+    raise ValueError(
+        f"DMAD rendering requires '{DMAD_LORA_NAME}' installed and enabled on pass 1. "
+        "Open Models > DMAD Models to install it, then select it in MiniMax Video Settings."
+    )
 
 
 _MINIMAX_H3_SAGE_ATTENTION_MODES = {
@@ -582,14 +605,14 @@ def _patch_minimax_h3_loras(prompt, payload):
             if not isinstance(item, dict):
                 continue
             configured.append({
-                "name": _clean_lora_name(item.get("name") or item.get("lora_name") or item.get("loraName") or _NONE_LORA),
+                "name": str(item.get("name") or item.get("lora_name") or item.get("loraName") or _NONE_LORA).strip(),
                 "strength": _float_payload(item, "strength", 1.0, -10.0, 10.0),
             })
     lora_count = _int_payload(payload, "lora_count", len(configured), 0, 4)
     if not configured:
         for slot in range(1, lora_count + 1):
             configured.append({
-                "name": _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA)),
+                "name": str(payload.get(f"lora_{slot}") or _NONE_LORA).strip(),
                 "strength": _float_payload(payload, f"lora_{slot}_strength", 1.0, -10.0, 10.0),
             })
     configured = [

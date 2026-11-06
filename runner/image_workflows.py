@@ -383,6 +383,16 @@ def _patch_krea2_2pass_api_prompt(prompt, payload):
     _set_api_input(prompt, "238", "aspect_ratio", aspect_ratio)
     _set_api_input(prompt, "49", "aspect_ratio", aspect_ratio)
     _set_api_input(prompt, "240", "batch_size", batch_size)
+    # Reference Builder supplies explicit generation and upscale dimensions.
+    # Other callers retain the template's aspect-ratio/megapixel selectors.
+    for node_id, width_key, height_key in (
+        ("240", "first_pass_width", "first_pass_height"),
+        ("226", "width", "height"),
+    ):
+        if width_key in payload:
+            _set_api_input(prompt, node_id, "width", _int_payload(payload, width_key, 1024, 64, 4096))
+        if height_key in payload:
+            _set_api_input(prompt, node_id, "height", _int_payload(payload, height_key, 576, 64, 4096))
     _set_api_input(prompt, "245", "value", creativity)
     _set_api_input(prompt, "242", "switch", use_i2i)
     _set_api_input(prompt, "243", "switch", use_i2i)
@@ -711,6 +721,25 @@ def _build_krea2_2pass_api_prompt(payload):
         "prompt": patched_prompt,
         "used_seed": used_seed,
     }
+
+
+def _build_krea2_reference_api_prompt(payload):
+    """Agent equivalent of the Reference Builder's Krea 2 two-pass request.
+
+    Older saved reference settings use krea_* model keys and may contain
+    obsolete Z-image settings; only Krea's models and dimensions are forwarded.
+    """
+    request = dict(payload)
+    for key, default in (
+        ("unet_name", "krea2_turbo_fp8_scaled.safetensors"),
+        ("clip_name", "qwen3vl_4b_fp8_scaled.safetensors"),
+        ("vae_name", "qwen_image_vae.safetensors"),
+    ):
+        request[key] = payload.get(key) or payload.get(f"krea_{key}") or default
+    for key, default in (("first_pass_width", 1024), ("first_pass_height", 576), ("width", 1920), ("height", 1080)):
+        request.setdefault(key, default)
+    request["use_image_to_image"] = False
+    return _build_krea2_2pass_api_prompt(request)
 
 
 def _build_ernie_image_api_prompt(payload):

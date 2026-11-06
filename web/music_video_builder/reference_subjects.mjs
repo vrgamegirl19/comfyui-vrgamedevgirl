@@ -522,7 +522,7 @@ export function createReferenceSubjects({
       const buttons = document.createElement("div");
       buttons.style.cssText = "display:grid;grid-template-columns:1fr;gap:6px;align-self:stretch;";
       const createZImage = makeButton("Generate Subject", "primary");
-      createZImage.title = "Choose ZImage or Krea2 + ZImage enhancer for this subject reference.";
+      createZImage.title = "Choose ZImage or Krea 2 for this subject reference.";
       const describeImage = makeButton("Gemma Describe", "primary");
       const upload = makeButton("Upload", "primary");
       const clear = makeButton("Clear");

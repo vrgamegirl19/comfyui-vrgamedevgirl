@@ -810,6 +810,20 @@
     },
     {
       "body_keys": [],
+      "description": "Generate and save a subject or location reference-card image with Krea 2 only (two passes), as a GPU job. kind is subjects or locations; rid is the saved card ID. prompt defaults to its description. Optional settings overrides reference_krea2_settings for this run: krea_unet_name, krea_clip_name, krea_vae_name, first_pass_width/height, width/height (final), seed and seed_mode; old Z-image settings are ignored. Existing image files are preserved. Poll the returned job_id. Invalid cards, modes or settings shapes return 400 before a job is submitted.",
+      "if_match": false,
+      "job": true,
+      "method": "POST",
+      "path": "/projects/{pid}/references/{kind}/{rid}/image/generate",
+      "path_params": [
+        "pid",
+        "kind",
+        "rid"
+      ],
+      "query": []
+    },
+    {
+      "body_keys": [],
       "description": "List scenes. Filter with `has_image`, `has_prompt`, `has_video` and `status`.",
       "if_match": false,
       "job": false,
@@ -1482,7 +1496,7 @@
     },
     {
       "body_keys": [],
-      "description": "Generate images for many scenes.",
+      "description": "Generate images for many scenes. Krea 2 modes use Krea-only generation and refinement; the krea2 alias uses reference_krea2_settings.",
       "if_match": false,
       "job": true,
       "method": "POST",
@@ -1766,7 +1780,7 @@
     },
     {
       "body_keys": [],
-      "description": "Generate a scene image with ComfyUI.",
+      "description": "Generate a scene image with ComfyUI. mode krea2 now uses the Reference Builder Krea 2 two-pass settings and no Z-image; krea2_2pass uses saved scene Krea settings. For reference-card images use POST /projects/{pid}/references/{kind}/{rid}/image/generate.",
       "if_match": false,
       "job": true,
       "method": "POST",

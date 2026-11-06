@@ -1,3 +1,4 @@
+import { miniMaxPickerLoraName, syncInstalledMiniMaxLoraPicker } from "./minimax_lora_validation.mjs";
 import { getJson } from "./comfy_api.mjs";
 import {
   BAD_I2V_UNET_ALIASES,
@@ -71,6 +72,7 @@ function renderSearchableSuggestions(picker, onSelect = null, renderOptions = {}
   picker.list.textContent = "";
   const choose = (name) => {
     picker.input.value = name;
+    if (picker.missingLoraName !== undefined) syncInstalledMiniMaxLoraPicker(picker, name);
     picker.list.style.display = "none";
     onSelect?.();
   };
@@ -113,6 +115,9 @@ export function wireSearchablePicker(picker, onChange = null) {
   picker.input.addEventListener("focus", () => renderSearchableSuggestions(picker, onChange, { useFilter: false }));
   picker.input.addEventListener("input", () => {
     picker.activeIndex = 0;
+    if (picker.missingLoraName !== undefined && (picker.options || []).includes(picker.input.value)) {
+      syncInstalledMiniMaxLoraPicker(picker, picker.input.value);
+    }
     renderSearchableSuggestions(picker, onChange, { useFilter: true });
     onChange?.();
   });
@@ -140,6 +145,7 @@ export function wireSearchablePicker(picker, onChange = null) {
       if (selected) {
         event.preventDefault();
         picker.input.value = selected;
+        if (picker.missingLoraName !== undefined) syncInstalledMiniMaxLoraPicker(picker, selected);
         picker.list.style.display = "none";
         onChange?.();
       }
@@ -148,6 +154,7 @@ export function wireSearchablePicker(picker, onChange = null) {
     }
   });
   picker.input.addEventListener("blur", () => {
+    if (picker.missingLoraName !== undefined) syncInstalledMiniMaxLoraPicker(picker);
     setTimeout(() => { picker.list.style.display = "none"; }, 180);
   });
 }
@@ -313,9 +320,12 @@ export function createModelPickers({
     const data = await getJson("/vrgdg/workflow_runner/lora_list");
     const loras = data.loras || ["[none]"];
     for (const slot of [...zLoraSlots, ...ernieLoraSlots, ...fluxLoraSlots, ...i2vLoraSlots, ...zEnhanceLoraSlots, ...krea2TwoPassLoraSlots, ...miniMaxLoraSlots, { picker: miniMaxTwoPassLoraPicker }, { picker: miniMaxThreePassLoraPicker }]) {
-      const current = slot.picker.input.value || "[none]";
+      const current = miniMaxPickerLoraName(slot.picker);
       slot.picker.options = loras;
-      slot.picker.input.value = loras.includes(current) ? current : current;
+      slot.picker.input.value = current;
+    }
+    for (const picker of [...miniMaxLoraSlots.map(slot => slot.picker), miniMaxTwoPassLoraPicker, miniMaxThreePassLoraPicker]) {
+      syncInstalledMiniMaxLoraPicker(picker, miniMaxPickerLoraName(picker));
     }
     ltxMsrLoraPicker.options = loras;
     if (!ltxMsrLoraPicker.input.value) ltxMsrLoraPicker.input.value = REQUIRED_LTX_MSR_LORA;

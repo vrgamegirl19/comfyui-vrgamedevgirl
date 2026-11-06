@@ -621,6 +621,13 @@ def _t67_timeline_note_delete(client: VrgdgApiClient, args: Dict[str, Any]) -> D
     return format_tool_result(res)
 
 @_safe_call
+def _reference_image_generate(client: VrgdgApiClient, args: Dict[str, Any]) -> Dict[str, Any]:
+    pid, kind, rid = args["project_id"], args.get("kind", "subjects"), args["ref_id"]
+    payload = {k: v for k, v in args.items() if k not in ("project_id", "kind", "ref_id")}
+    return format_tool_result(client.post(f"/projects/{pid}/references/{kind}/{rid}/image/generate", json_data=payload))
+
+
+@_safe_call
 def _t57_reference_describe(client: VrgdgApiClient, args: Dict[str, Any]) -> Dict[str, Any]:
     pid, kind, rid = args["project_id"], args.get("kind", "subjects"), args["ref_id"]
     payload = {k: v for k, v in args.items() if k not in ("project_id", "kind", "ref_id")}
@@ -1305,7 +1312,7 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
     ),
     "image_generate": ToolDefinition(
         name="image_generate",
-        description="Submit an image generation job for a scene or batch (T33).",
+        description="Submit an image generation job for a scene or batch (T33). mode krea2 uses Reference Builder settings and two Krea-only passes; krea2_2pass uses scene Krea settings. For reference cards use reference_image_generate.",
         input_schema={
             "type": "object",
             "properties": {
@@ -1596,6 +1603,28 @@ ALL_TOOLS: Dict[str, ToolDefinition] = {
             "required": ["project_id", "note_id"],
         },
         handler=_t67_timeline_note_delete,
+    ),
+    "reference_image_generate": ToolDefinition(
+        name="reference_image_generate",
+        description=(
+            "Generate and save an image on a Reference Builder subject or location card with Krea 2 only, "
+            "using its two-pass generation and refinement workflow. Uses saved reference_krea2_settings; "
+            "settings overrides apply to this run. Supply prompt or use the card's description. "
+            "Returns a GPU job; use job_wait. Existing image files are preserved. No Z-image enhancer."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string"},
+                "kind": {"type": "string", "enum": ["subjects", "locations"], "default": "subjects"},
+                "ref_id": {"type": "string", "description": "Saved reference card ID from references_get."},
+                "prompt": {"type": "string", "description": "Image prompt; defaults to the card's saved description."},
+                "settings": {"type": "object", "description": "Krea overrides: krea_unet_name, krea_clip_name, krea_vae_name, first_pass_width/height, width/height (final), seed and seed_mode. No Z-image models are used."},
+                "timeout_seconds": {"type": "number", "minimum": 1, "default": 600},
+            },
+            "required": ["project_id", "ref_id"],
+        },
+        handler=_reference_image_generate,
     ),
     "reference_describe": ToolDefinition(
         name="reference_describe",

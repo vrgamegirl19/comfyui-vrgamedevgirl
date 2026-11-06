@@ -107,11 +107,18 @@ def get_modes_catalog() -> Dict[str, Any]:
                 "settings_group": "ernie_image",
                 "settings_keys": ["width", "height", "steps"],
             },
-            "krea2_2pass": {
-                "name": "Krea2 Two-Pass",
+            "krea2": {
+                "name": "Krea 2 Reference Builder (two passes)",
                 "prompt_fields": ["t2i_prompt"],
-                "settings_group": "krea2",
-                "settings_keys": ["pass1_steps", "pass2_steps", "upscale_ratio"],
+                "settings_group": "reference_krea2_settings",
+                "settings_keys": ["krea_unet_name", "krea_clip_name", "krea_vae_name", "first_pass_width", "first_pass_height", "width", "height", "seed", "seed_mode"],
+                "notes": "Krea 2 generates and refines; no Z-image. Reference cards: POST /projects/{pid}/references/{kind}/{rid}/image/generate or MCP reference_image_generate.",
+            },
+            "krea2_2pass": {
+                "name": "Krea 2 Two-Pass",
+                "prompt_fields": ["t2i_prompt"],
+                "settings_group": "krea2_2pass_settings",
+                "settings_keys": ["unet_name", "clip_name", "vae_name", "aspect_ratio", "seed", "seed_mode", "cfg", "sampler_name", "first_pass_width", "first_pass_height", "width", "height"],
             },
         },
         "enums": {
