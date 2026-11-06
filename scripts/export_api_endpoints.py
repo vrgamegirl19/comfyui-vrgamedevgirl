@@ -63,7 +63,7 @@ DESCRIPTIONS: Dict[str, str] = {
     "POST /jobs/{id}/cancel": "Cancel a queued or running job. A running ComfyUI render is interrupted.",
     "POST /jobs/{id}/retry": "Start a failed or interrupted job again. `resume: true` skips work that already finished.",
     # --- LLM and instructions --------------------------------------------------------------
-    "GET /llm/active": "Which LLM the API would use right now, for a project (`project_id`) or, with none, for a new project (your saved model defaults). For LM Studio this is the model that is loaded. The API never loads or switches a model.",
+    "GET /llm/active": "Which LLM the API would use right now, for a project (`project_id`) or, with none, for a new project (your saved model defaults). For LM Studio this is the model that is loaded. For Gemma Local it lists `model` (text) and `vision_model` (image steps; the same file unless the LLM Runner sets a separate vision model). The API never loads or switches a model.",
     "GET /llm/models": "Models the configured LLM provider offers. `provider` selects LM Studio, an own server or an API provider.",
     "POST /llm/test": "Send a short test request to the configured LLM runner and report whether it answers.",
     "POST /llm/unload": "Free the memory held by the built-in LLM runners (clears their caches and the CUDA cache). It does not touch LM Studio.",
