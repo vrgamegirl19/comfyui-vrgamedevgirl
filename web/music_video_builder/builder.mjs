@@ -2643,7 +2643,7 @@ export function openBuilder(node, options = {}) {
     openStoryboardBuilderFromProject, projectInput, pushHistory, render, runMiniMaxH3PromptGeneration,
     saveGemmaJunkDebug, saveSession, sceneDisplayName, sceneReferenceMapArray, state,
     syncI2VVideoSettingsPanel, syncInspector, syncProjectVideoEngineUI, syncVideoModePanel,
-    syncVideoTypeControl, transcribeExistingScenesWithOptions,
+    syncVideoTypeControl, textGemmaRunnerPayload, transcribeExistingScenesWithOptions,
     sceneDefaultsPromptOptions: (...args) => sceneDefaultsPromptOptions(...args),
   });
 

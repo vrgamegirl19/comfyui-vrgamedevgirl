@@ -30,7 +30,7 @@ export function createAutoBuild({
   openStoryboardBuilderFromProject, projectInput, pushHistory, render, runMiniMaxH3PromptGeneration,
   saveGemmaJunkDebug, saveSession, sceneDisplayName, sceneReferenceMapArray, state, syncI2VVideoSettingsPanel,
   syncInspector, syncProjectVideoEngineUI, syncVideoModePanel, syncVideoTypeControl,
-  transcribeExistingScenesWithOptions, sceneDefaultsPromptOptions = null,
+  textGemmaRunnerPayload, transcribeExistingScenesWithOptions, sceneDefaultsPromptOptions = null,
 }) {
   function openAutoBuildModal() {
     const backdrop = document.createElement("div");
