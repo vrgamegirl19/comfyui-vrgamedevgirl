@@ -1,5 +1,5 @@
 import asyncio
-import importlib.util
+import importlib
 import json
 import pathlib
 import subprocess
@@ -10,14 +10,17 @@ import unittest
 from unittest.mock import Mock, patch
 
 
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+if str(ROOT.parent) not in sys.path:
+    sys.path.insert(0, str(ROOT.parent))
+
 server = types.SimpleNamespace(PromptServer=types.SimpleNamespace(
     instance=types.SimpleNamespace(routes=types.SimpleNamespace(
         get=lambda path: lambda fn: fn, post=lambda path: lambda fn: fn))))
-spec = importlib.util.spec_from_file_location(
-    "resource_monitor", pathlib.Path(__file__).resolve().parents[1] / "core/system_routes.py")
-monitor = importlib.util.module_from_spec(spec)
-with patch.dict(sys.modules, {"server": server}):
-    spec.loader.exec_module(monitor)
+# The stub stays in ``sys.modules`` for the whole file: everything this test needs has been imported through it by now, and a
+# ``patch.dict`` that later removes the modules the package pulled in breaks things like ``psutil`` that look themselves up there.
+sys.modules["server"] = server
+monitor = importlib.import_module(f"{ROOT.name}.core.system_routes")
 LLM_MODULE = f"{monitor.__package__}.llm.cache"
 
 
@@ -93,11 +96,30 @@ class ResourceMonitorTests(unittest.TestCase):
 
     def test_gpu_failure_preserves_ram(self):
         for error in (FileNotFoundError(), subprocess.TimeoutExpired("nvidia-smi", 2)):
-            with self.subTest(error=type(error).__name__), patch.object(monitor.subprocess, "run", side_effect=error):
+            # Without ``nvidia-smi`` the reader asks ``amd-smi`` too, so the test says that tool has nothing either; that is what makes the whole
+            # GPU side unavailable instead of only the NVIDIA half of it.
+            with self.subTest(error=type(error).__name__), patch.object(monitor.subprocess, "run", side_effect=error), \
+                    patch.object(monitor.amd_smi, "gpus_amd", return_value=[]):
                 result = monitor._read_resources()
             self.assertGreater(result["ram"]["total"], 0)
             self.assertEqual(result["gpus"], [])
             self.assertEqual(result["gpu_status"], "unavailable")
+
+    def test_nvidia_failure_falls_back_to_amd_sensors(self):
+        gib = 2 ** 30
+        records = [{"gpu": 0, "name": "AMD Radeon AI PRO R9700", "load": 5.0, "used": 6 * gib, "total": 30 * gib, "free": 24 * gib,
+                    "temperature": 56.0, "fan": None, "clock": 84.0, "power": 52.0, "power_limit": 300.0, "uuid": "", "pci_bus": "0000:03:00.0"}]
+        with patch.object(monitor.subprocess, "run", side_effect=FileNotFoundError()), \
+                patch.object(monitor.amd_smi, "gpus_amd", return_value=records):
+            result = monitor._read_resources()
+        self.assertEqual(result["gpu_status"], "available")
+        gpu = result["gpus"][0]
+        self.assertEqual(gpu["index"], "0")
+        self.assertEqual(gpu["name"], "AMD Radeon AI PRO R9700")
+        self.assertEqual(gpu["used"], 6 * gib)
+        self.assertIsNone(gpu["fan"])
+        self.assertEqual(gpu["power_limit"], 300.0)
+        json.dumps(result, allow_nan=False)
 
     def test_concurrent_requests_share_one_sample(self):
         async def exercise():
