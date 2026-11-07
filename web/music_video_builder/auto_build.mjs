@@ -1,3 +1,4 @@
+import { autoBuildDraftForProject, encodeAutoBuildFile, restoreAutoBuildFile } from "./auto_build_draft.mjs";
 import { prepareLlmRequest } from "./llm_setup.mjs";
 import { storyboardCameraFlowEntry } from "../storyboard_builder/shot_presets.mjs";
 import {
@@ -30,9 +31,12 @@ export function createAutoBuild({
   openStoryboardBuilderFromProject, projectInput, pushHistory, render, runMiniMaxH3PromptGeneration,
   saveGemmaJunkDebug, saveSession, sceneDisplayName, sceneReferenceMapArray, state, syncI2VVideoSettingsPanel,
   syncInspector, syncProjectVideoEngineUI, syncVideoModePanel, syncVideoTypeControl,
-  transcribeExistingScenesWithOptions, sceneDefaultsPromptOptions = null,
+  textGemmaRunnerPayload, transcribeExistingScenesWithOptions, sceneDefaultsPromptOptions = null,
 }) {
   function openAutoBuildModal() {
+    const openingProjectFolder = String(projectInput.value || state.projectFolder || "").trim();
+    const draft = autoBuildDraftForProject(state.autoBuildDraft, openingProjectFolder);
+
     const backdrop = document.createElement("div");
     // Keep nested builders (Reference Builder, LLM Runner, and their import dialogs)
     // above Auto Build when they are opened from this modal.
@@ -149,7 +153,10 @@ export function createAutoBuild({
     locationInput.style.display = "none";
     body.append(songInput, singerInput, locationInput);
 
-    const selected = { song: null, singer: null, locations: [], locationSource: "images" };
+    const selected = {
+      song: restoreAutoBuildFile(draft?.song), singer: restoreAutoBuildFile(draft?.singer),
+      locations: (draft?.locations || []).map(restoreAutoBuildFile), locationSource: "images",
+    };
     const uploadCard = (number, title, caption, buttonLabel, optional = false) => {
       const card = document.createElement("div");
       card.style.cssText = "border:1px solid #334155;border-radius:10px;background:#111827;padding:11px;display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;";
@@ -174,6 +181,9 @@ export function createAutoBuild({
     const songRow = uploadCard(1, "Song", currentAudioPath ? `Using current audio: ${currentAudioPath.split(/[\\/]/).pop()}` : "MP3, WAV, FLAC, M4A, or OGG", "Choose Song");
     const singerRow = uploadCard(3, "Singer image", "One clear reference image of the singer", "Choose Singer");
     const locationRow = uploadCard(4, "Location images", "One image repeats; multiple images rotate every two scenes", "Add Locations", true);
+    if (selected.song) songRow.status.textContent = selected.song.name;
+    if (selected.singer) singerRow.status.textContent = selected.singer.name;
+    if (selected.locations.length) locationRow.status.textContent = selected.locations.map((file) => file.name).join(", ");
     songRow.choose.onclick = () => songInput.click();
     singerRow.choose.onclick = () => singerInput.click();
     locationRow.choose.onclick = () => {
@@ -208,6 +218,7 @@ export function createAutoBuild({
     const lyricsInput = document.createElement("textarea");
     lyricsInput.placeholder = "Paste the complete lyrics here...";
     lyricsInput.spellcheck = true;
+    lyricsInput.value = draft?.lyrics || "";
     lyricsInput.style.cssText = "width:100%;box-sizing:border-box;min-height:150px;resize:vertical;border:1px solid #475569;border-radius:8px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;line-height:1.45;";
     lyricsWrap.append(lyricsLabel, lyricsInput);
     lyricsCard.append(lyricsBadge, lyricsWrap);
@@ -350,6 +361,14 @@ export function createAutoBuild({
     durationSelect.addEventListener("change", syncAutoBuildNote);
     customDuration.addEventListener("input", syncAutoBuildNote);
     skipPromptCreation.input.addEventListener("change", syncAutoBuildNote);
+    if (draft) {
+      durationSelect.value = ["8", "5", "6", "custom"].includes(draft.duration) ? draft.duration : "8";
+      customDuration.value = draft.custom_duration || "8";
+      durationSelect.onchange();
+      useCurrentBuilderSettings.input.checked = Boolean(draft.use_current_settings);
+      skipPromptCreation.input.checked = Boolean(draft.skip_prompts);
+      advanced.open = Boolean(draft.advanced_open);
+    }
     syncAutoBuildNote();
     const projectWarning = document.createElement("div");
     const getAutoBuildProjectFolder = () => String(projectInput.value || state.projectFolder || "").trim();
@@ -385,11 +404,48 @@ export function createAutoBuild({
     backdrop.append(box);
     document.body.append(backdrop);
 
-    const closeModal = () => backdrop.remove();
+    const saveAutoBuildDraft = async () => {
+      const folder = getAutoBuildProjectFolder();
+      if (openingProjectFolder && !autoBuildDraftForProject({ project_folder: openingProjectFolder }, folder)) {
+        throw new Error("The active project changed. Reopen Auto Build in the original project to save these inputs.");
+      }
+      state.autoBuildDraft = {
+        project_folder: folder, lyrics: lyricsInput.value,
+        song: await encodeAutoBuildFile(selected.song),
+        singer: await encodeAutoBuildFile(selected.singer),
+        locations: await Promise.all(selected.locations.map(encodeAutoBuildFile)),
+        duration: durationSelect.value, custom_duration: customDuration.value,
+        use_current_settings: useCurrentBuilderSettings.input.checked,
+        skip_prompts: skipPromptCreation.input.checked, advanced_open: advanced.open,
+      };
+      if (folder) {
+        const saved = await saveSession({ quiet: true, throwOnError: true });
+        if (!saved || saved.stale) throw new Error("Auto Build inputs could not be saved. Please retry before closing.");
+      }
+    };
+    let closing = false;
+    const closeModal = async () => {
+      if (closing) return;
+      closing = true;
+      const controls = [close, cancel, build, createProjectNow, ltxEngine, miniMaxEngine, openRunner,
+        songRow.choose, singerRow.choose, locationRow.choose, songInput, singerInput, locationInput,
+        lyricsInput, durationSelect, customDuration, useCurrentBuilderSettings.input, skipPromptCreation.input];
+      const disabled = controls.map((control) => control.disabled);
+      controls.forEach((control) => { control.disabled = true; });
+      try {
+        await saveAutoBuildDraft();
+        backdrop.remove();
+      } catch (error) {
+        toast(`Could not save Auto Build inputs:\n${String(error?.message || error)}`, true);
+      } finally {
+        closing = false;
+        controls.forEach((control, index) => { control.disabled = disabled[index]; });
+      }
+    };
     close.onclick = closeModal;
     cancel.onclick = closeModal;
     backdrop.addEventListener("pointerdown", (event) => {
-      if (event.target === backdrop) closeModal();
+      if (event.target === backdrop && !build.disabled) closeModal();
     });
     const ensureAutoBuildProject = async () => {
       if (refreshProjectReady()) return true;
@@ -582,6 +638,7 @@ export function createAutoBuild({
       };
 
       try {
+        await saveAutoBuildDraft();
         setStatus("1/7  Loading the song...");
         if (selected.song) {
           const loaded = await chooseProjectAudioFile(selected.song);
@@ -784,7 +841,7 @@ export function createAutoBuild({
         render();
 
         if (skipPromptCreation.input.checked) {
-          closeModal();
+          await closeModal();
           state.activeId = state.segments[0]?.id || state.activeId;
           state.activeTrack = "base";
           syncInspector();
@@ -793,7 +850,7 @@ export function createAutoBuild({
           return;
         }
         setStatus("7/7  Preparing video prompts. The normal prompt progress window will open next...");
-        closeModal();
+        await closeModal();
         if (selectedEngine === "minimax_h3") {
           await generateAutoBuildMiniMaxPrompts({ missingOnly: true });
         } else {
