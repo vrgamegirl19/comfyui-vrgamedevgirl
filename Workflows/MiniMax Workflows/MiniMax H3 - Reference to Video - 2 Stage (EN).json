@@ -1681,8 +1681,6 @@
         }
       ],
       "properties": {
-        "cnr_id": "comfyui-workflow-encrypt",
-        "ver": "1.0.0",
         "Node name for S&R": "VHS_LoadVideo",
         "ue_properties": {
           "version": "7.8",
@@ -1832,8 +1830,6 @@
         }
       ],
       "properties": {
-        "cnr_id": "comfyui-workflow-encrypt",
-        "ver": "1.0.0",
         "Node name for S&R": "VHS_LoadVideo",
         "ue_properties": {
           "version": "7.8",
@@ -1983,8 +1979,6 @@
         }
       ],
       "properties": {
-        "cnr_id": "comfyui-workflow-encrypt",
-        "ver": "1.0.0",
         "Node name for S&R": "VHS_LoadVideo",
         "ue_properties": {
           "version": "7.8",
@@ -3908,8 +3902,6 @@
         }
       ],
       "properties": {
-        "cnr_id": "comfyui-workflow-encrypt",
-        "ver": "1.0.0",
         "Node name for S&R": "MiniMaxH3AVDecodeT8",
         "ue_properties": {
           "version": "7.8",
@@ -5769,8 +5761,6 @@
         }
       ],
       "properties": {
-        "cnr_id": "comfyui-workflow-encrypt",
-        "ver": "258a15eacd9f956b94fca134442e77709e8d45f7",
         "Node name for S&R": "ImageResizeKJv2",
         "aux_id": "aining2022/ComfyUI_Swwan",
         "ue_properties": {
@@ -5884,8 +5874,6 @@
         }
       ],
       "properties": {
-        "cnr_id": "comfyui-workflow-encrypt",
-        "ver": "1.0.0",
         "Node name for S&R": "PT_H3ConcatAVLatent",
         "ue_properties": {
           "widget_ue_connectable": {},
@@ -6146,8 +6134,6 @@
         }
       ],
       "properties": {
-        "cnr_id": "comfyui-workflow-encrypt",
-        "ver": "1.0.0",
         "Node name for S&R": "MiniMaxH3MemoryEfficientSageAttentionPatch",
         "ue_properties": {
           "version": "7.8",
