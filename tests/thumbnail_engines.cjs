@@ -133,6 +133,17 @@ test('MOSS-Image Edit gets the frame as a reference for the edit LoRA, with no i
   assert.equal(built.label, 'MOSS-Image Edit (local, edit)');
 });
 
+test('Qwen Image Edit gets the frame as a reference and nothing about models: the builder picks the newest installed one', () => {
+  const c = load();
+  const built = request(c, 'qwen_image_edit', { unet_name: 'ignored.safetensors', steps: 8, cfg: 1, width: 1920 });
+  assert.equal(built.url, '/vrgdg/workflow_runner/build_qwen_image_edit_prompt');
+  assert.deepEqual(built.payload, {
+    prompt: 'A neon portrait.', image_ingredients: [{ path: 'C:/p/thumbnail/source_0001.png' }], seed: 42, seed_mode: 'fixed',
+  });
+  assert.equal(built.label, 'Qwen Image Edit (local, edit)');
+  assert.deepEqual(request(c, 'qwen_image_edit', null).payload, built.payload, 'no settings at all still builds');
+});
+
 test('Overlay asks the Builder to put the layers on the frame itself: its own route, the project and the look, no prompt', () => {
   const c = load();
   const built = plain(c.thumbnailOverlayRequest({
@@ -158,7 +169,7 @@ test('a missing prompt, a missing frame or an unknown workflow is refused with a
 
 test('every workflow has a label and a route', () => {
   const c = load();
-  const engines = ['nano_banana', 'flux_klein', 'moss_image_edit', 'krea2_2pass', 'zimage', 'ernie_image', 'moss_image'];
+  const engines = ['qwen_image_edit', 'nano_banana', 'flux_klein', 'moss_image_edit', 'krea2_2pass', 'zimage', 'ernie_image', 'moss_image'];
   const labels = vm.runInContext('THUMBNAIL_ENGINE_LABELS', c);
   // Overlay has a label too, but no build route: it is not an image workflow (see thumbnailOverlayRequest).
   assert.deepEqual(Object.keys(labels), ['overlay', ...engines]);

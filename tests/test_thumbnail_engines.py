@@ -136,6 +136,149 @@ class MossImageToImageTests(unittest.TestCase):
         self.assertEqual(graph["4"]["inputs"]["lora_name"], "moss_image_sft_8_steps_dmd_lora.safetensors")
 
 
+QWEN_INSTALLED = {
+    "diffusion_models": [
+        "qwen_image_2512_fp8_e4m3fn.safetensors", "qwen_image_edit_2509_fp8_e4m3fn.safetensors", "qwen_image_edit_2511_fp8mixed.safetensors",
+        "moss_image_sft_bf16.safetensors",
+    ],
+    "text_encoders": ["qwen3vl_4b_fp8_scaled.safetensors", "qwen_2.5_vl_7b_fp8_scaled.safetensors"],
+    "vae": ["qwen_image_2.1_vae_bf16.safetensors", "qwen_image_vae.safetensors"],
+    "loras": [
+        "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors", "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+        "Qwen-Image-Edit-2511-Lightning-8steps-V1.0-fp32.safetensors", "Qwen-Image-Lightning-4steps-V1.0.safetensors",
+        "style\\film_look.safetensors",
+    ],
+}
+
+
+class QwenImageEditTests(unittest.TestCase):
+    """Qwen Image Edit: the graph of ComfyUI's own image_qwen_image_edit_2511 template, with the newest installed model picked."""
+
+    def setUp(self):
+        self.installed = {key: list(values) for key, values in QWEN_INSTALLED.items()}
+
+        def choices(category):
+            key = category[0] if isinstance(category, (list, tuple)) else category
+            key = {"unet": "diffusion_models", "clip": "text_encoders"}.get(key, key)
+            return list(self.installed.get(key, []))
+
+        for module in (models, workflows):
+            patcher = patch.object(module, "_folder_choices", choices)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        copies = patch.object(workflows, "_prepare_load_image_name", side_effect=lambda path, *rest: f"copy_{os.path.basename(path)}")
+        copies.start()
+        self.addCleanup(copies.stop)
+        self.folder = tempfile.TemporaryDirectory()
+        self.addCleanup(self.folder.cleanup)
+        self.pictures = []
+        for index in range(4):
+            path = os.path.join(self.folder.name, f"frame{index}.png")
+            Image.new("RGB", (64, 36), (10, 10, 10)).save(path)
+            self.pictures.append(path)
+
+    def build(self, count=1, **changes):
+        payload = {
+            "prompt": 'Add the title text "HEAT". Keep the man unchanged.', "seed": 3,
+            "image_ingredients": [{"path": path} for path in self.pictures[:count]], **changes,
+        }
+        return workflows._build_qwen_image_edit_api_prompt(payload)
+
+    def test_the_newest_installed_model_and_its_lightning_lora_are_used_with_ComfyUIs_own_graph(self):
+        built = self.build()
+        graph = built["prompt"]
+        self.assertEqual(built["used_seed"], 3)
+        self.assertEqual({key: node["class_type"] for key, node in graph.items()}, {
+            "1": "UNETLoader", "2": "CLIPLoader", "3": "VAELoader", "4": "ModelSamplingAuraFlow", "5": "CFGNorm", "6": "LoraLoaderModelOnly",
+            "20": "LoadImage", "30": "FluxKontextImageScale", "7": "TextEncodeQwenImageEditPlus", "8": "TextEncodeQwenImageEditPlus",
+            "9": "FluxKontextMultiReferenceLatentMethod", "10": "FluxKontextMultiReferenceLatentMethod", "11": "VAEEncode",
+            "12": "KSampler", "13": "VAEDecode", "14": "PreviewImage",
+        })
+        self.assertEqual(graph["1"]["inputs"], {"unet_name": "qwen_image_edit_2511_fp8mixed.safetensors", "weight_dtype": "default"}, "2511, not 2509 or 2512")
+        self.assertEqual(graph["2"]["inputs"], {"clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors", "type": "qwen_image", "device": "default"})
+        self.assertEqual(graph["3"]["inputs"], {"vae_name": "qwen_image_vae.safetensors"}, "not the 2.1 VAE")
+        self.assertEqual(graph["4"]["inputs"], {"model": ["1", 0], "shift": 3.1})
+        self.assertEqual(graph["5"]["inputs"], {"model": ["4", 0], "strength": 1.0})
+        self.assertEqual(graph["6"]["inputs"], {"model": ["5", 0], "lora_name": "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors", "strength_model": 1.0})
+        sampler = graph["12"]["inputs"]
+        self.assertEqual(sampler["model"], ["6", 0])
+        self.assertEqual((sampler["positive"], sampler["negative"], sampler["latent_image"]), (["9", 0], ["10", 0], ["11", 0]))
+        self.assertEqual((sampler["steps"], sampler["cfg"], sampler["sampler_name"], sampler["scheduler"], sampler["denoise"]), (4, 1.0, "euler", "simple", 1.0))
+
+    def test_the_picture_is_scaled_and_both_encoders_and_the_start_of_the_sampling_use_it(self):
+        graph = self.build()["prompt"]
+        self.assertEqual(graph["30"]["inputs"], {"image": ["20", 0]})
+        self.assertEqual(graph["11"]["inputs"], {"pixels": ["30", 0], "vae": ["3", 0]})
+        for key in ("7", "8"):
+            self.assertEqual(graph[key]["inputs"]["clip"], ["2", 0])
+            self.assertEqual(graph[key]["inputs"]["vae"], ["3", 0])
+            self.assertEqual(graph[key]["inputs"]["image1"], ["30", 0])
+        self.assertEqual(graph["7"]["inputs"]["prompt"], 'Add the title text "HEAT". Keep the man unchanged.')
+        self.assertEqual(graph["8"]["inputs"]["prompt"], "", "the negative is empty, as in the template")
+        self.assertEqual(self.build(negative_prompt="blurry")["prompt"]["8"]["inputs"]["prompt"], "blurry")
+        for key, source in (("9", "7"), ("10", "8")):
+            self.assertEqual(graph[key]["inputs"], {"conditioning": [source, 0], "reference_latents_method": "index_timestep_zero"})
+
+    def test_without_the_lightning_lora_it_samples_the_whole_way(self):
+        for graph in (self.build(turbo=False)["prompt"], self.build(lora_name="[none]")["prompt"]):
+            self.assertNotIn("6", graph)
+            self.assertEqual(graph["12"]["inputs"]["model"], ["5", 0])
+            self.assertEqual((graph["12"]["inputs"]["steps"], graph["12"]["inputs"]["cfg"]), (40, 4.0))
+        self.installed["loras"] = ["style\\film_look.safetensors"]
+        graph = self.build()["prompt"]
+        self.assertNotIn("6", graph, "no Lightning LoRA installed: no turbo")
+        self.assertEqual((graph["12"]["inputs"]["steps"], graph["12"]["inputs"]["cfg"]), (40, 4.0), "and then not 4 steps either")
+
+    def test_an_install_with_only_2509_uses_2509_and_the_lightning_lora_of_its_own_version(self):
+        self.installed["diffusion_models"] = ["qwen_image_edit_2509_fp8_e4m3fn.safetensors"]
+        graph = self.build()["prompt"]
+        self.assertEqual(graph["1"]["inputs"]["unet_name"], "qwen_image_edit_2509_fp8_e4m3fn.safetensors")
+        self.assertEqual(graph["6"]["inputs"]["lora_name"], "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors")
+        self.installed["loras"] = ["Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"]
+        self.assertNotIn("6", self.build()["prompt"], "the 2511 LoRA does not fit the 2509 model")
+
+    def test_a_smaller_file_of_the_same_version_comes_first_and_so_does_a_bf16_lora(self):
+        self.installed["diffusion_models"] = ["qwen_image_edit_2511_bf16.safetensors", "qwen_image_edit_2511_fp8mixed.safetensors"]
+        self.assertEqual(self.build()["prompt"]["1"]["inputs"]["unet_name"], "qwen_image_edit_2511_fp8mixed.safetensors")
+        self.installed["loras"] = [
+            "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors", "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"]
+        self.assertEqual(self.build()["prompt"]["6"]["inputs"]["lora_name"], "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors")
+
+    def test_the_request_can_name_its_own_models_and_sampling(self):
+        graph = self.build(unet_name="qwen_image_edit_2509_fp8_e4m3fn.safetensors", lora_name="Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors",
+                           steps=6, cfg=2)["prompt"]
+        self.assertEqual(graph["1"]["inputs"]["unet_name"], "qwen_image_edit_2509_fp8_e4m3fn.safetensors")
+        self.assertEqual(graph["6"]["inputs"]["lora_name"], "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors")
+        self.assertEqual((graph["12"]["inputs"]["steps"], graph["12"]["inputs"]["cfg"]), (6, 2.0))
+        self.assertEqual(self.build(seed_mode="random")["used_seed"] >= 0, True)
+
+    def test_up_to_three_pictures_the_first_scaled_and_the_others_as_they_are(self):
+        graph = self.build(count=4)["prompt"]
+        self.assertEqual(graph["20"]["inputs"], {"image": "copy_frame0.png"})
+        self.assertEqual(graph["21"]["inputs"], {"image": "copy_frame1.png"})
+        self.assertEqual(graph["22"]["inputs"], {"image": "copy_frame2.png"})
+        self.assertNotIn("23", graph, "a fourth picture is left out")
+        for key in ("7", "8"):
+            inputs = graph[key]["inputs"]
+            self.assertEqual((inputs["image1"], inputs["image2"], inputs["image3"]), (["30", 0], ["21", 0], ["22", 0]))
+        self.assertNotIn("image2", self.build()["prompt"]["7"]["inputs"])
+
+    def test_a_missing_picture_prompt_or_model_is_refused_with_what_to_do(self):
+        with self.assertRaisesRegex(ValueError, "at least one reference image"):
+            self.build(count=0)
+        with self.assertRaisesRegex(ValueError, "Prompt text is empty"):
+            self.build(prompt=" ")
+        self.installed["diffusion_models"] = ["qwen_image_2512_fp8_e4m3fn.safetensors"]
+        with self.assertRaisesRegex(ValueError, "No Qwen Image Edit diffusion model was found.*Comfy-Org/Qwen-Image-Edit_ComfyUI"):
+            self.build()
+        self.installed["diffusion_models"] = QWEN_INSTALLED["diffusion_models"]
+        for key, label in (("clip_name", "Qwen Image Edit text encoder"), ("vae_name", "Qwen Image Edit VAE"),
+                           ("unet_name", "Qwen Image Edit diffusion model"), ("lora_name", "Qwen Image Edit LoRA")):
+            with self.subTest(missing=key), self.assertRaises(ValueError) as caught:
+                self.build(**{key: "not_there.safetensors"})
+            self.assertIn(label, str(caught.exception))
+
+
 class MossImageEditTests(unittest.TestCase):
     """The instruction edit: the edit LoRA and ComfyUI's Text Encode MOSS-Image Edit, as in its own image_moss_image_edit template."""
 

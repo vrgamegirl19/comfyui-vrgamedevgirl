@@ -10,6 +10,7 @@
 // only way to be sure the person and the scene do not change.
 export const THUMBNAIL_ENGINE_KINDS = {
   overlay: "overlay",
+  qwen_image_edit: "edit",
   nano_banana: "edit",
   flux_klein: "edit",
   moss_image_edit: "moss_edit",

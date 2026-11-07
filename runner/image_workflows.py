@@ -4,11 +4,12 @@ import copy
 import json
 import os
 import random
+import re
 import time
 import folder_paths
 
 from .paths import _bool_payload, _float_payload, _int_payload, _resolve_existing_file
-from .models import _MAX_LORA_SLOTS, _NONE_LORA, _clean_lora_name, _installed_model_choice, _require_model_choice
+from .models import _MAX_LORA_SLOTS, _NONE_LORA, _clean_lora_name, _folder_choices, _installed_model_choice, _require_model_choice
 from .api_graph import _api_node_id_by_class, _ensure_placeholder_load_image, _expand_subgraphs, _load_api_template, _load_workflow_template, _node_by_id, _prepare_load_image_name, _set_api_input, _set_widget, _workflow_node_id_by_class, _workflow_to_api_prompt
 
 
@@ -737,6 +738,115 @@ def _build_moss_image_edit_api_prompt(payload):
         "11": {"class_type": "VAEDecode", "inputs": {"samples": ["10", 0], "vae": ["3", 0]}},
         "12": {"class_type": "PreviewImage", "inputs": {"images": ["11", 0]}},
     })
+    return {"workflow_path": "", "prompt": prompt, "used_seed": seed}
+
+
+_QWEN_EDIT_CLIP = "qwen_2.5_vl_7b_fp8_scaled.safetensors"
+_QWEN_EDIT_VAE = "qwen_image_vae.safetensors"
+_QWEN_EDIT_MAX_REFERENCES = 3
+
+
+def _basename_lower(name):
+    return os.path.basename(str(name or "").replace("\\", "/")).lower()
+
+
+def _newest_installed_qwen_edit_model():
+    """The installed Qwen Image Edit diffusion model to use, or ``None``: the newest version, and a smaller fp8 or int8 file before a bigger one."""
+    best, best_rank = None, None
+    for name in _folder_choices(("diffusion_models", "unet")):
+        base = _basename_lower(name)
+        if "qwen_image_edit" not in base:
+            continue
+        rank = (3 if "2511" in base else 2 if "2509" in base else 1, 1 if re.search(r"fp8|int8", base) else 0)
+        if best_rank is None or rank > best_rank:
+            best, best_rank = name, rank
+    return best
+
+
+def _qwen_edit_lightning_lora(unet_name):
+    """The installed 4 step Lightning LoRA made for this version of Qwen Image Edit (2511 or 2509), or ``None``. A bf16 file comes first."""
+    base = _basename_lower(unet_name)
+    version = "2511" if "2511" in base else "2509" if "2509" in base else ""
+    if not version:
+        return None
+    wanted = f"qwen-image-edit-{version}-lightning-4steps"
+    matches = [name for name in _folder_choices("loras") if wanted in _basename_lower(name)]
+    return next((name for name in matches if "bf16" in _basename_lower(name)), matches[0] if matches else None)
+
+
+def _build_qwen_image_edit_api_prompt(payload):
+    """Qwen Image Edit (2511 or 2509) on ComfyUI's native nodes: an instruction edit of 1 to 3 pictures.
+
+    The graph of ComfyUI's own ``image_qwen_image_edit_2511`` template: ``TextEncodeQwenImageEditPlus`` for the instruction and for an empty
+    negative (both see the pictures and the VAE), ``FluxKontextMultiReferenceLatentMethod`` on both, the first picture scaled by
+    ``FluxKontextImageScale`` and also the start of the sampling (so the result keeps its shape), ``ModelSamplingAuraFlow`` (shift 3.1)
+    and ``CFGNorm``. With the 4 step Lightning LoRA of the same version, which is used when it is installed (``turbo`` false or
+    ``lora_name`` ``[none]`` leaves it out), it samples 4 steps at CFG 1. Without it, 40 steps at CFG 4. Models not named in the
+    request are the newest installed Qwen Image Edit (2511 before 2509), ``qwen_2.5_vl_7b_fp8_scaled`` and ``qwen_image_vae``.
+    """
+    prompt_text = str(payload.get("prompt", "") or "").strip()
+    if not prompt_text:
+        raise ValueError("Prompt text is empty.")
+    paths = _image_paths_from_payload_ingredients(payload, "reference image")[:_QWEN_EDIT_MAX_REFERENCES]
+    if not paths:
+        raise ValueError("Qwen Image Edit needs at least one reference image: the frame to edit.")
+    unet_name = str(payload.get("unet_name") or "").strip() or _newest_installed_qwen_edit_model()
+    if not unet_name:
+        raise ValueError(
+            "No Qwen Image Edit diffusion model was found in ComfyUI/models/diffusion_models. Install qwen_image_edit_2511 "
+            "(Comfy-Org/Qwen-Image-Edit_ComfyUI) there, refresh/restart ComfyUI, then try again."
+        )
+    unet_name = _installed_model_choice(("diffusion_models", "unet"), unet_name, "Qwen Image Edit diffusion model")
+    clip_name = _installed_model_choice(
+        ("text_encoders", "clip"), str(payload.get("clip_name") or _QWEN_EDIT_CLIP).strip(), "Qwen Image Edit text encoder")
+    vae_name = _installed_model_choice("vae", str(payload.get("vae_name") or _QWEN_EDIT_VAE).strip(), "Qwen Image Edit VAE")
+    asked = str(payload.get("lora_name") or "").strip()
+    if asked and asked != _NONE_LORA:
+        lora_name = _installed_model_choice("loras", asked, "Qwen Image Edit LoRA")
+    elif asked == _NONE_LORA or not _bool_payload(payload, "turbo", True):
+        lora_name = None
+    else:
+        lora_name = _qwen_edit_lightning_lora(unet_name)
+    seed = _int_payload(payload, "seed", 1, 0, 0xFFFFFFFFFFFFFFFF)
+    if str(payload.get("seed_mode", "fixed") or "fixed").strip().lower() in {"random", "randomize"}:
+        seed = random.randint(0, 0xFFFFFFFFFFFFFFFF)
+
+    prompt = {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": unet_name, "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": clip_name, "type": "qwen_image", "device": "default"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": vae_name}},
+        "4": {"class_type": "ModelSamplingAuraFlow", "inputs": {"model": ["1", 0], "shift": 3.1}},
+        "5": {"class_type": "CFGNorm", "inputs": {"model": ["4", 0], "strength": 1.0}},
+    }
+    model = ["5", 0]
+    if lora_name:
+        prompt["6"] = {"class_type": "LoraLoaderModelOnly", "inputs": {"model": model, "lora_name": lora_name, "strength_model": 1.0}}
+        model = ["6", 0]
+    pictures = {}
+    for index, path in enumerate(paths):
+        if index:
+            # The copies in ComfyUI's input folder are named by the millisecond, so two made together would share a name.
+            time.sleep(0.002)
+        prompt[str(20 + index)] = {"class_type": "LoadImage", "inputs": {"image": _prepare_load_image_name(path)}}
+    prompt["30"] = {"class_type": "FluxKontextImageScale", "inputs": {"image": ["20", 0]}}
+    # The first picture is the scaled one. The others go to the encoders as they are.
+    pictures["image1"] = ["30", 0]
+    for index in range(1, len(paths)):
+        pictures[f"image{index + 1}"] = [str(20 + index), 0]
+    for node_id, words in (("7", prompt_text), ("8", str(payload.get("negative_prompt") or ""))):
+        prompt[node_id] = {"class_type": "TextEncodeQwenImageEditPlus", "inputs": {"clip": ["2", 0], "prompt": words, "vae": ["3", 0], **pictures}}
+    for node_id, source in (("9", "7"), ("10", "8")):
+        prompt[node_id] = {"class_type": "FluxKontextMultiReferenceLatentMethod", "inputs": {
+            "conditioning": [source, 0], "reference_latents_method": "index_timestep_zero"}}
+    prompt["11"] = {"class_type": "VAEEncode", "inputs": {"pixels": ["30", 0], "vae": ["3", 0]}}
+    prompt["12"] = {"class_type": "KSampler", "inputs": {
+        "model": model, "positive": ["9", 0], "negative": ["10", 0], "latent_image": ["11", 0], "seed": seed,
+        "steps": _int_payload(payload, "steps", 4 if lora_name else 40, 1, 200),
+        "cfg": _float_payload(payload, "cfg", 1.0 if lora_name else 4.0, 1.0, 20.0),
+        "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0,
+    }}
+    prompt["13"] = {"class_type": "VAEDecode", "inputs": {"samples": ["12", 0], "vae": ["3", 0]}}
+    prompt["14"] = {"class_type": "PreviewImage", "inputs": {"images": ["13", 0]}}
     return {"workflow_path": "", "prompt": prompt, "used_seed": seed}
 
 

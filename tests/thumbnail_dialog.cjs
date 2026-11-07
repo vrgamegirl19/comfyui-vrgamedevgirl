@@ -243,7 +243,7 @@ test('every image workflow can be chosen, and MOSS-Image restyles the frame with
     moss: { unet_name: 'moss.safetensors', clip_name: 'q.safetensors', vae_name: 'f.safetensors', lora_name: 'turbo.safetensors', steps: 8, cfg: 1, width: 1280, height: 720 },
   });
   const { select, change } = await pickFrame(h);
-  assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_ENGINES', h.context)), ['overlay', 'nano_banana', 'flux_klein', 'moss_image_edit', 'krea2_2pass', 'zimage', 'ernie_image', 'moss_image']);
+  assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_ENGINES', h.context)), ['overlay', 'qwen_image_edit', 'nano_banana', 'flux_klein', 'moss_image_edit', 'krea2_2pass', 'zimage', 'ernie_image', 'moss_image']);
   select.value = 'moss_image';
   select.listeners.change[0]();
   change.value = '40';
@@ -508,4 +508,29 @@ test('an Overlay that fails says why and leaves the dialog usable', async () => 
   assert.match(h.toasts.at(-1)[0], /The frame was not found/);
   assert.equal(h.button('Generate thumbnail').disabled, false, 'it can be tried again');
   assert.equal(h.state.thumbnailIntro.image_path, '');
+});
+
+test('Qwen Image Edit is an edit workflow: the LLM writes an edit instruction, the frame goes as a reference, and the models are left to the builder', async () => {
+  const replies = { ...frameReplies, '/vrgdg/workflow_runner/build_qwen_image_edit_prompt': { prompt: {} } };
+  const h = harness({ segments: scenes(), postJson: async (url) => replies[url] });
+  const { select } = await pickFrame(h);
+  const field = h.all.find((node) => node.tag === 'label' && node.style.display === 'none');
+  const hint = h.all.find((node) => /edits the frame by instruction/.test(node.textContent));
+  const titleInput = h.all.find((node) => node.tag === 'input' && node.maxLength === 120);
+  titleInput.value = 'HEAT';
+  select.value = 'qwen_image_edit';
+  select.listeners.change[0]();
+  assert.equal(field.style.display, 'none', 'it follows an instruction, so there is no Change to set');
+  assert.match(hint.textContent, /^Qwen Image Edit edits the frame by instruction/);
+  assert.match(hint.textContent, /newest Qwen Image Edit model you have installed \(2511 before 2509\)/);
+  assert.match(hint.textContent, /use Overlay when nothing may change/);
+  await h.button('Write prompt with LLM').onclick();
+  assert.equal(h.calls.find(([url]) => url.endsWith('/thumbnail/prompt'))[1].engine_kind, 'edit');
+  await h.button('Generate thumbnail').onclick();
+  const [, built] = h.calls.find(([url]) => url.endsWith('/build_qwen_image_edit_prompt'));
+  assert.deepEqual(JSON.parse(JSON.stringify(built.image_ingredients)), [{ path: 'C:/p/thumbnail/source_0001.png' }]);
+  assert.match(built.prompt, /Add the title text "HEAT"/, 'the title is in what was sent');
+  for (const modelField of ['unet_name', 'clip_name', 'vae_name', 'lora_name', 'steps', 'cfg']) assert.equal(modelField in built, false, modelField);
+  assert.equal(h.state.thumbnailIntro.engine, 'qwen_image_edit');
+  assert.equal(h.state.thumbnailIntro.history[0].engine, 'qwen_image_edit');
 });

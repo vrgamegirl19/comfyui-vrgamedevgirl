@@ -14,7 +14,7 @@ import { THUMBNAIL_ENGINE_LABELS, thumbnailEngineRequest, thumbnailOverlayReques
 import {
   clampThumbnailChange, ensureThumbnailTitle, formatThumbnailTime, normalizeThumbnailIntro, normalizeThumbnailOverlay, thumbnailEngineKind,
   thumbnailFrameRange, thumbnailHistoryWith, thumbnailIntroForStitch, thumbnailItemAt, thumbnailLocalSeconds, thumbnailTimelineItems,
-  THUMBNAIL_ENGINES, THUMBNAIL_FPS,
+  THUMBNAIL_DEFAULT_ENGINE, THUMBNAIL_ENGINES, THUMBNAIL_FPS,
 } from "./thumbnail_state.mjs";
 
 const THUMBNAIL_PREPEND_TIMEOUT_MS = 30 * 60 * 1000;
@@ -29,6 +29,7 @@ const EDIT_HINT = `This workflow edits the frame by instruction, so the prompt t
 const RESTYLE_HINT = `This workflow restyles the frame from a description of the finished picture. The prompt describes the thumbnail, and Change sets how far it moves from the frame.${REDRAW_WARNING}`;
 const MOSS_EDIT_HINT = "MOSS-Image Edit changes the frame by a short instruction (the Edit LoRA under Models > MOSS-Image, and ComfyUI 0.43 or newer). It keeps the picture and the composition and does what the prompt adds, including the title text, but it still redraws faces, so the skin tone and the face can drift: use Overlay to keep the person exactly.";
 const MOSS_RESTYLE_HINT = `${RESTYLE_HINT} A restyle keeps the frame's composition and does not draw the title text reliably: use MOSS-Image Edit when the thumbnail needs text.`;
+const QWEN_EDIT_HINT = "Qwen Image Edit edits the frame by instruction and tends to keep the person and the scene as they are. It uses the newest Qwen Image Edit model you have installed (2511 before 2509) and its Lightning LoRA, so it needs no settings. It still redraws pixels, so fine detail can change a little: use Overlay when nothing may change.";
 const OVERLAY_HINT = "Overlay keeps every pixel of your frame and puts the layers on top, like a thumbnail made in an image editor: a color grade, a glow on the brights, a vignette and the title with an outline and a glow, placed in the calmest part of the frame. No AI redraws anything, so the person and the scene cannot change. It needs no prompt.";
 const OVERLAY_COLOR_OPTIONS = [
   { value: "yellow", label: "Yellow" }, { value: "white", label: "White" }, { value: "orange", label: "Orange" },
@@ -263,9 +264,9 @@ export function openThumbnailDialog(deps) {
   sourceCaption.style.cssText = "font-size:12px;color:#93c5fd;line-height:1.4;";
 
   // Step 2 and 3: the prompt and the picture. A build without the overlay route does not offer that engine, and a project saved with
-  // it opens on the first engine that is offered.
+  // it opens on the default engine instead.
   const engineOptions = ENGINE_OPTIONS.filter((option) => option.value !== "overlay" || state.thumbnailOverlayAvailable);
-  const engineSelect = makeSelect(engineOptions, engineOptions.some((option) => option.value === intro.engine) ? intro.engine : engineOptions[0].value);
+  const engineSelect = makeSelect(engineOptions, engineOptions.some((option) => option.value === intro.engine) ? intro.engine : THUMBNAIL_DEFAULT_ENGINE);
   const engineHint = document.createElement("div");
   engineHint.style.cssText = "font-size:11px;line-height:1.4;color:#94a3b8;";
   // How far a restyle workflow may move away from the frame. Edit workflows follow an instruction instead, so it is hidden for them.
@@ -318,6 +319,7 @@ export function openThumbnailDialog(deps) {
     promptField.style.display = overlayOn ? "none" : "flex";
     writeButton.style.display = overlayOn ? "none" : "";
     if (overlayOn) engineHint.textContent = OVERLAY_HINT;
+    else if (engineSelect.value === "qwen_image_edit") engineHint.textContent = QWEN_EDIT_HINT;
     else if (engineSelect.value === "moss_image_edit") engineHint.textContent = MOSS_EDIT_HINT;
     else if (engineSelect.value === "moss_image") engineHint.textContent = MOSS_RESTYLE_HINT;
     else engineHint.textContent = restyle ? RESTYLE_HINT : EDIT_HINT;

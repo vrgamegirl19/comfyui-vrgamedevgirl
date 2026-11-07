@@ -9,6 +9,7 @@
 
 // The build route of each workflow, written out in full so a search for a route finds this module.
 const ENGINE_ROUTES = {
+  qwen_image_edit: "/vrgdg/workflow_runner/build_qwen_image_edit_prompt",
   nano_banana: "/vrgdg/workflow_runner/build_nb_image_prompt",
   flux_klein: "/vrgdg/workflow_runner/build_flux_klein_prompt",
   moss_image_edit: "/vrgdg/workflow_runner/build_moss_image_prompt",
@@ -20,6 +21,7 @@ const ENGINE_ROUTES = {
 
 export const THUMBNAIL_ENGINE_LABELS = {
   overlay: "Overlay: your frame exactly, no AI (grade, glow, title)",
+  qwen_image_edit: "Qwen Image Edit (local, edit)",
   nano_banana: "NanoBanana (API, edit)",
   flux_klein: "Flux/Klein (local, edit)",
   moss_image_edit: "MOSS-Image Edit (local, edit)",
@@ -150,6 +152,10 @@ export function thumbnailEngineRequest({ engine, prompt, sourcePath, change, set
       use_image_to_image: true, image_to_image_start_at_step: startStepFor(change), image_to_image_path: path,
       ...loraFields(s, count, 4, false),
     };
+  } else if (engine === "qwen_image_edit") {
+    // The builder picks the newest Qwen Image Edit model that is installed (2511 before 2509), the text encoder and the VAE it needs,
+    // and the Lightning LoRA of the same version (4 steps) when there is one, so nothing about the models is sent.
+    payload = { prompt: text, image_ingredients: sourceFrame, seed, seed_mode: "fixed" };
   } else if (engine === "moss_image_edit") {
     // The edit LoRA's own sampler (30 steps, CFG 4, skip layer guidance) and negative line are the builder's defaults, so the saved
     // Turbo steps, CFG and LoRA are not sent: they are for text to image and would spoil an edit.

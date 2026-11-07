@@ -36,10 +36,11 @@ test('the change setting is kept between 0 and 1, and a missing one is 0.65', ()
 
 test('every image workflow is known, with the kind of prompt it needs', () => {
   const c = load();
-  assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_ENGINES', c)), ['overlay', 'nano_banana', 'flux_klein', 'moss_image_edit', 'krea2_2pass', 'zimage', 'ernie_image', 'moss_image']);
+  assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_ENGINES', c)), ['overlay', 'qwen_image_edit', 'nano_banana', 'flux_klein', 'moss_image_edit', 'krea2_2pass', 'zimage', 'ernie_image', 'moss_image']);
   assert.equal(c.thumbnailEngineKind('overlay'), 'overlay', 'it is not an image workflow: no prompt, no LLM, no ComfyUI');
   assert.equal(c.normalizeThumbnailIntro({ engine: 'overlay' }).engine, 'overlay');
-  for (const edit of ['nano_banana', 'flux_klein']) assert.equal(c.thumbnailEngineKind(edit), 'edit');
+  assert.equal(c.normalizeThumbnailIntro({ engine: 'qwen_image_edit' }).engine, 'qwen_image_edit');
+  for (const edit of ['nano_banana', 'flux_klein', 'qwen_image_edit']) assert.equal(c.thumbnailEngineKind(edit), 'edit');
   assert.equal(c.thumbnailEngineKind('moss_image_edit'), 'moss_edit', 'MOSS-Image Edit follows its own short instruction');
   for (const restyle of ['krea2_2pass', 'zimage', 'ernie_image', 'moss_image']) assert.equal(c.thumbnailEngineKind(restyle), 'restyle');
   assert.equal(c.thumbnailEngineKind('unknown'), 'edit');
