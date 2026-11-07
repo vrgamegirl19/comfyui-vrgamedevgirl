@@ -254,7 +254,7 @@ class PromptTextTests(unittest.TestCase):
         restyle = prompts.thumbnail_instruction("RUN", "restyle")
         self.assertIn('Recrop the attached image', edit)
         self.assertNotIn('Recrop the attached image', restyle)
-        self.assertIn("describes a finished", restyle)
+        self.assertIn("describes the finished thumbnail", restyle)
         self.assertIn("do not mention the attached image", restyle.lower())
         self.assertIn('"RUN"', restyle)
         self.assertNotIn("{text_rule}", restyle)
@@ -264,14 +264,44 @@ class PromptTextTests(unittest.TestCase):
 
     def test_moss_image_edit_gets_the_short_add_and_keep_instruction_it_was_trained_on(self):
         moss = prompts.thumbnail_instruction("HEAT", "moss_edit")
-        self.assertIn('Keep the <named things> unchanged', moss)
+        self.assertIn("in the form MOSS-Image Edit was trained on", moss)
+        self.assertIn('one sentence that starts with "Keep"', moss)
         self.assertIn("always name the headwear, hair and clothes", moss)
-        self.assertIn("do not ask it to crop, reframe", moss)
+        self.assertIn("leave out any cropping or reframing", moss)
         self.assertNotIn("Recrop the attached image", moss)
         self.assertNotIn("{text_rule}", moss)
         self.assertNotEqual(moss, prompts.thumbnail_instruction("HEAT", "edit"))
         self.assertIn("Do not add any text", prompts.thumbnail_instruction("", "moss_edit"))
         self.assertEqual(prompts.thumbnail_instruction("HEAT", " MOSS_EDIT "), moss, "the kind is matched without caring about case or spaces")
+
+    def test_every_kind_starts_with_the_project_owners_brief_unchanged_and_then_asks_for_one_prompt(self):
+        brief = prompts.THUMBNAIL_ROLE_INSTRUCTIONS
+        self.assertTrue(brief.startswith("# Role and Objective\nYou are an expert AI image editor and creative director"))
+        self.assertTrue(brief.endswith("optimized for small mobile screens."))
+        for sentence in (
+            "# Core Enhancement Guidelines", "# Output Constraints",
+            "1. **Subject Isolation & Depth:** Separate the main artist/subject sharply from the background.",
+            "Introduce strong **rim lighting** or colored edge-glows (e.g., contrasting neon cyan and magenta, electric blue, or warm sunset gold)",
+            "Deepen shadows and boost mid-tone clarity on the artist’s face and clothing to create a high-end editorial look.",
+            "Crop or frame tightly on the subject (chest-up or waist-up) with intense, engaging eye contact toward the camera.",
+            "Maintain intentional **negative space** on one side of the frame (left or right) so a title text overlay can be added later.",
+            "Apply a subtle, premium digital film grain or grade to unify the subject and background.",
+            "- Keep the face, likeness, and key identity of the subject from the input image recognizable.",
+            "- Deliver a clean, crisp, 16:9 aspect ratio final image optimized for small mobile screens.",
+        ):
+            self.assertIn(sentence, brief)
+        for kind in ("edit", "restyle", "moss_edit"):
+            with self.subTest(kind=kind):
+                instruction = prompts.thumbnail_instruction("HEAT", kind)
+                self.assertTrue(instruction.startswith(brief), "the brief comes first, untouched")
+                after = instruction[len(brief):]
+                self.assertTrue(after.startswith("\n\n# Your Answer\n"))
+                self.assertIn("write the one prompt it will receive", after)
+                self.assertIn("Output only the prompt: no title, no quotes around it, no explanation, no markdown.", after)
+                self.assertNotIn("{text_rule}", instruction)
+        # The three kinds differ only in the answer section.
+        self.assertEqual(
+            {prompts.thumbnail_instruction("HEAT", kind)[: len(brief)] for kind in ("edit", "restyle", "moss_edit")}, {brief})
 
     def test_the_title_is_mandatory_and_quoted_in_every_kind(self):
         for kind in ("edit", "restyle", "moss_edit"):
