@@ -7,7 +7,7 @@ import random
 import folder_paths
 
 from .paths import _bool_payload, _float_payload, _int_payload, _resolve_existing_file
-from .models import _MAX_LORA_SLOTS, _NONE_LORA, _clean_lora_name, _require_model_choice, _resolve_model_choice
+from .models import _MAX_LORA_SLOTS, _NONE_LORA, _clean_lora_name, _installed_model_choice, _require_model_choice
 from .api_graph import _api_node_id_by_class, _ensure_placeholder_load_image, _expand_subgraphs, _load_api_template, _load_workflow_template, _node_by_id, _prepare_load_image_name, _set_api_input, _set_widget, _workflow_node_id_by_class, _workflow_to_api_prompt
 
 
@@ -675,16 +675,12 @@ def _build_moss_image_api_prompt(payload):
     clip_name = str(payload.get("clip_name") or "qwen3.5_9b_int8_convrot.safetensors").strip()
     vae_name = str(payload.get("vae_name") or "flux2-vae.safetensors").strip()
     lora_name = str(payload.get("lora_name") or _NONE_LORA).strip()
-    _require_model_choice(("diffusion_models", "unet"), unet_name, "MOSS-Image diffusion model")
-    _require_model_choice(("text_encoders", "clip"), clip_name, "MOSS-Image text encoder")
-    _require_model_choice("vae", vae_name, "MOSS-Image VAE")
     # Each name is the spelling ComfyUI lists (a saved name may differ from it by a folder or by case).
-    unet_name = _resolve_model_choice(("diffusion_models", "unet"), unet_name) or unet_name
-    clip_name = _resolve_model_choice(("text_encoders", "clip"), clip_name) or clip_name
-    vae_name = _resolve_model_choice("vae", vae_name) or vae_name
+    unet_name = _installed_model_choice(("diffusion_models", "unet"), unet_name, "MOSS-Image diffusion model")
+    clip_name = _installed_model_choice(("text_encoders", "clip"), clip_name, "MOSS-Image text encoder")
+    vae_name = _installed_model_choice("vae", vae_name, "MOSS-Image VAE")
     if lora_name != _NONE_LORA:
-        _require_model_choice("loras", lora_name, "MOSS-Image LoRA")
-        lora_name = _resolve_model_choice("loras", lora_name) or lora_name
+        lora_name = _installed_model_choice("loras", lora_name, "MOSS-Image LoRA")
     use_i2i = _bool_payload(payload, "use_image_to_image", False)
     width = _int_payload(payload, "width", 1344, 256, 4096)
     height = _int_payload(payload, "height", 768, 256, 4096)
@@ -794,8 +790,7 @@ def _resolve_flux_klein_models(payload):
     ):
         requested = str(payload.get(key, "") or "")
         if requested.strip():
-            _require_model_choice(categories, requested, label)
-            resolved[key] = _resolve_model_choice(categories, requested) or requested
+            resolved[key] = _installed_model_choice(categories, requested, label)
     return resolved
 
 
