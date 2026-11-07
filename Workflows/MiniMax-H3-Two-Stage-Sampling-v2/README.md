@@ -112,8 +112,7 @@ that's `ComfyUI_windows_portable\ComfyUI\custom_nodes`.
 
 **"Install Missing Custom Nodes" will not fully solve these workflows.** Some nodes
 were saved with missing or incorrect source metadata, so Manager either can't
-identify them or points at the wrong repo (several report `comfyui-workflow-encrypt`,
-which does not contain them — ignore that suggestion). Install the four marked
+identify them or points at the wrong repo. Install the four marked
 **manual** below by cloning them yourself.
 
 ### Required — both workflows

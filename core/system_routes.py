@@ -163,7 +163,7 @@ async def clear_memory(request):
         task.add_done_callback(_cleanup_reports.discard)
     return web.json_response(result, status=202 if result["ok"] else 409)
 
-UPDATE_BRANCH = "Beta2.0"
+UPDATE_BRANCH = "main"
 _NODE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _RELEASE_NOTES_FILE = "update_notes.json"
 
