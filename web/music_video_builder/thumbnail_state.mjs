@@ -1,28 +1,20 @@
 // What the Thumbnail intro keeps in the project (`thumbnail_intro` in the session), and when the stitch uses it.
 // No browser code in here, so tests/thumbnail_state.cjs can run it.
 
-// The image workflows the thumbnail can be made with, and how each one uses the chosen frame. "edit" workflows (NanoBanana,
-// Flux/Klein) take the frame as a reference picture and follow an instruction such as "recrop the attached image". "qwen_edit" (Qwen
-// Image Edit) also follows an instruction, but one about the change only: the title lettering, then what to keep. "moss_edit"
-// (MOSS-Image Edit) also follows an instruction, but one in the short form its edit LoRA was trained on ("Add ... Keep the ...
-// unchanged."). "restyle" workflows (Krea 2, Z-Image, Ernie, MOSS-Image) start from the frame as an image-to-image source and need a
-// prompt that describes the finished picture. The LLM writes a different kind of prompt for each kind. "overlay" is not an image
-// workflow at all: it keeps every pixel of the frame and puts the grade and the title on top (no prompt, no LLM, no ComfyUI), the
-// only way to be sure the person and the scene do not change.
+// The ways the thumbnail can be made, and how each one uses the chosen frame. "edit" (NanoBanana, API image) takes the frame as a
+// reference picture and follows an instruction such as "recrop the attached image". "qwen_edit" (Qwen Image Edit) also follows an
+// instruction, but one about the change only: the title lettering, then what to keep. The LLM writes a different kind of prompt for
+// each kind. "overlay" is not an image workflow at all: it keeps every pixel of the frame and puts the grade and the title on top
+// (no prompt, no LLM, no ComfyUI), the only way to be sure the person and the scene do not change. "api_image" sends the frame to
+// the image API of the LLM Runner's provider (Gemini, Grok or OpenAI) with that provider's key. The order is the order of the list.
 export const THUMBNAIL_ENGINE_KINDS = {
   overlay: "overlay",
   qwen_image_edit: "qwen_edit",
   nano_banana: "edit",
-  flux_klein: "edit",
-  moss_image_edit: "moss_edit",
-  krea2_2pass: "restyle",
-  zimage: "restyle",
-  ernie_image: "restyle",
-  moss_image: "restyle",
+  api_image: "edit",
 };
 export const THUMBNAIL_ENGINES = Object.keys(THUMBNAIL_ENGINE_KINDS);
 export const THUMBNAIL_DEFAULT_ENGINE = "nano_banana";
-export const THUMBNAIL_DEFAULT_CHANGE = 0.65;
 // The frame rate of the timeline: scene lengths are whole frames of it, and the frame picker steps by it.
 export const THUMBNAIL_FPS = 24;
 const THUMBNAIL_HISTORY_LIMIT = 12;
@@ -45,7 +37,7 @@ export function normalizeThumbnailOverlay(value) {
   };
 }
 
-// "edit", "moss_edit", "restyle" or "overlay". An unknown engine is treated like the default one.
+// "edit", "qwen_edit" or "overlay". An unknown engine is treated like the default one.
 export function thumbnailEngineKind(engine) {
   return THUMBNAIL_ENGINE_KINDS[engine] || THUMBNAIL_ENGINE_KINDS[THUMBNAIL_DEFAULT_ENGINE];
 }
@@ -58,9 +50,9 @@ function thumbnailTitleText(title) {
   return String(title ?? "").replace(/"/g, "'").replace(/\s+/g, " ").trim();
 }
 
-// The sentence that makes an image workflow draw the title: an instruction for the edit workflows, a statement of the finished
-// picture for the restyle ones. Empty when there is no title. Qwen Image Edit's carries the lettering style from the style notes (a
-// graffiti style must not be asked for as "bold sans-serif capitals"), and falls back to bold lettering with an outline and a glow.
+// The sentence that makes an image workflow draw the title, as an instruction. Empty when there is no title. Qwen Image Edit's carries
+// the lettering style from the style notes (a graffiti style must not be asked for as "bold sans-serif capitals"), and falls back to
+// bold lettering with an outline and a glow.
 export function thumbnailTitleClause(title, kind, styleNotes = "") {
   const text = thumbnailTitleText(title);
   if (!text) return "";
@@ -68,9 +60,7 @@ export function thumbnailTitleClause(title, kind, styleNotes = "") {
     const look = String(styleNotes ?? "").replace(/\s+/g, " ").trim().replace(/[.\s]+$/, "");
     return `Add the text "${text}" as ${look ? `lettering in this style: ${look}` : "bold, high-contrast lettering with a thick outline and a glow"}, large enough to read on a phone, in a calm part of the frame, fully inside the frame and never covering the face.`;
   }
-  return kind === "restyle"
-    ? `The title text "${text}" is written exactly as spelled ${THUMBNAIL_TITLE_LOOK}. No other text.`
-    : `Add the title text "${text}" exactly as written and spelled ${THUMBNAIL_TITLE_LOOK}. Add no other text.`;
+  return `Add the title text "${text}" exactly as written and spelled ${THUMBNAIL_TITLE_LOOK}. Add no other text.`;
 }
 
 function escapeForPattern(text) {
@@ -91,15 +81,14 @@ export function ensureThumbnailTitle(prompt, title, kind, styleNotes = "") {
   return `${body} ${thumbnailTitleClause(text, kind, styleNotes)}`;
 }
 
-// How much a restyle workflow may change the frame, 0 to 1 (0.65 by default).
-export function clampThumbnailChange(value) {
-  const change = Number(value);
-  if (value === "" || value === null || value === undefined || !Number.isFinite(change)) return THUMBNAIL_DEFAULT_CHANGE;
-  return Math.max(0, Math.min(1, change));
-}
-
 function thumbnailText(value, limit) {
   return String(value ?? "").slice(0, limit);
+}
+
+// The API image engine's one choice: the image model, typed or picked from the provider's list. Empty means the provider's first one.
+export function normalizeThumbnailApiImage(value) {
+  const data = value && typeof value === "object" ? value : {};
+  return { model: thumbnailText(data.model, 120).trim() };
 }
 
 // The saved settings in a known shape. Anything missing or wrong falls back to its default, so an old or hand-edited session loads.
@@ -128,8 +117,8 @@ export function normalizeThumbnailIntro(value) {
     source_seconds: Number.isFinite(sourceSeconds) && sourceSeconds > 0 ? sourceSeconds : 0,
     scene_id: thumbnailText(data.scene_id, 200),
     engine: THUMBNAIL_ENGINES.includes(data.engine) ? data.engine : THUMBNAIL_DEFAULT_ENGINE,
-    change: clampThumbnailChange(data.change),
     overlay: normalizeThumbnailOverlay(data.overlay),
+    api_image: normalizeThumbnailApiImage(data.api_image),
     title: thumbnailText(data.title, 120),
     style_notes: thumbnailText(data.style_notes, 1200),
     prompt: thumbnailText(data.prompt, 4000),

@@ -25,9 +25,12 @@ _VIDEO_SUFFIXES = frozenset({".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"})
 def _thumbnail_capabilities() -> Dict[str, Any]:
     """Tell the Builder that this build can save thumbnails, prepend the intro, take one exact frame of a video and make an overlay.
 
-    ``overlay`` is the Overlay engine (``thumbnail_overlay.py``): a build without it does not offer that engine.
+    ``overlay`` is the Overlay engine (``thumbnail_overlay.py``) and ``api_image`` the API image engine
+    (``thumbnail_api_image.py``, with the providers and their image models): a build without one does not offer that engine.
     """
-    return {"version": THUMBNAIL_CAPABILITIES_VERSION, "frame": True, "overlay": True}
+    from ..llm.api_image import api_image_capabilities
+
+    return {"version": THUMBNAIL_CAPABILITIES_VERSION, "frame": True, "overlay": True, "api_image": api_image_capabilities()}
 
 
 def _clean_path(raw: Any) -> str:

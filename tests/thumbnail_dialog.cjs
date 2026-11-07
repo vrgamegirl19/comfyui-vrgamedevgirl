@@ -20,7 +20,17 @@ function fakeElement(tag, all) {
   return node;
 }
 
-function harness({ segments, frameAvailable = true, postJson, engineSettings = {}, moss = {}, overlayAvailable = false, intro = {} } = {}) {
+const API_IMAGE_CAPABILITY = {
+  providers: {
+    gemini: { label: 'Gemini', models: ['gemini-3-pro-image-preview', 'gemini-3.1-flash-image-preview'], default: 'gemini-3-pro-image-preview' },
+    grok: { label: 'Grok', models: ['grok-imagine-image-2.0', 'grok-imagine-image'], default: 'grok-imagine-image-2.0' },
+    openai: { label: 'OpenAI', models: ['gpt-image-2', 'gpt-image-1'], default: 'gpt-image-2' },
+  },
+};
+
+function harness({
+  segments, frameAvailable = true, postJson, engineSettings = {}, overlayAvailable = false, apiImage = null, runner = { text_runner: 'builtin' }, intro = {},
+} = {}) {
   const all = [];
   const calls = [];
   const toasts = [];
@@ -35,11 +45,9 @@ function harness({ segments, frameAvailable = true, postJson, engineSettings = {
     makeEditorImageUrl: (path) => `image:${path}`,
     makeEditorVideoUrl: (path, bust) => `video:${path}?${bust ?? ''}`,
     toast: (message, isError) => toasts.push([message, Boolean(isError)]),
-    fluxKleinLoraPayload: () => ({}),
-    loadMossReferenceSettings: () => moss,
     makeButton: (label) => Object.assign(control('button'), { textContent: label }),
     makeInput: (value = '', type = 'text') => Object.assign(control('input'), { value, type }),
-    makeSelect: (options, value) => Object.assign(control('select'), { value }),
+    makeSelect: (options, value) => Object.assign(control('select'), { value, options: options.map((option) => option.value) }),
     makeCheckbox: (label, checked) => ({ wrapper: control('label'), input: { checked } }),
     makeField: (label, input) => control('label'),
     postJson: async (url, payload) => {
@@ -54,10 +62,10 @@ function harness({ segments, frameAvailable = true, postJson, engineSettings = {
   vm.runInContext(readBuilderModule('thumbnail.mjs'), context);
   const state = {
     segments, projectFolder: 'C:/p', thumbnailAvailable: true, thumbnailFrameAvailable: frameAvailable, thumbnailOverlayAvailable: overlayAvailable,
-    thumbnailIntro: context.normalizeThumbnailIntro(intro), nbImageSettings: { api_key: 'key', model: 'nb-model' }, fluxKleinSettings: {},
+    thumbnailApiImage: apiImage, thumbnailIntro: context.normalizeThumbnailIntro(intro), nbImageSettings: { api_key: 'key', model: 'nb-model' },
   };
   const deps = {
-    state, projectInput: { value: 'C:/p' }, runnerPayload: () => ({ text_runner: 'builtin' }),
+    state, projectInput: { value: 'C:/p' }, runnerPayload: () => runner,
     engineSettings: (engine) => ({ nano_banana: state.nbImageSettings, ...engineSettings })[engine],
     sceneImagePath: (segment) => segment.image || '', sceneVideoPath: (segment) => segment.video || '',
     sceneLabel: (segment, index) => `Scene ${index + 1}`, save: async () => { saves.push(JSON.stringify(state.thumbnailIntro.source_path)); },
@@ -230,74 +238,49 @@ async function pickFrame(h) {
   scrub.value = '60';
   scrub.listeners.input[0]();
   await h.button('Use this frame').onclick();
-  return {
-    select: h.find((node) => node.tag === 'select'),
-    change: h.find((node) => node.attrs && node.attrs['aria-label'] === 'How much to change the frame'),
-  };
+  return { select: h.find((node) => node.tag === 'select') };
 }
 
-test('every image workflow can be chosen, and MOSS-Image restyles the frame with image to image at the chosen change', async () => {
-  const replies = { ...frameReplies, '/vrgdg/workflow_runner/build_moss_image_prompt': { prompt: {} } };
-  const h = harness({
-    segments: scenes(), postJson: async (url) => replies[url],
-    moss: { unet_name: 'moss.safetensors', clip_name: 'q.safetensors', vae_name: 'f.safetensors', lora_name: 'turbo.safetensors', steps: 8, cfg: 1, width: 1280, height: 720 },
-  });
-  const { select, change } = await pickFrame(h);
-  assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_ENGINES', h.context)), ['overlay', 'qwen_image_edit', 'nano_banana', 'flux_klein', 'moss_image_edit', 'krea2_2pass', 'zimage', 'ernie_image', 'moss_image']);
-  select.value = 'moss_image';
-  select.listeners.change[0]();
-  change.value = '40';
-  change.listeners.input[0]();
-  await h.button('Write prompt with LLM').onclick();
-  assert.equal(h.calls.find(([url]) => url.endsWith('/thumbnail/prompt'))[1].engine_kind, 'restyle', 'a restyle workflow is given a description of the picture');
-  await h.button('Generate thumbnail').onclick();
-  const [, built] = h.calls.find(([url]) => url.endsWith('/build_moss_image_prompt'));
-  assert.equal(built.use_image_to_image, true);
-  assert.equal(built.image_to_image_path, 'C:/p/thumbnail/source_0001.png');
-  assert.equal(built.denoise, 0.4);
-  assert.equal(built.unet_name, 'moss.safetensors', 'it runs with the models the user set for MOSS-Image');
-  assert.equal(built.prompt, 'A close-up of a singer.');
-  assert.equal(h.state.thumbnailIntro.engine, 'moss_image');
-  assert.equal(h.state.thumbnailIntro.change, 0.4);
-  assert.equal(h.state.thumbnailIntro.image_path, 'C:/p/thumbnail/thumbnail_0001.png');
-  assert.equal(h.state.thumbnailIntro.history[0].engine, 'moss_image');
+test('only Overlay, Qwen Image Edit, NanoBanana and the API image are offered, and only where the build has them', async () => {
+  const bare = harness({ segments: scenes() });
+  bare.open();
+  assert.deepEqual(Array.from(bare.find((node) => node.tag === 'select').options), ['qwen_image_edit', 'nano_banana']);
+  const full = harness({ segments: scenes(), overlayAvailable: true, apiImage: API_IMAGE_CAPABILITY });
+  full.open();
+  assert.deepEqual(Array.from(full.find((node) => node.tag === 'select').options), ['overlay', 'qwen_image_edit', 'nano_banana', 'api_image']);
+  // A project saved with a workflow that was taken out of the list opens on NanoBanana.
+  for (const gone of ['flux_klein', 'moss_image_edit', 'krea2_2pass', 'zimage', 'ernie_image', 'moss_image']) {
+    const old = harness({ segments: scenes(), overlayAvailable: true, apiImage: API_IMAGE_CAPABILITY, intro: { engine: gone } });
+    old.open();
+    assert.equal(old.find((node) => node.tag === 'select').value, 'nano_banana', gone);
+  }
 });
 
-test('an edit workflow is given the editing prompt, and the other workflows use the Builder\'s own settings for them', async () => {
-  const replies = { ...frameReplies, '/vrgdg/workflow_runner/build_nb_image_prompt': { prompt: {} }, '/vrgdg/workflow_runner/build_zimage_prompt': { prompt: {} } };
-  const h = harness({ segments: scenes(), postJson: async (url) => replies[url], engineSettings: { zimage: { unet_name: 'z.safetensors', first_pass_width: 960 } } });
-  const { select } = await pickFrame(h);
+test('NanoBanana is given the editing prompt and the Builder\'s own key and model', async () => {
+  const replies = { ...frameReplies, '/vrgdg/workflow_runner/build_nb_image_prompt': { prompt: {} } };
+  const h = harness({ segments: scenes(), postJson: async (url) => replies[url] });
+  await pickFrame(h);
   await h.button('Write prompt with LLM').onclick();
   assert.equal(h.calls.find(([url]) => url.endsWith('/thumbnail/prompt'))[1].engine_kind, 'edit');
-  select.value = 'zimage';
-  select.listeners.change[0]();
   await h.button('Generate thumbnail').onclick();
-  const [, built] = h.calls.find(([url]) => url.endsWith('/build_zimage_prompt'));
-  assert.equal(built.unet_name, 'z.safetensors');
-  assert.equal(built.first_pass_width, 960);
-  assert.equal(built.image_to_image_start_at_step, 3, 'the default change of 65 percent');
+  const [, built] = h.calls.find(([url]) => url.endsWith('/build_nb_image_prompt'));
+  assert.equal(built.api_key, 'key');
+  assert.equal(built.model, 'nb-model');
+  assert.equal(h.state.thumbnailIntro.engine, 'nano_banana');
+  assert.equal(h.state.thumbnailIntro.history[0].engine, 'nano_banana');
 });
 
-test('the change control is only shown for restyle workflows, and switching kind flags a prompt written for the other kind', async () => {
-  const h = harness({ segments: scenes(), postJson: async (url) => frameReplies[url] });
-  const { select, change } = await pickFrame(h);
-  const field = h.all.find((node) => node.tag === 'label' && node.style.display === 'none');
-  assert.ok(field, 'the change field starts hidden for the default edit workflow');
-  const hint = h.all.find((node) => /edits the frame by instruction/.test(node.textContent));
-  assert.ok(hint);
+test('there is no Change control, and switching to a workflow that wants another kind of prompt flags the prompt', async () => {
+  const h = harness({ segments: scenes(), apiImage: API_IMAGE_CAPABILITY, postJson: async (url) => frameReplies[url] });
+  const { select } = await pickFrame(h);
+  assert.equal(h.all.find((node) => node.attrs && node.attrs['aria-label'] === 'How much to change the frame'), undefined);
   await h.button('Write prompt with LLM').onclick();
-  select.value = 'krea2_2pass';
+  select.value = 'api_image';
   select.listeners.change[0]();
-  assert.equal(field.style.display, 'flex');
-  assert.match(hint.textContent, /restyles the frame from a description/);
-  const status = h.all.find((node) => /different kind of prompt/.test(node.textContent));
-  assert.ok(status, 'the prompt was written for an edit workflow');
-  select.value = 'zimage';
+  assert.equal(h.all.find((node) => /different kind of prompt/.test(node.textContent)), undefined, 'NanoBanana and the API image share the editing prompt');
+  select.value = 'qwen_image_edit';
   select.listeners.change[0]();
-  assert.equal(field.style.display, 'flex', 'still a restyle workflow');
-  select.value = 'flux_klein';
-  select.listeners.change[0]();
-  assert.equal(field.style.display, 'none');
+  assert.ok(h.all.find((node) => /different kind of prompt/.test(node.textContent)), 'Qwen Image Edit wants a prompt about the change only');
 });
 
 test('the thumbnail is the first frame, so there is no length to set and the stitch sends none', async () => {
@@ -356,46 +339,6 @@ test('the title is mandatory: it is in the prompt the LLM wrote, it comes back w
   assert.equal(h.toasts.length, toasts);
 });
 
-test('MOSS-Image Edit asks the LLM for the short add-and-keep instruction and sends the frame as a reference with the saved Edit LoRA', async () => {
-  const replies = { ...frameReplies, '/vrgdg/workflow_runner/build_moss_image_prompt': { prompt: {} } };
-  const h = harness({
-    segments: scenes(), postJson: async (url) => replies[url],
-    moss: { unet_name: 'moss.safetensors', clip_name: 'q.safetensors', vae_name: 'f.safetensors', edit_lora_name: 'moss_image_edit_lora.safetensors', lora_name: 'turbo.safetensors', steps: 8, cfg: 1, width: 1920, height: 1088 },
-  });
-  const { select } = await pickFrame(h);
-  const field = h.all.find((node) => node.tag === 'label' && node.style.display === 'none');
-  const hint = h.all.find((node) => /edits the frame by instruction/.test(node.textContent));
-  const titleInput = h.all.find((node) => node.tag === 'input' && node.maxLength === 120);
-  titleInput.value = 'HEAT';
-  select.value = 'moss_image_edit';
-  select.listeners.change[0]();
-  assert.equal(field.style.display, 'none', 'it follows an instruction, so there is no Change to set');
-  assert.match(hint.textContent, /MOSS-Image Edit changes the frame by a short instruction/);
-  assert.match(hint.textContent, /including the title text/);
-  await h.button('Write prompt with LLM').onclick();
-  assert.equal(h.calls.find(([url]) => url.endsWith('/thumbnail/prompt'))[1].engine_kind, 'moss_edit', 'the LLM writes the short Add ... Keep ... unchanged instruction');
-  await h.button('Generate thumbnail').onclick();
-  const [, built] = h.calls.find(([url]) => url.endsWith('/build_moss_image_prompt'));
-  assert.equal(built.use_edit, true);
-  assert.deepEqual(JSON.parse(JSON.stringify(built.image_ingredients)), [{ path: 'C:/p/thumbnail/source_0001.png' }]);
-  assert.equal(built.edit_lora_name, 'moss_image_edit_lora.safetensors');
-  assert.equal(built.unet_name, 'moss.safetensors', 'it runs with the models the user set for MOSS-Image');
-  for (const turbo of ['steps', 'cfg', 'lora_name', 'denoise', 'use_image_to_image']) assert.equal(turbo in built, false, turbo);
-  assert.match(built.prompt, /Add the title text "HEAT"/, 'the title is in what was sent');
-  assert.equal(h.state.thumbnailIntro.engine, 'moss_image_edit');
-  assert.equal(h.state.thumbnailIntro.history[0].engine, 'moss_image_edit');
-});
-
-test('the MOSS-Image restyle says it cannot be relied on for the title and points to MOSS-Image Edit', async () => {
-  const h = harness({ segments: scenes(), postJson: async (url) => frameReplies[url] });
-  const { select } = await pickFrame(h);
-  const hint = h.all.find((node) => /edits the frame by instruction/.test(node.textContent));
-  select.value = 'moss_image';
-  select.listeners.change[0]();
-  assert.match(hint.textContent, /restyles the frame from a description/);
-  assert.match(hint.textContent, /does not draw the title text reliably: use MOSS-Image Edit/);
-});
-
 // -- Overlay: the frame kept exactly, with the grade and the title put on top ---------------------------------------------------------
 
 const overlayReplies = {
@@ -425,7 +368,7 @@ test('Overlay is only offered by a build that has it, and a project saved with i
 
 test('choosing Overlay hides the prompt and the LLM button, and says nothing is redrawn', async () => {
   const h = harness({ segments: scenes(), overlayAvailable: true, postJson: async (url) => overlayReplies[url] });
-  const picked = await pickFrame(h);
+  await pickFrame(h);
   const { engine } = overlayControls(h);
   const hint = h.all.find((node) => /edits the frame by instruction|keeps every pixel/.test(node.textContent));
   assert.ok(hint);
@@ -434,8 +377,7 @@ test('choosing Overlay hides the prompt and the LLM button, and says nothing is 
   assert.match(hint.textContent, /keeps every pixel of your frame/);
   assert.match(hint.textContent, /No AI redraws anything, so the person and the scene cannot change/);
   assert.equal(h.button('Write prompt with LLM').style.display, 'none');
-  assert.equal(picked.change.value, '65', 'the Change slider is for restyles');
-  engine.value = 'krea2_2pass';
+  engine.value = 'nano_banana';
   engine.listeners.change[0]();
   assert.equal(h.button('Write prompt with LLM').style.display, '', 'the LLM button is back for an image workflow');
   assert.match(hint.textContent, /redraws the frame, so the person, the face and the scene can change: use Overlay to keep them exactly/);
@@ -514,13 +456,11 @@ test('Qwen Image Edit gets its own kind of prompt, the frame as a reference, and
   const replies = { ...frameReplies, '/vrgdg/workflow_runner/build_qwen_image_edit_prompt': { prompt: {} } };
   const h = harness({ segments: scenes(), postJson: async (url) => replies[url] });
   const { select } = await pickFrame(h);
-  const field = h.all.find((node) => node.tag === 'label' && node.style.display === 'none');
   const hint = h.all.find((node) => /edits the frame by instruction/.test(node.textContent));
   const titleInput = h.all.find((node) => node.tag === 'input' && node.maxLength === 120);
   titleInput.value = 'HEAT';
   select.value = 'qwen_image_edit';
   select.listeners.change[0]();
-  assert.equal(field.style.display, 'none', 'it follows an instruction, so there is no Change to set');
   assert.match(hint.textContent, /^Qwen Image Edit edits the frame by instruction/);
   assert.match(hint.textContent, /newest Qwen Image Edit model you have installed \(2511 before 2509\)/);
   assert.match(hint.textContent, /use Overlay when nothing may change/);
@@ -539,4 +479,171 @@ test('Qwen Image Edit gets its own kind of prompt, the frame as a reference, and
   for (const modelField of ['unet_name', 'clip_name', 'vae_name', 'lora_name', 'steps', 'cfg']) assert.equal(modelField in built, false, modelField);
   assert.equal(h.state.thumbnailIntro.engine, 'qwen_image_edit');
   assert.equal(h.state.thumbnailIntro.history[0].engine, 'qwen_image_edit');
+});
+
+// -- API image: the frame edited by the image API of the LLM Runner's provider --------------------------------------------------------
+
+const GEMINI_RUNNER = { text_runner: 'builtin', llm_api_provider: 'google', llm_api_key: 'g-key' };
+const apiReplies = {
+  ...frameReplies,
+  '/vrgdg/music_builder/thumbnail/api_image': { image_path: 'C:/p/thumbnail/thumbnail_0001.png', width: 1280, height: 720, provider: 'gemini', model: 'gemini-3-pro-image-preview' },
+};
+
+function apiControls(h) {
+  const models = h.find((node) => node.tag === 'datalist');
+  return {
+    engine: h.find((node) => node.tag === 'select'),
+    model: h.find((node) => node.tag === 'input' && node.attrs.list === 'vrgdg-thumbnail-api-models'),
+    models,
+    group: h.all.find((node) => node.children && node.children.includes(models)),
+    provider: h.all.find((node) => /^(Provider: |The LLM Runner's provider cannot draw)/.test(node.textContent)),
+    hint: h.all.find((node) => /edits the frame by instruction|image API of the provider/.test(node.textContent)),
+    prompt: h.all.find((node) => node.tag === 'textarea' && /^The edit prompt/.test(node.placeholder || '')),
+  };
+}
+
+const chooseApiImage = (h) => {
+  const controls = apiControls(h);
+  controls.engine.value = 'api_image';
+  controls.engine.listeners.change[0]();
+  return controls;
+};
+
+test('the API image engine shows the LLM Runner\'s provider and that provider\'s image models, and only for itself', () => {
+  const h = harness({ segments: scenes(), apiImage: API_IMAGE_CAPABILITY, runner: GEMINI_RUNNER });
+  h.open();
+  const { group, models, model, provider, hint, engine } = apiControls(h);
+  assert.equal(group.style.display, 'none', 'the default engine has no use for it');
+  engine.value = 'api_image';
+  engine.listeners.change[0]();
+  assert.equal(group.style.display, 'flex');
+  assert.equal(provider.textContent, 'Provider: Gemini, with the key from the LLM Runner.');
+  assert.deepEqual(models.children.map((option) => option.value), ['gemini-3-pro-image-preview', 'gemini-3.1-flash-image-preview']);
+  assert.equal(model.placeholder, 'Empty: gemini-3-pro-image-preview');
+  assert.match(hint.textContent, /image API of the provider set in the LLM Runner \(Gemini, Grok or OpenAI\) with that provider's key/);
+  assert.match(hint.textContent, /use Overlay to keep them exactly/);
+  engine.value = 'qwen_image_edit';
+  engine.listeners.change[0]();
+  assert.equal(group.style.display, 'none');
+});
+
+test('the model list follows the provider, and a provider that cannot draw is said so in the dialog', () => {
+  const grok = harness({ segments: scenes(), apiImage: API_IMAGE_CAPABILITY, runner: { llm_api_provider: 'grok', llm_api_key: 'k' } });
+  grok.open();
+  const shown = chooseApiImage(grok);
+  assert.equal(shown.provider.textContent, 'Provider: Grok, with the key from the LLM Runner.');
+  assert.deepEqual(shown.models.children.map((option) => option.value), ['grok-imagine-image-2.0', 'grok-imagine-image']);
+
+  const claude = harness({ segments: scenes(), apiImage: API_IMAGE_CAPABILITY, runner: { llm_api_provider: 'anthropic', llm_api_key: 'k' } });
+  claude.open();
+  const none = chooseApiImage(claude);
+  assert.match(none.provider.textContent, /cannot draw pictures. Pick Gemini \(google\), Grok or OpenAI in the LLM Runner/);
+  assert.deepEqual(none.models.children, []);
+  assert.equal(none.model.placeholder, '');
+});
+
+test('Generate with the API image sends the frame, the prompt, the provider and its key to the pack, and nothing to ComfyUI', async () => {
+  const h = harness({ segments: scenes(), apiImage: API_IMAGE_CAPABILITY, runner: GEMINI_RUNNER, postJson: async (url) => apiReplies[url] });
+  await pickFrame(h);
+  const { engine, model } = chooseApiImage(h);
+  const titleInput = h.all.find((node) => node.tag === 'input' && node.maxLength === 120);
+  titleInput.value = 'HEAT';
+  model.value = ' gemini-3.1-flash-image-preview ';
+  await h.button('Write prompt with LLM').onclick();
+  const asked = h.calls.find(([url]) => url.endsWith('/thumbnail/prompt'))[1];
+  assert.equal(asked.engine_kind, 'edit', 'the API image is given the editing prompt');
+  assert.equal(asked.llm_api_provider, 'google', 'the LLM writes it with the same runner');
+  await h.button('Generate thumbnail').onclick();
+  assert.deepEqual(h.calls.map(([url]) => url), [
+    '/vrgdg/music_builder/thumbnail/frame', '/vrgdg/music_builder/thumbnail/prompt', '/vrgdg/music_builder/thumbnail/api_image',
+  ], 'no workflow is built or queued, and nothing is saved separately');
+  const [, sent] = h.calls.at(-1);
+  assert.deepEqual(JSON.parse(JSON.stringify(sent)), {
+    project_folder: 'C:/p', source_path: 'C:/p/thumbnail/source_0001.png', prompt: `A close-up of a singer. ${h.context.thumbnailTitleClause('HEAT', 'edit')}`,
+    provider: 'gemini', api_key: 'g-key', model: 'gemini-3.1-flash-image-preview',
+  });
+  const intro = h.state.thumbnailIntro;
+  assert.equal(intro.engine, 'api_image');
+  assert.equal(intro.image_path, 'C:/p/thumbnail/thumbnail_0001.png', 'the pack saved it, so that is the picture');
+  assert.equal(intro.api_image.model, 'gemini-3.1-flash-image-preview', 'the model is remembered');
+  assert.equal(intro.history.length, 1);
+  assert.equal(intro.history[0].engine, 'api_image');
+  assert.equal(intro.history[0].prompt, sent.prompt);
+  assert.equal(engine.disabled, false);
+});
+
+test('the API image title is mandatory too, and an empty model means the provider\'s first', async () => {
+  const h = harness({ segments: scenes(), apiImage: API_IMAGE_CAPABILITY, runner: { llm_api_provider: 'openai', llm_api_key: 'o-key' }, postJson: async (url) => apiReplies[url] });
+  await pickFrame(h);
+  const { prompt } = chooseApiImage(h);
+  h.all.find((node) => node.tag === 'input' && node.maxLength === 120).value = 'HEAT';
+  prompt.value = 'Make it pop.';
+  await h.button('Generate thumbnail').onclick();
+  const [, sent] = h.calls.at(-1);
+  assert.equal(sent.prompt, `Make it pop. ${h.context.thumbnailTitleClause('HEAT', 'edit')}`);
+  assert.equal(sent.provider, 'openai');
+  assert.equal(sent.model, '', 'the pack uses the provider\'s first image model');
+});
+
+test('the API image engine says what is missing before it calls anything, and the dialog stays usable', async () => {
+  for (const [runner, message] of [
+    [{ llm_api_provider: 'anthropic', llm_api_key: 'k' }, /cannot draw pictures/],
+    [{ llm_api_provider: 'grok', llm_api_key: '' }, /Add your Grok API key in the LLM Runner first/],
+  ]) {
+    const h = harness({ segments: scenes(), apiImage: API_IMAGE_CAPABILITY, runner, postJson: async (url) => apiReplies[url] });
+    await pickFrame(h);
+    chooseApiImage(h).prompt.value = 'Make it pop.';
+    await h.button('Generate thumbnail').onclick();
+    assert.equal(h.calls.some(([url]) => url.endsWith('/thumbnail/api_image')), false, 'nothing was sent');
+    assert.equal(h.toasts.at(-1)[1], true);
+    assert.match(h.toasts.at(-1)[0], message);
+    assert.equal(h.button('Generate thumbnail').disabled, false);
+    assert.equal(h.state.thumbnailIntro.image_path, '');
+  }
+});
+
+test('an API image that the provider refuses shows its message and can be tried again', async () => {
+  const h = harness({
+    segments: scenes(), apiImage: API_IMAGE_CAPABILITY, runner: GEMINI_RUNNER,
+    postJson: async (url) => {
+      if (url.endsWith('/thumbnail/api_image')) throw new Error('Gemini HTTP 429: quota exceeded');
+      return apiReplies[url];
+    },
+  });
+  await pickFrame(h);
+  chooseApiImage(h).prompt.value = 'Make it pop.';
+  await h.button('Generate thumbnail').onclick();
+  assert.match(h.toasts.at(-1)[0], /Gemini HTTP 429: quota exceeded/);
+  assert.equal(h.toasts.at(-1)[1], true);
+  assert.equal(h.button('Generate thumbnail').disabled, false, 'it can be tried again');
+  assert.equal(h.state.thumbnailIntro.image_path, '');
+  assert.equal(h.state.thumbnailIntro.history.length, 0);
+});
+
+test('the API image reopens with the model that was chosen', () => {
+  const h = harness({ segments: scenes(), apiImage: API_IMAGE_CAPABILITY, runner: GEMINI_RUNNER, intro: { engine: 'api_image', api_image: { model: 'my-own-model' } } });
+  h.open();
+  const { engine, model } = apiControls(h);
+  assert.equal(engine.value, 'api_image');
+  assert.equal(model.value, 'my-own-model');
+});
+
+test('the build says which engines it has: the overlay and the providers of the API image', async () => {
+  const ask = async (reply) => {
+    const h = harness({ segments: scenes() });
+    h.context.api.fetchApi = async () => reply;
+    const state = {};
+    await h.context.loadThumbnailCapabilities(state);
+    return state;
+  };
+  const full = await ask({ ok: true, json: async () => ({ ok: true, version: 1, frame: true, overlay: true, api_image: API_IMAGE_CAPABILITY }) });
+  assert.equal(full.thumbnailOverlayAvailable, true);
+  assert.deepEqual(Object.keys(full.thumbnailApiImage.providers), ['gemini', 'grok', 'openai']);
+  const older = await ask({ ok: true, json: async () => ({ ok: true, version: 1, frame: true }) });
+  assert.equal(older.thumbnailAvailable, true);
+  assert.equal(older.thumbnailOverlayAvailable, false);
+  assert.equal(older.thumbnailApiImage, null, 'a build without the route does not offer the engine');
+  const missing = await ask({ ok: false, json: async () => null });
+  assert.equal(missing.thumbnailAvailable, false);
+  assert.equal(missing.thumbnailApiImage, null);
 });

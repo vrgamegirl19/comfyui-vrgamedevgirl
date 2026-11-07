@@ -1,5 +1,6 @@
 // Thumbnail intro. The Thumbnail button opens a dialog: scrub the video to the exact moment you want and take that frame, let the
-// Builder's LLM look at it and write a YouTube-style edit prompt, send the frame through NanoBanana or Flux/Klein, keep the result.
+// Builder's LLM look at it and write a YouTube-style edit prompt, make the thumbnail from the frame (Overlay, Qwen Image Edit,
+// NanoBanana or the image API of the LLM Runner's provider), keep the result.
 // When the intro is on, the final stitch puts the picture in front of the video for a few seconds
 // (`POST /vrgdg/music_builder/thumbnail/prepend`). The scenes, the timeline and the audio sync are never touched. The pure parts
 // (the saved settings, the timeline of frames) are in thumbnail_state.mjs.
@@ -8,11 +9,11 @@ import { api } from "../../../scripts/api.js";
 import { makeEditorImageUrl, makeEditorVideoUrl, postJson, queueWorkflowPrompt, waitForImages } from "./comfy_api.mjs";
 import { BUILDER_FONT_STACK, DEFAULT_NB_IMAGE_MODEL } from "./constants.mjs";
 import { makeButton, makeCheckbox, makeField, makeInput, makeSelect, toast } from "./controls.mjs";
-import { fluxKleinLoraPayload } from "./image_generation.mjs";
-import { loadMossReferenceSettings } from "./moss_settings.mjs";
-import { THUMBNAIL_ENGINE_LABELS, thumbnailEngineRequest, thumbnailOverlayRequest } from "./thumbnail_engines.mjs";
 import {
-  clampThumbnailChange, ensureThumbnailTitle, formatThumbnailTime, normalizeThumbnailIntro, normalizeThumbnailOverlay, thumbnailEngineKind,
+  THUMBNAIL_ENGINE_LABELS, thumbnailApiImageProvider, thumbnailApiImageRequest, thumbnailEngineRequest, thumbnailOverlayRequest,
+} from "./thumbnail_engines.mjs";
+import {
+  ensureThumbnailTitle, formatThumbnailTime, normalizeThumbnailApiImage, normalizeThumbnailIntro, normalizeThumbnailOverlay, thumbnailEngineKind,
   thumbnailFrameRange, thumbnailHistoryWith, thumbnailIntroForStitch, thumbnailItemAt, thumbnailLocalSeconds, thumbnailTimelineItems,
   THUMBNAIL_DEFAULT_ENGINE, THUMBNAIL_ENGINES, THUMBNAIL_FPS,
 } from "./thumbnail_state.mjs";
@@ -20,15 +21,13 @@ import {
 const THUMBNAIL_PREPEND_TIMEOUT_MS = 30 * 60 * 1000;
 const THUMBNAIL_PROMPT_TIMEOUT_MS = 10 * 60 * 1000;
 const THUMBNAIL_FRAME_TIMEOUT_MS = 2 * 60 * 1000;
+const THUMBNAIL_API_IMAGE_TIMEOUT_MS = 10 * 60 * 1000;
 // Where inside a frame's time slot the player is parked, so it shows that frame and not the one before it.
 const FRAME_SEEK_OFFSET = 0.25;
 const ENGINE_OPTIONS = THUMBNAIL_ENGINES.map((value) => ({ value, label: THUMBNAIL_ENGINE_LABELS[value] }));
 // The AI workflows redraw the frame, so the person, the face and the scene can drift. Overlay is the one that cannot change them.
 const REDRAW_WARNING = " It redraws the frame, so the person, the face and the scene can change: use Overlay to keep them exactly.";
 const EDIT_HINT = `This workflow edits the frame by instruction, so the prompt tells it what to change.${REDRAW_WARNING}`;
-const RESTYLE_HINT = `This workflow restyles the frame from a description of the finished picture. The prompt describes the thumbnail, and Change sets how far it moves from the frame.${REDRAW_WARNING}`;
-const MOSS_EDIT_HINT = "MOSS-Image Edit changes the frame by a short instruction (the Edit LoRA under Models > MOSS-Image, and ComfyUI 0.43 or newer). It keeps the picture and the composition and does what the prompt adds, including the title text, but it still redraws faces, so the skin tone and the face can drift: use Overlay to keep the person exactly.";
-const MOSS_RESTYLE_HINT = `${RESTYLE_HINT} A restyle keeps the frame's composition and does not draw the title text reliably: use MOSS-Image Edit when the thumbnail needs text.`;
 const QWEN_EDIT_HINT = "Qwen Image Edit edits the frame by instruction and tends to keep the person and the scene as they are. Its prompt is about the change only, mostly the title lettering, so put the lettering you want in Style notes (for example: wildstyle graffiti, orange to red gradient, neon cyan outline, drips, splatter, swirl lines in cyan, magenta and yellow). It uses the newest Qwen Image Edit model you have installed (2511 before 2509) and its Lightning LoRA. It still redraws pixels, so fine detail can change a little: use Overlay when nothing may change.";
 const OVERLAY_HINT = "Overlay keeps every pixel of your frame and puts the layers on top, like a thumbnail made in an image editor: a color grade, a glow on the brights, a vignette and the title with an outline and a glow, placed in the calmest part of the frame. No AI redraws anything, so the person and the scene cannot change. It needs no prompt.";
 const OVERLAY_COLOR_OPTIONS = [
@@ -39,12 +38,11 @@ const OVERLAY_POSITION_OPTIONS = [
   { value: "auto", label: "Automatic (the calmest part of the frame)" }, { value: "top", label: "Top" }, { value: "bottom", label: "Bottom" },
   { value: "left", label: "Left" }, { value: "right", label: "Right" },
 ];
-// The settings of the two MOSS-Image workflows are the ones saved by the MOSS-Image tab of Models > Select models.
-const MOSS_ENGINES = ["moss_image", "moss_image_edit"];
+const API_IMAGE_HINT = "The pack sends your frame and the prompt to the image API of the provider set in the LLM Runner (Gemini, Grok or OpenAI) with that provider's key, and keeps the picture. The provider and the key are changed in the LLM Runner. The image model is below: leave it empty for the provider's first one, or type any image model the provider has." + REDRAW_WARNING;
 
-// Asks whether this build can make thumbnails, and whether it can take one exact frame of a video. A build without the routes
-// answers 404, which is an answer here and not an error for the project's error log, so the button stays hidden and nothing
-// else changes.
+// Asks whether this build can make thumbnails, whether it can take one exact frame of a video, make an overlay and use an image API
+// (`api_image` has the providers and their image models). A build without the routes answers 404, which is an answer here and not an
+// error for the project's error log, so the button stays hidden and nothing else changes.
 export async function loadThumbnailCapabilities(state) {
   try {
     const response = await api.fetchApi("/vrgdg/music_builder/thumbnail/capabilities", { timeoutMs: null });
@@ -52,10 +50,12 @@ export async function loadThumbnailCapabilities(state) {
     state.thumbnailAvailable = Boolean(data && data.ok !== false && data.version);
     state.thumbnailFrameAvailable = Boolean(state.thumbnailAvailable && data.frame);
     state.thumbnailOverlayAvailable = Boolean(state.thumbnailAvailable && data.overlay);
+    state.thumbnailApiImage = state.thumbnailAvailable && data.api_image?.providers ? data.api_image : null;
   } catch {
     state.thumbnailAvailable = false;
     state.thumbnailFrameAvailable = false;
     state.thumbnailOverlayAvailable = false;
+    state.thumbnailApiImage = null;
   }
   return state.thumbnailAvailable;
 }
@@ -84,11 +84,10 @@ export async function applyThumbnailIntroAfterStitch(state, stitched, { progress
 
 // Sends the chosen frame through the chosen image workflow and returns the ComfyUI view descriptor of the result. `settings` is the
 // Builder's own settings for that workflow, so it runs with the models, LoRAs and size the user already chose for it.
-async function generateThumbnailImage({ engine, prompt, sourcePath, change, settings, onStatus }) {
+async function generateThumbnailImage({ engine, prompt, sourcePath, settings, onStatus }) {
   const { url, payload, label } = thumbnailEngineRequest({
-    engine, prompt, sourcePath, change, settings,
+    engine, prompt, sourcePath, settings,
     seed: Math.floor(Math.random() * 2 ** 31),
-    loraPayload: fluxKleinLoraPayload,
     defaultNbModel: DEFAULT_NB_IMAGE_MODEL,
   });
   onStatus(`Building the ${label} workflow...`);
@@ -129,8 +128,8 @@ function sectionTitle(text) {
 // image workflow), save() (a quiet autosave) and createProgressWindow(title).
 export function openThumbnailDialog(deps) {
   const { state, projectInput, runnerPayload, sceneImagePath, sceneVideoPath, sceneLabel, engineSettings, save, createProgressWindow } = deps;
-  // The settings an image workflow runs with: the Builder's own for it (MOSS-Image's live in the Reference Builder's saved choices).
-  const settingsFor = (engine) => (MOSS_ENGINES.includes(engine) ? loadMossReferenceSettings() : engineSettings?.(engine)) || {};
+  // The settings an image workflow runs with: the Builder's own for it.
+  const settingsFor = (engine) => engineSettings?.(engine) || {};
   const projectFolder = () => String(projectInput?.value || state.projectFolder || "").trim();
   if (!projectFolder()) {
     toast("Create or load a project before making a thumbnail.", true);
@@ -263,25 +262,37 @@ export function openThumbnailDialog(deps) {
   const sourceCaption = document.createElement("div");
   sourceCaption.style.cssText = "font-size:12px;color:#93c5fd;line-height:1.4;";
 
-  // Step 2 and 3: the prompt and the picture. A build without the overlay route does not offer that engine, and a project saved with
-  // it opens on the default engine instead.
-  const engineOptions = ENGINE_OPTIONS.filter((option) => option.value !== "overlay" || state.thumbnailOverlayAvailable);
+  // Step 2 and 3: the prompt and the picture. A build without the overlay or the API image route does not offer that engine, and a
+  // project saved with it opens on the default engine instead.
+  const engineOptions = ENGINE_OPTIONS.filter((option) => (option.value !== "overlay" || state.thumbnailOverlayAvailable)
+    && (option.value !== "api_image" || state.thumbnailApiImage));
   const engineSelect = makeSelect(engineOptions, engineOptions.some((option) => option.value === intro.engine) ? intro.engine : THUMBNAIL_DEFAULT_ENGINE);
   const engineHint = document.createElement("div");
   engineHint.style.cssText = "font-size:11px;line-height:1.4;color:#94a3b8;";
-  // How far a restyle workflow may move away from the frame. Edit workflows follow an instruction instead, so it is hidden for them.
-  const changeInput = document.createElement("input");
-  changeInput.type = "range";
-  changeInput.min = "0";
-  changeInput.max = "100";
-  changeInput.step = "5";
-  changeInput.value = String(Math.round(intro.change * 100));
-  changeInput.style.cssText = "width:100%;accent-color:#22d3ee;";
-  changeInput.setAttribute("aria-label", "How much to change the frame");
-  const changeField = makeField("Change", changeInput);
-  const paintChange = () => {
-    const label = changeField.children[0];
-    if (label) label.textContent = `Change: ${changeInput.value}%  (lower keeps the frame, higher restyles more)`;
+  // The API image engine's choices: the provider is the LLM Runner's (shown, not chosen here), the image model is typed or picked from
+  // that provider's list.
+  const apiModelInput = makeInput(intro.api_image.model);
+  const apiModelList = document.createElement("datalist");
+  apiModelList.id = "vrgdg-thumbnail-api-models";
+  apiModelInput.setAttribute("list", apiModelList.id);
+  const apiProviderLine = document.createElement("div");
+  apiProviderLine.style.cssText = "font-size:12px;line-height:1.4;";
+  const apiGroup = document.createElement("div");
+  apiGroup.style.cssText = COLUMN_CSS;
+  apiGroup.append(apiProviderLine, makeField("Image model", apiModelInput), apiModelList);
+  const paintApiImage = () => {
+    const provider = thumbnailApiImageProvider(runnerPayload?.());
+    const info = provider ? state.thumbnailApiImage?.providers?.[provider.name] : null;
+    apiProviderLine.textContent = provider
+      ? `Provider: ${provider.label}, with the key from the LLM Runner.`
+      : "The LLM Runner's provider cannot draw pictures. Pick Gemini (google), Grok or OpenAI in the LLM Runner and add its key.";
+    apiProviderLine.style.color = provider ? "#93c5fd" : "#fcd34d";
+    apiModelList.replaceChildren(...(info?.models || []).map((model) => {
+      const option = document.createElement("option");
+      option.value = model;
+      return option;
+    }));
+    apiModelInput.placeholder = info ? `Empty: ${info.default}` : "";
   };
   // The Overlay engine's choices: the color of the title, where it goes, and how strong the grade, the glow and the vignette are.
   const overlayColor = makeSelect(OVERLAY_COLOR_OPTIONS, intro.overlay.color);
@@ -312,21 +323,18 @@ export function openThumbnailDialog(deps) {
   const kindOfEngine = () => thumbnailEngineKind(engineSelect.value);
   const paintEngine = () => {
     const overlayOn = engineSelect.value === "overlay";
-    const restyle = kindOfEngine() === "restyle";
-    changeField.style.display = restyle ? "flex" : "none";
     overlayGroup.style.display = overlayOn ? "flex" : "none";
+    apiGroup.style.display = engineSelect.value === "api_image" ? "flex" : "none";
     styleField.style.display = overlayOn ? "none" : "flex";
     promptField.style.display = overlayOn ? "none" : "flex";
     writeButton.style.display = overlayOn ? "none" : "";
     if (overlayOn) engineHint.textContent = OVERLAY_HINT;
     else if (engineSelect.value === "qwen_image_edit") engineHint.textContent = QWEN_EDIT_HINT;
-    else if (engineSelect.value === "moss_image_edit") engineHint.textContent = MOSS_EDIT_HINT;
-    else if (engineSelect.value === "moss_image") engineHint.textContent = MOSS_RESTYLE_HINT;
-    else engineHint.textContent = restyle ? RESTYLE_HINT : EDIT_HINT;
-    paintChange();
+    else if (engineSelect.value === "api_image") engineHint.textContent = API_IMAGE_HINT;
+    else engineHint.textContent = EDIT_HINT;
+    paintApiImage();
     paintOverlayStrength();
   };
-  changeInput.addEventListener("input", paintChange);
   // The two kinds want different prompts, so a prompt written for the other kind is flagged instead of being sent as it is.
   let promptKind = kindOfEngine();
   engineSelect.addEventListener("change", () => {
@@ -366,8 +374,8 @@ export function openThumbnailDialog(deps) {
   const readInputs = () => ({
     enabled: enableBox.input.checked,
     engine: engineSelect.value,
-    change: clampThumbnailChange(Number(changeInput.value) / 100),
     overlay: normalizeThumbnailOverlay({ color: overlayColor.value, position: overlayPosition.value, strength: Number(overlayStrength.value) }),
+    api_image: normalizeThumbnailApiImage({ model: apiModelInput.value }),
     title: titleInput.value,
     style_notes: styleInput.value,
     prompt: promptInput.value,
@@ -413,7 +421,7 @@ export function openThumbnailDialog(deps) {
   };
   const setBusy = (value, text = "") => {
     busy = value;
-    for (const control of [useButton, writeButton, generateButton, engineSelect, changeInput, overlayColor, overlayPosition, overlayStrength, titleInput, styleInput, promptInput]) {
+    for (const control of [useButton, writeButton, generateButton, engineSelect, apiModelInput, overlayColor, overlayPosition, overlayStrength, titleInput, styleInput, promptInput]) {
       control.disabled = value;
     }
     status.style.color = "#93c5fd";
@@ -534,12 +542,21 @@ export function openThumbnailDialog(deps) {
         status.textContent = message;
         progress?.set(message, 50);
       };
-      const image = await generateThumbnailImage({
-        engine: engineSelect.value, prompt, sourcePath: current().source_path, change: current().change,
-        settings: settingsFor(engineSelect.value), onStatus,
-      });
-      onStatus("Saving the thumbnail in the project...");
-      const saved = await postJson("/vrgdg/music_builder/thumbnail/save", { project_folder: projectFolder(), image });
+      let saved;
+      if (engineSelect.value === "api_image") {
+        // The pack calls the provider's image API itself and keeps the picture in the project, so there is no ComfyUI queue to wait on.
+        const { url, payload } = thumbnailApiImageRequest({
+          prompt, sourcePath: current().source_path, projectFolder: projectFolder(), runner: runnerPayload?.(), model: apiModelInput.value,
+        });
+        onStatus(`Asking ${thumbnailApiImageProvider(runnerPayload?.()).label} to draw the thumbnail...`);
+        saved = await postJson(url, payload, THUMBNAIL_API_IMAGE_TIMEOUT_MS);
+      } else {
+        const image = await generateThumbnailImage({
+          engine: engineSelect.value, prompt, sourcePath: current().source_path, settings: settingsFor(engineSelect.value), onStatus,
+        });
+        onStatus("Saving the thumbnail in the project...");
+        saved = await postJson("/vrgdg/music_builder/thumbnail/save", { project_folder: projectFolder(), image });
+      }
       const entry = { path: saved.image_path, prompt, engine: engineSelect.value, scene_id: current().scene_id };
       commit({ ...readInputs(), image_path: saved.image_path, history: thumbnailHistoryWith(current().history, entry) });
       showImage(saved.image_path);
@@ -579,8 +596,8 @@ export function openThumbnailDialog(deps) {
   const buttons = document.createElement("div");
   buttons.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;";
   buttons.append(writeButton, generateButton);
-  left.append(sectionTitle("2. Choose how, 3. Make the thumbnail"), makeField("Image workflow", engineSelect), engineHint, changeField,
-    makeField("Title text", titleInput), overlayGroup, styleField, promptField, buttons, status);
+  left.append(sectionTitle("2. Choose how, 3. Make the thumbnail"), makeField("Image workflow", engineSelect), engineHint,
+    makeField("Title text", titleInput), overlayGroup, apiGroup, styleField, promptField, buttons, status);
   const right = document.createElement("div");
   right.style.cssText = COLUMN_CSS;
   right.append(sectionTitle("The thumbnail"), previewEmpty, preview, historyStrip);

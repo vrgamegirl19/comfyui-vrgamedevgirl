@@ -976,6 +976,7 @@ export function openBuilder(node, options = {}) {
     thumbnailAvailable: false,
     thumbnailFrameAvailable: false,
     thumbnailOverlayAvailable: false,
+    thumbnailApiImage: null,
     activeOverlayId: "",
     overlayLaneOpen: false,
     sceneTransitions: [],
@@ -2568,13 +2569,9 @@ export function openBuilder(node, options = {}) {
     sceneImagePath: (segment) => selectedSegmentImagePath(segment),
     sceneVideoPath: (segment) => selectedSegmentVideoPath(segment),
     sceneLabel: (segment, index) => sceneDisplayName(segment, index),
-    // The settings the Builder holds for each image workflow (MOSS-Image's are read by the dialog itself).
+    // The settings the Builder holds for each image workflow that needs any (Qwen Image Edit picks its own models).
     engineSettings: (engine) => ({
       nano_banana: () => state.nbImageSettings,
-      flux_klein: () => activeFluxKleinSettings(),
-      krea2_2pass: () => activeKrea2TwoPassSettings(),
-      zimage: () => activeZImageSettings(),
-      ernie_image: () => activeErnieImageSettings(),
     })[engine]?.(),
     save: () => autoSaveSessionQuiet("Thumbnail"),
   });

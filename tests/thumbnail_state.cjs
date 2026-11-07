@@ -17,39 +17,37 @@ test('an empty or broken value loads as the defaults', () => {
     assert.equal(intro.enabled, false);
     assert.equal(intro.image_path, '');
     assert.equal(intro.seconds, undefined, 'the thumbnail is one frame: there is no length');
-    assert.equal(intro.change, 0.65);
+    assert.equal(intro.change, undefined, 'there is no restyle workflow, so there is nothing to change by');
     assert.equal(intro.engine, 'nano_banana');
+    assert.deepEqual({ ...intro.api_image }, { model: '' });
     assert.deepEqual(Array.from(intro.history), []);
   }
 });
 
-test('the change setting is kept between 0 and 1, and a missing one is 0.65', () => {
+test('the list has only Overlay, Qwen Image Edit, NanoBanana and the API image, each with the kind of prompt it needs', () => {
   const c = load();
-  assert.equal(c.clampThumbnailChange(0), 0);
-  assert.equal(c.clampThumbnailChange(2), 1);
-  assert.equal(c.clampThumbnailChange(-1), 0);
-  assert.equal(c.clampThumbnailChange('0.4'), 0.4);
-  for (const bad of ['', null, undefined, 'abc', NaN]) assert.equal(c.clampThumbnailChange(bad), 0.65);
-  assert.equal(c.normalizeThumbnailIntro({ change: 0.2 }).change, 0.2);
-  assert.equal(c.normalizeThumbnailIntro({ change: 9 }).change, 1);
+  assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_ENGINES', c)), ['overlay', 'qwen_image_edit', 'nano_banana', 'api_image']);
+  assert.equal(c.thumbnailEngineKind('overlay'), 'overlay', 'it is not an image workflow: no prompt, no LLM, no ComfyUI');
+  assert.equal(c.thumbnailEngineKind('qwen_image_edit'), 'qwen_edit', 'Qwen Image Edit gets a prompt about the change only');
+  for (const edit of ['nano_banana', 'api_image']) assert.equal(c.thumbnailEngineKind(edit), 'edit');
+  assert.equal(c.thumbnailEngineKind('unknown'), 'edit');
+  for (const engine of ['overlay', 'qwen_image_edit', 'nano_banana', 'api_image']) assert.equal(c.normalizeThumbnailIntro({ engine }).engine, engine);
+  assert.equal(c.normalizeThumbnailIntro({ history: [{ path: 'a.png', engine: 'api_image' }] }).history[0].engine, 'api_image');
+  // A project saved with a workflow that is no longer in the list opens on the default one, and so does its history.
+  for (const gone of ['flux_klein', 'moss_image_edit', 'moss_image', 'krea2_2pass', 'zimage', 'ernie_image', 'bogus']) {
+    assert.equal(c.normalizeThumbnailIntro({ engine: gone }).engine, 'nano_banana', gone);
+    assert.equal(c.normalizeThumbnailIntro({ history: [{ path: 'a.png', engine: gone }] }).history[0].engine, 'nano_banana', gone);
+  }
 });
 
-test('every image workflow is known, with the kind of prompt it needs', () => {
+test('the API image model is kept as typed, trimmed and limited, and a missing one is the provider\'s first', () => {
   const c = load();
-  assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_ENGINES', c)), ['overlay', 'qwen_image_edit', 'nano_banana', 'flux_klein', 'moss_image_edit', 'krea2_2pass', 'zimage', 'ernie_image', 'moss_image']);
-  assert.equal(c.thumbnailEngineKind('overlay'), 'overlay', 'it is not an image workflow: no prompt, no LLM, no ComfyUI');
-  assert.equal(c.normalizeThumbnailIntro({ engine: 'overlay' }).engine, 'overlay');
-  assert.equal(c.normalizeThumbnailIntro({ engine: 'qwen_image_edit' }).engine, 'qwen_image_edit');
-  for (const edit of ['nano_banana', 'flux_klein']) assert.equal(c.thumbnailEngineKind(edit), 'edit');
-  assert.equal(c.thumbnailEngineKind('qwen_image_edit'), 'qwen_edit', 'Qwen Image Edit gets a prompt about the change only');
-  assert.equal(c.thumbnailEngineKind('moss_image_edit'), 'moss_edit', 'MOSS-Image Edit follows its own short instruction');
-  for (const restyle of ['krea2_2pass', 'zimage', 'ernie_image', 'moss_image']) assert.equal(c.thumbnailEngineKind(restyle), 'restyle');
-  assert.equal(c.thumbnailEngineKind('unknown'), 'edit');
-  assert.equal(c.normalizeThumbnailIntro({ engine: 'moss_image' }).engine, 'moss_image');
-  assert.equal(c.normalizeThumbnailIntro({ engine: 'moss_image_edit' }).engine, 'moss_image_edit');
-  assert.equal(c.normalizeThumbnailIntro({ history: [{ path: 'a.png', engine: 'moss_image_edit' }] }).history[0].engine, 'moss_image_edit');
-  assert.equal(c.normalizeThumbnailIntro({ engine: 'bogus' }).engine, 'nano_banana');
-  assert.equal(c.normalizeThumbnailIntro({ history: [{ path: 'a.png', engine: 'zimage' }] }).history[0].engine, 'zimage');
+  const plain = (value) => JSON.parse(JSON.stringify(value));
+  assert.deepEqual(plain(c.normalizeThumbnailApiImage(undefined)), { model: '' });
+  assert.deepEqual(plain(c.normalizeThumbnailApiImage({ model: '  gemini-3-pro-image-preview ' })), { model: 'gemini-3-pro-image-preview' });
+  assert.equal(c.normalizeThumbnailApiImage({ model: 'x'.repeat(300) }).model.length, 120);
+  assert.deepEqual(plain(c.normalizeThumbnailApiImage('junk')), { model: '' });
+  assert.equal(c.normalizeThumbnailIntro({ api_image: { model: 'gpt-image-1' } }).api_image.model, 'gpt-image-1');
 });
 
 test('the overlay choices are kept to what the pack knows, and a missing or wrong one is the default', () => {
@@ -68,11 +66,9 @@ test('the overlay choices are kept to what the pack knows, and a missing or wron
   assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_OVERLAY_POSITIONS', c)), ['auto', 'top', 'bottom', 'left', 'right']);
 });
 
-test('the title sentence asks for the exact text: an instruction for edits, a statement of the picture for restyles, nothing without a title', () => {
+test('the title sentence asks for the exact text as an instruction, and is empty without a title', () => {
   const c = load();
   assert.match(c.thumbnailTitleClause('HEAT', 'edit'), /^Add the title text "HEAT" exactly as written and spelled in huge bold sans-serif capital letters .* Add no other text\.$/);
-  assert.equal(c.thumbnailTitleClause('HEAT', 'moss_edit'), c.thumbnailTitleClause('HEAT', 'edit'));
-  assert.match(c.thumbnailTitleClause('HEAT', 'restyle'), /^The title text "HEAT" is written exactly as spelled in huge bold .* No other text\.$/);
   for (const empty of ['', '   ', null, undefined]) assert.equal(c.thumbnailTitleClause(empty, 'edit'), '');
   assert.match(c.thumbnailTitleClause('  Never   look  back ', 'edit'), /"Never look back"/, 'spaces are tidied');
   assert.match(c.thumbnailTitleClause('He said "go"', 'edit'), /"He said 'go'"/, 'a double quote inside the title cannot end the quoted text');
@@ -99,7 +95,6 @@ test('a prompt always ends up with the title in it, exactly as typed', () => {
   const ensure = (prompt, title, kind = 'edit') => c.ensureThumbnailTitle(prompt, title, kind);
   // Missing: the mandatory sentence goes on the end.
   assert.equal(ensure('A close-up.', 'HEAT'), `A close-up. ${c.thumbnailTitleClause('HEAT', 'edit')}`);
-  assert.match(ensure('A close-up.', 'HEAT', 'restyle'), /The title text "HEAT" is written exactly as spelled/);
   // Already in quotes: the spelling and case that were typed are put back and the quotes made plain.
   assert.equal(ensure('The word “Heat” in huge letters.', 'HEAT'), 'The word "HEAT" in huge letters.');
   assert.equal(ensure("The word 'heat' glows.", 'Heat'), 'The word "Heat" glows.');
@@ -133,7 +128,7 @@ test('only a real engine and a real picture survive, and the history is limited'
 
 test('a new picture goes last in the history without a duplicate', () => {
   const c = load();
-  const first = { path: 'a.png', prompt: '1', engine: 'flux_klein', scene_id: 's1' };
+  const first = { path: 'a.png', prompt: '1', engine: 'api_image', scene_id: 's1' };
   const second = { path: 'b.png', prompt: '2', engine: 'nano_banana', scene_id: 's1' };
   let history = c.thumbnailHistoryWith([], first);
   history = c.thumbnailHistoryWith(history, second);
