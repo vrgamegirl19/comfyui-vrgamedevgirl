@@ -128,6 +128,8 @@ import { createWizardBridge } from "./wizard_bridge.mjs";
 import { createStoryboardBridge } from "./storyboard_bridge.mjs";
 import { wirePanelButtons, wireReferenceControls, wireSceneInputs } from "./inspector_events.mjs";
 import { buildProjectControls, buildTopbar, createFullscreen, wireToolbar } from "./toolbar.mjs";
+import { wireThumbnail } from "./thumbnail.mjs";
+import { normalizeThumbnailIntro } from "./thumbnail_state.mjs";
 import { wireTimelineControls } from "./timeline_events.mjs";
 import { wireKeyboardShortcuts } from "./keyboard_shortcuts.mjs";
 import { buildUpdateBanner, createWhatsNewModal } from "./update_banner.mjs";
@@ -247,8 +249,8 @@ export function openBuilder(node, options = {}) {
     lyricMapperButton, menuDropdown, pollBuilderResources, positionBuilderETA, positionBuilderResourceMonitor,
     projectBatchButton, projectVideoEngineBadge, promptCreatorButton, promptOptionsButton, renderAllButton,
     renderLogButton, sendToPromptCreatorButton, slideshowPreviewButton, stitchPreviewButton,
-    syncWorkflowActionOrder, stopWorkflowButton, storyboardBuilderButton, updateV10Button, updateV10HintButton,
-    wizardButton, zEnhanceAllButton, zEnhanceAllToolButton, zImageAllButton,
+    syncWorkflowActionOrder, stopWorkflowButton, storyboardBuilderButton, thumbnailButton, updateV10Button,
+    updateV10HintButton, wizardButton, zEnhanceAllButton, zEnhanceAllToolButton, zImageAllButton,
   } = buildTopbar({
     autoSaveControl, branchProjectButton, builderETAState, builderLifecycle, closeBuilderNow, closeButton,
     exportProjectButton, fullscreenButton, importProjectButton, loadLastProjectButton, loadSessionButton,
@@ -969,6 +971,8 @@ export function openBuilder(node, options = {}) {
     overlayLayerTrack: normalizeOverlayLayerTrack(),
     overlayLayers: [],
     overlayAvailable: false,
+    thumbnailIntro: normalizeThumbnailIntro(),
+    thumbnailAvailable: false,
     activeOverlayId: "",
     overlayLaneOpen: false,
     sceneTransitions: [],
@@ -2545,15 +2549,23 @@ export function openBuilder(node, options = {}) {
     autoSaveSessionQuiet, createProgressWindow, saveSession, state, syncBuilderLlmModelSelectsFromRunner,
     mmprojSelect, t2iTextGemmaModelSelect, textGemmaRunnerPayload, updatePromptRunnerButtonLabels,
   });
+  const currentLlmRunnerPayload = () => ({
+    ...textGemmaRunnerPayload(),
+    model_file: state.textGemmaRunner === "qwen_local" ? state.qwenModelFile || ""
+      : state.gemmaModelFile || t2iTextGemmaModelSelect.value || referenceDescriptionVisionModel(),
+    mmproj_file: state.textGemmaRunner === "qwen_local" ? state.qwenMmprojFile || "" : referenceDescriptionMmproj(),
+  });
   builderLifecycle.disposeLlmSetup = registerLlmSetup(createLlmSetup({
     openRunner: openGemmaRunnerModal,
-    getRunnerPayload: () => ({
-      ...textGemmaRunnerPayload(),
-      model_file: state.textGemmaRunner === "qwen_local" ? state.qwenModelFile || ""
-        : state.gemmaModelFile || t2iTextGemmaModelSelect.value || referenceDescriptionVisionModel(),
-      mmproj_file: state.textGemmaRunner === "qwen_local" ? state.qwenMmprojFile || "" : referenceDescriptionMmproj(),
-    }),
+    getRunnerPayload: currentLlmRunnerPayload,
   }));
+  wireThumbnail({
+    button: thumbnailButton, state, projectInput, createProgressWindow,
+    runnerPayload: currentLlmRunnerPayload,
+    sceneImagePath: (segment) => selectedSegmentImagePath(segment),
+    sceneLabel: (segment, index) => sceneDisplayName(segment, index),
+    save: () => autoSaveSessionQuiet("Thumbnail"),
+  });
 
   const {
     buildFullFLFVideoPipeline, buildFullVideoPipeline, buildIndependentFLFPairs, createEndFramesAllScenes,

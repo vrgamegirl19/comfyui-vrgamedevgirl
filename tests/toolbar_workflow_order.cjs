@@ -7,6 +7,7 @@ function fixture() {
   const names = [
     'wizardButton', 'autoBuildButton', 'storyboardBuilderButton', 'fluxReferenceBuilderButton',
     'refModsStudioButton', 'refModsViewerButton', 'lyricMapperButton', 'gemmaRunnerButton', 'promptOptionsButton',
+    'thumbnailButton',
   ];
   const importActions = {
     children: [],
@@ -35,7 +36,7 @@ test('Singing workflow starts with Wizard, Auto Build, Ref Builder, Line Mapping
   c.sync();
   assert.deepEqual(order(), [
     'wizardButton', 'autoBuildButton', 'fluxReferenceBuilderButton', 'lyricMapperButton', 'storyboardBuilderButton',
-    'refModsStudioButton', 'refModsViewerButton', 'gemmaRunnerButton', 'promptOptionsButton',
+    'refModsStudioButton', 'refModsViewerButton', 'gemmaRunnerButton', 'promptOptionsButton', 'thumbnailButton',
   ]);
 });
 

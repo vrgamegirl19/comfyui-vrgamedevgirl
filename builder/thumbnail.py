@@ -1,0 +1,217 @@
+"""Thumbnail intro: keep a generated thumbnail in the project and put it in front of the stitched video.
+
+The Builder's Thumbnail dialog makes the picture (an LLM writes the edit prompt, NanoBanana or Flux/Klein draws it) and
+calls ``_save_thumbnail_image`` to keep it in ``<project>/thumbnail``. After the final stitch the Builder calls
+``_prepend_thumbnail_intro``, which shows the picture for a few seconds in silence before the first scene. The scene
+clips, the timeline and the audio sync are never touched: only the stitched video is rewritten.
+"""
+
+import os
+import shutil
+import subprocess
+import tempfile
+from fractions import Fraction
+from typing import Any, Dict, List, Optional, Tuple
+
+from PIL import Image
+
+THUMBNAIL_FOLDER = "thumbnail"
+THUMBNAIL_CAPABILITIES_VERSION = 1
+DEFAULT_INTRO_SECONDS = 2.0
+MIN_INTRO_SECONDS = 0.5
+MAX_INTRO_SECONDS = 10.0
+# How far the joined video may differ from source + intro before the stream-copy join is thrown away.
+_DURATION_TOLERANCE_SECONDS = 0.35
+_VIDEO_SUFFIXES = frozenset({".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"})
+
+
+def _thumbnail_capabilities() -> Dict[str, Any]:
+    """Tell the Builder that this build can save thumbnails and prepend the intro."""
+    return {"version": THUMBNAIL_CAPABILITIES_VERSION}
+
+
+def _clean_path(raw: Any) -> str:
+    return os.path.abspath(str(raw or "").strip().strip('"'))
+
+
+def _intro_seconds(value: Any) -> float:
+    """Return the intro length in seconds, clamped to the supported range (the default for anything else)."""
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return DEFAULT_INTRO_SECONDS
+    if seconds != seconds:  # NaN
+        return DEFAULT_INTRO_SECONDS
+    return max(MIN_INTRO_SECONDS, min(MAX_INTRO_SECONDS, seconds))
+
+
+def _next_thumbnail_path(folder: str) -> str:
+    """Return ``thumbnail_NNNN.png`` with the first number that is free in ``folder``."""
+    taken = set(os.listdir(folder)) if os.path.isdir(folder) else set()
+    number = 1
+    while f"thumbnail_{number:04d}.png" in taken:
+        number += 1
+    return os.path.join(folder, f"thumbnail_{number:04d}.png")
+
+
+def _save_thumbnail_image(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Copy a generated image (a ComfyUI view descriptor or a file path) into the project's thumbnail folder.
+
+    Every call keeps its own numbered PNG, so earlier tries stay available in the dialog's history.
+    """
+    from ..runner.paths import _resolve_comfy_image_path
+    from ..runner.video_files import _safe_project_subfolder
+
+    # An empty path would resolve to the folder the server runs in, so it is refused before any folder is made.
+    if not str(payload.get("project_folder") or "").strip().strip('"'):
+        raise ValueError("Project folder is empty.")
+    _project, folder = _safe_project_subfolder(payload.get("project_folder", ""), THUMBNAIL_FOLDER)
+    image_info = payload.get("image")
+    if isinstance(image_info, dict):
+        source = _resolve_comfy_image_path(image_info)
+    else:
+        source = _clean_path(payload.get("source_path"))
+        if not os.path.isfile(source):
+            raise FileNotFoundError(f"Thumbnail image was not found: {source}")
+    target = _next_thumbnail_path(folder)
+    with Image.open(source) as image:
+        width, height = image.size
+        image.convert("RGB").save(target, format="PNG")
+    return {"image_path": target, "width": width, "height": height}
+
+
+def _format_duration(path: str, ffmpeg_path: str) -> float:
+    """Length of a media file in seconds, from ffprobe (0 when unknown)."""
+    from ..runner.paths import _ffprobe_path_for
+
+    result = subprocess.run(
+        [_ffprobe_path_for(ffmpeg_path), "-v", "error", "-show_entries", "format=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1", path],
+        capture_output=True, text=True, errors="replace",
+    )
+    try:
+        return float((result.stdout or "").strip())
+    except ValueError:
+        return 0.0
+
+
+def _frame_rate(values: Dict[str, str]) -> Fraction:
+    for key in ("r_frame_rate", "avg_frame_rate"):
+        try:
+            rate = Fraction(values.get(key, "0/1"))
+        except (ValueError, ZeroDivisionError):
+            continue
+        if rate > 0:
+            return rate
+    return Fraction(24)
+
+
+def _run_ffmpeg(command: List[str]) -> None:
+    result = subprocess.run(command, capture_output=True, text=True, errors="replace")
+    if result.returncode != 0:
+        raise RuntimeError(f"FFmpeg failed:\n{(result.stderr or result.stdout or '').strip()[-2000:]}")
+
+
+def _intro_command(
+    ffmpeg_path: str, image_path: str, output: str, seconds: float, size: Tuple[int, int], rate: Fraction,
+    audio: Optional[Tuple[int, int]], crf: Any,
+) -> List[str]:
+    """ffmpeg command that turns the picture into a silent clip with the video's size, frame rate and audio format."""
+    from ..runner.video_files import _scene_audio_encode_args, _scene_video_encode_args
+
+    width, height = size
+    fill = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},setsar=1,format=yuv420p"
+    command = [ffmpeg_path, "-y", "-loop", "1", "-framerate", str(rate), "-t", f"{seconds:.3f}", "-i", image_path]
+    if audio:
+        sample_rate, channels = audio
+        layout = "mono" if channels == 1 else "stereo"
+        command += ["-f", "lavfi", "-t", f"{seconds:.3f}", "-i", f"anullsrc=r={sample_rate}:cl={layout}"]
+    command += ["-vf", fill, "-r", str(rate), *_scene_video_encode_args(crf)]
+    if audio:
+        command += [*_scene_audio_encode_args(), "-ar", str(audio[0]), "-ac", str(audio[1]), "-shortest"]
+    else:
+        command += ["-an"]
+    return [*command, output]
+
+
+def _join_by_copy(ffmpeg_path: str, intro: str, source: str, output: str, work: str) -> None:
+    """Join without re-encoding the video: the intro was made to match, so the streams can be copied."""
+    listing = os.path.join(work, "join.txt")
+    with open(listing, "w", encoding="utf-8") as handle:
+        for path in (intro, source):
+            handle.write("file '{}'\n".format(path.replace("\\", "/").replace("'", "'\\''")))
+    _run_ffmpeg([ffmpeg_path, "-y", "-f", "concat", "-safe", "0", "-i", listing, "-c", "copy", "-movflags", "+faststart", output])
+
+
+def _join_by_encoding(ffmpeg_path: str, intro: str, source: str, output: str, has_audio: bool, crf: Any) -> None:
+    """Join with the concat filter and one new encode, for the rare video the stream-copy join does not fit."""
+    from ..runner.video_files import _scene_audio_encode_args, _scene_video_encode_args
+
+    if has_audio:
+        graph, maps = "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]", ["-map", "[v]", "-map", "[a]"]
+    else:
+        graph, maps = "[0:v][1:v]concat=n=2:v=1:a=0[v]", ["-map", "[v]", "-an"]
+    command = [ffmpeg_path, "-y", "-i", intro, "-i", source, "-filter_complex", graph, *maps, *_scene_video_encode_args(crf)]
+    if has_audio:
+        command += _scene_audio_encode_args()
+    _run_ffmpeg([*command, "-movflags", "+faststart", output])
+
+
+def _prepend_thumbnail_intro(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Show ``image_path`` for a few seconds in front of ``input_path`` (a stitched video), in place by default."""
+    from ..runner.paths import _find_ffmpeg_path
+    from ..runner.video_files import _probe_stream_fields, _source_crf
+
+    source = _clean_path(payload.get("input_path"))
+    image_path = _clean_path(payload.get("image_path"))
+    if not os.path.isfile(source) or os.path.splitext(source)[1].lower() not in _VIDEO_SUFFIXES:
+        raise FileNotFoundError(f"The video to put the thumbnail in front of was not found: {source}")
+    if not os.path.isfile(image_path):
+        raise FileNotFoundError(f"The thumbnail image was not found: {image_path}")
+    with Image.open(image_path) as image:
+        image.verify()
+    seconds = _intro_seconds(payload.get("seconds"))
+    replace_source = payload.get("replace_source", True) is not False
+
+    ffmpeg_path = _find_ffmpeg_path()
+    video = _probe_stream_fields(source, ffmpeg_path, "v:0", ["width", "height", "r_frame_rate", "avg_frame_rate"])
+    if not video.get("width") or not video.get("height"):
+        raise RuntimeError(f"Could not read the size of the video: {source}")
+    audio_fields = _probe_stream_fields(source, ffmpeg_path, "a:0", ["sample_rate", "channels"])
+    audio = None
+    if audio_fields.get("sample_rate"):
+        audio = (int(audio_fields["sample_rate"]), max(1, int(audio_fields.get("channels") or 2)))
+    size = (int(video["width"]), int(video["height"]))
+    rate = _frame_rate(video)
+    crf = _source_crf([source], payload.get("crf"))
+    source_duration = _format_duration(source, ffmpeg_path)
+
+    folder = os.path.dirname(source)
+    work = tempfile.mkdtemp(prefix=".thumbnail_intro_", dir=folder)
+    try:
+        intro = os.path.join(work, "intro.mp4")
+        _run_ffmpeg(_intro_command(ffmpeg_path, image_path, intro, seconds, size, rate, audio, crf))
+        joined = os.path.join(work, "joined.mp4")
+        method = "copy"
+        try:
+            _join_by_copy(ffmpeg_path, intro, source, joined, work)
+            drift = abs(_format_duration(joined, ffmpeg_path) - (source_duration + seconds))
+            if source_duration > 0 and drift > _DURATION_TOLERANCE_SECONDS:
+                raise RuntimeError("The joined video has the wrong length.")
+        except RuntimeError:
+            method = "reencode"
+            _join_by_encoding(ffmpeg_path, intro, source, joined, audio is not None, crf)
+        if replace_source:
+            destination = source
+        else:
+            stem, extension = os.path.splitext(source)
+            destination = f"{stem}_with_thumbnail{extension}"
+        os.replace(joined, destination)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return {
+        "final_video_path": destination,
+        "intro_seconds": seconds,
+        "method": method,
+        "duration": _format_duration(destination, ffmpeg_path),
+    }

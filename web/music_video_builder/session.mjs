@@ -1,5 +1,6 @@
 import { normalizeOverlayClip, normalizeOverlayTrackState } from "../VRGDG_OverlayTrack.js";
 import { normalizeOverlayLayers, normalizeOverlayLayerTrack } from "./overlay_layers.mjs";
+import { normalizeThumbnailIntro } from "./thumbnail_state.mjs";
 import { transitionsForSession } from "./transition_actions.mjs";
 import { looksForSession } from "./look_actions.mjs";
 import {
@@ -786,6 +787,7 @@ export function createSession({
       scene_transitions: transitionsForSession(state),
       video_effects: looksForSession(state, "effect"),
       video_filters: looksForSession(state, "filter"),
+      thumbnail_intro: normalizeThumbnailIntro(state.thumbnailIntro),
       active_track: state.activeTrack,
       active_scene_id: state.activeId || "",
       timing_frozen: state.timingFrozen,
@@ -1079,6 +1081,7 @@ export function createSession({
         state.overlayTrack = normalizeOverlayTrackState(data.session.overlay_track || state.overlayTrack);
         state.overlayLayerTrack = normalizeOverlayLayerTrack(data.session.overlay_layer_track ?? data.session.fx_track ?? state.overlayLayerTrack);
         state.overlayLayers = normalizeOverlayLayers(data.session.overlay_layers ?? data.session.fx_clips ?? state.overlayLayers);
+        state.thumbnailIntro = normalizeThumbnailIntro(data.session.thumbnail_intro ?? state.thumbnailIntro);
         state.sceneTransitions = Array.isArray(data.session.scene_transitions) ? data.session.scene_transitions : (state.sceneTransitions || []);
         state.videoEffects = Array.isArray(data.session.video_effects) ? data.session.video_effects : (state.videoEffects || []);
         state.videoFilters = Array.isArray(data.session.video_filters) ? data.session.video_filters : (state.videoFilters || []);
@@ -1365,6 +1368,7 @@ export function createSession({
       // fx_track and fx_clips are what the first builds saved these under, before they were called overlays. They are read once and saved under the new names.
       state.overlayLayerTrack = normalizeOverlayLayerTrack(session.overlay_layer_track ?? session.fx_track);
       state.overlayLayers = normalizeOverlayLayers(session.overlay_layers ?? session.fx_clips);
+      state.thumbnailIntro = normalizeThumbnailIntro(session.thumbnail_intro);
       state.sceneTransitions = Array.isArray(session.scene_transitions) ? session.scene_transitions : [];
       state.videoEffects = Array.isArray(session.video_effects) ? session.video_effects : [];
       state.videoFilters = Array.isArray(session.video_filters) ? session.video_filters : [];
