@@ -133,6 +133,21 @@ test('MOSS-Image Edit gets the frame as a reference for the edit LoRA, with no i
   assert.equal(built.label, 'MOSS-Image Edit (local, edit)');
 });
 
+test('Overlay asks the Builder to put the layers on the frame itself: its own route, the project and the look, no prompt', () => {
+  const c = load();
+  const built = plain(c.thumbnailOverlayRequest({
+    sourcePath: ' C:/p/thumbnail/source_0001.png ', title: 'HEAT', projectFolder: 'C:/p', overlay: { color: 'cyan', position: 'top', strength: 80 },
+  }));
+  assert.equal(built.url, '/vrgdg/music_builder/thumbnail/overlay');
+  assert.deepEqual(built.payload, { project_folder: 'C:/p', source_path: 'C:/p/thumbnail/source_0001.png', title: 'HEAT', color: 'cyan', position: 'top', strength: 80 });
+  assert.match(built.label, /^Overlay/);
+  const bare = plain(c.thumbnailOverlayRequest({ sourcePath: 'a.png', projectFolder: 'C:/p' }));
+  assert.equal(bare.payload.title, '', 'no title is fine: only the grade is applied');
+  assert.equal('color' in bare.payload, false, 'the pack picks its own defaults for what is missing');
+  assert.throws(() => c.thumbnailOverlayRequest({ sourcePath: '  ', projectFolder: 'C:/p' }), /Choose the frame first/);
+  assert.throws(() => c.thumbnailOverlayRequest({ sourcePath: 'a.png', projectFolder: '' }), /Create or load a project/);
+});
+
 test('a missing prompt, a missing frame or an unknown workflow is refused with a message to act on', () => {
   const c = load();
   assert.throws(() => c.thumbnailEngineRequest({ engine: 'flux_klein', prompt: '  ', sourcePath: 'a.png', settings: {} }), /Write the prompt first/);
@@ -145,7 +160,10 @@ test('every workflow has a label and a route', () => {
   const c = load();
   const engines = ['nano_banana', 'flux_klein', 'moss_image_edit', 'krea2_2pass', 'zimage', 'ernie_image', 'moss_image'];
   const labels = vm.runInContext('THUMBNAIL_ENGINE_LABELS', c);
-  assert.deepEqual(Object.keys(labels), engines);
+  // Overlay has a label too, but no build route: it is not an image workflow (see thumbnailOverlayRequest).
+  assert.deepEqual(Object.keys(labels), ['overlay', ...engines]);
+  assert.match(labels.overlay, /^Overlay: your frame exactly, no AI/);
+  assert.throws(() => request(c, 'overlay', {}), /Unknown image workflow: overlay/);
   for (const engine of engines) {
     const built = request(c, engine, { api_key: 'key' });
     assert.match(built.url, /^\/vrgdg\/workflow_runner\/build_\w+_prompt$/);

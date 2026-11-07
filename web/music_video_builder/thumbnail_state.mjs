@@ -5,8 +5,11 @@
 // Flux/Klein) take the frame as a reference picture and follow an instruction such as "recrop the attached image". "moss_edit"
 // (MOSS-Image Edit) also follows an instruction, but one in the short form its edit LoRA was trained on ("Add ... Keep the ...
 // unchanged."). "restyle" workflows (Krea 2, Z-Image, Ernie, MOSS-Image) start from the frame as an image-to-image source and need a
-// prompt that describes the finished picture. The LLM writes a different kind of prompt for each kind.
+// prompt that describes the finished picture. The LLM writes a different kind of prompt for each kind. "overlay" is not an image
+// workflow at all: it keeps every pixel of the frame and puts the grade and the title on top (no prompt, no LLM, no ComfyUI), the
+// only way to be sure the person and the scene do not change.
 export const THUMBNAIL_ENGINE_KINDS = {
+  overlay: "overlay",
   nano_banana: "edit",
   flux_klein: "edit",
   moss_image_edit: "moss_edit",
@@ -23,7 +26,24 @@ export const THUMBNAIL_FPS = 24;
 const THUMBNAIL_HISTORY_LIMIT = 12;
 const THUMBNAIL_SOURCE_KINDS = ["frame", "image"];
 
-// "edit", "moss_edit" or "restyle". An unknown engine is treated like the default one.
+// The Overlay engine's choices (the pack's `builder/thumbnail_overlay.py` has the same lists): the color of the title, where it goes
+// ("auto" is the calmest part of the frame) and how strong the grade, the glow and the vignette are, 0 to 100.
+export const THUMBNAIL_OVERLAY_COLORS = ["yellow", "white", "orange", "cyan", "red"];
+export const THUMBNAIL_OVERLAY_POSITIONS = ["auto", "top", "bottom", "left", "right"];
+export const THUMBNAIL_OVERLAY_DEFAULT_STRENGTH = 60;
+
+export function normalizeThumbnailOverlay(value) {
+  const data = value && typeof value === "object" ? value : {};
+  const strength = Number(data.strength);
+  return {
+    color: THUMBNAIL_OVERLAY_COLORS.includes(data.color) ? data.color : THUMBNAIL_OVERLAY_COLORS[0],
+    position: THUMBNAIL_OVERLAY_POSITIONS.includes(data.position) ? data.position : THUMBNAIL_OVERLAY_POSITIONS[0],
+    strength: data.strength === "" || data.strength === null || data.strength === undefined || !Number.isFinite(strength)
+      ? THUMBNAIL_OVERLAY_DEFAULT_STRENGTH : Math.max(0, Math.min(100, Math.round(strength))),
+  };
+}
+
+// "edit", "moss_edit", "restyle" or "overlay". An unknown engine is treated like the default one.
 export function thumbnailEngineKind(engine) {
   return THUMBNAIL_ENGINE_KINDS[engine] || THUMBNAIL_ENGINE_KINDS[THUMBNAIL_DEFAULT_ENGINE];
 }
@@ -102,6 +122,7 @@ export function normalizeThumbnailIntro(value) {
     scene_id: thumbnailText(data.scene_id, 200),
     engine: THUMBNAIL_ENGINES.includes(data.engine) ? data.engine : THUMBNAIL_DEFAULT_ENGINE,
     change: clampThumbnailChange(data.change),
+    overlay: normalizeThumbnailOverlay(data.overlay),
     title: thumbnailText(data.title, 120),
     style_notes: thumbnailText(data.style_notes, 1200),
     prompt: thumbnailText(data.prompt, 4000),

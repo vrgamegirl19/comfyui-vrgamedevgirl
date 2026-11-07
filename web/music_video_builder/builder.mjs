@@ -975,6 +975,7 @@ export function openBuilder(node, options = {}) {
     thumbnailIntro: normalizeThumbnailIntro(),
     thumbnailAvailable: false,
     thumbnailFrameAvailable: false,
+    thumbnailOverlayAvailable: false,
     activeOverlayId: "",
     overlayLaneOpen: false,
     sceneTransitions: [],

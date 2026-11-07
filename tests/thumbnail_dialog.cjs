@@ -20,7 +20,7 @@ function fakeElement(tag, all) {
   return node;
 }
 
-function harness({ segments, frameAvailable = true, postJson, engineSettings = {}, moss = {} } = {}) {
+function harness({ segments, frameAvailable = true, postJson, engineSettings = {}, moss = {}, overlayAvailable = false, intro = {} } = {}) {
   const all = [];
   const calls = [];
   const toasts = [];
@@ -53,8 +53,8 @@ function harness({ segments, frameAvailable = true, postJson, engineSettings = {
   vm.runInContext(readBuilderModule('thumbnail_engines.mjs'), context);
   vm.runInContext(readBuilderModule('thumbnail.mjs'), context);
   const state = {
-    segments, projectFolder: 'C:/p', thumbnailAvailable: true, thumbnailFrameAvailable: frameAvailable,
-    thumbnailIntro: context.normalizeThumbnailIntro(), nbImageSettings: { api_key: 'key', model: 'nb-model' }, fluxKleinSettings: {},
+    segments, projectFolder: 'C:/p', thumbnailAvailable: true, thumbnailFrameAvailable: frameAvailable, thumbnailOverlayAvailable: overlayAvailable,
+    thumbnailIntro: context.normalizeThumbnailIntro(intro), nbImageSettings: { api_key: 'key', model: 'nb-model' }, fluxKleinSettings: {},
   };
   const deps = {
     state, projectInput: { value: 'C:/p' }, runnerPayload: () => ({ text_runner: 'builtin' }),
@@ -243,7 +243,7 @@ test('every image workflow can be chosen, and MOSS-Image restyles the frame with
     moss: { unet_name: 'moss.safetensors', clip_name: 'q.safetensors', vae_name: 'f.safetensors', lora_name: 'turbo.safetensors', steps: 8, cfg: 1, width: 1280, height: 720 },
   });
   const { select, change } = await pickFrame(h);
-  assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_ENGINES', h.context)), ['nano_banana', 'flux_klein', 'moss_image_edit', 'krea2_2pass', 'zimage', 'ernie_image', 'moss_image']);
+  assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_ENGINES', h.context)), ['overlay', 'nano_banana', 'flux_klein', 'moss_image_edit', 'krea2_2pass', 'zimage', 'ernie_image', 'moss_image']);
   select.value = 'moss_image';
   select.listeners.change[0]();
   change.value = '40';
@@ -394,4 +394,118 @@ test('the MOSS-Image restyle says it cannot be relied on for the title and point
   select.listeners.change[0]();
   assert.match(hint.textContent, /restyles the frame from a description/);
   assert.match(hint.textContent, /does not draw the title text reliably: use MOSS-Image Edit/);
+});
+
+// -- Overlay: the frame kept exactly, with the grade and the title put on top ---------------------------------------------------------
+
+const overlayReplies = {
+  '/vrgdg/music_builder/thumbnail/frame': { image_path: 'C:/p/thumbnail/source_0001.png' },
+  '/vrgdg/music_builder/thumbnail/overlay': { image_path: 'C:/p/thumbnail/thumbnail_0001.png', width: 1280, height: 736 },
+};
+
+function overlayControls(h) {
+  const selects = h.all.filter((node) => node.tag === 'select');
+  return {
+    engine: selects[0], color: selects[1], position: selects[2],
+    strength: h.all.find((node) => node.attrs && node.attrs['aria-label'] === 'How strong the grade, the glow and the vignette are'),
+  };
+}
+
+test('Overlay is only offered by a build that has it, and a project saved with it opens on the first engine that is offered', async () => {
+  const without = harness({ segments: scenes(), intro: { engine: 'overlay' } });
+  without.open();
+  const engine = overlayControls(without).engine;
+  assert.equal(engine.value, 'nano_banana', 'saved with Overlay, opened where it is missing');
+  const offered = without.all.filter((node) => node.tag === 'select')[0];
+  assert.ok(offered, 'the engine list is there');
+  const withIt = harness({ segments: scenes(), overlayAvailable: true, intro: { engine: 'overlay' } });
+  withIt.open();
+  assert.equal(overlayControls(withIt).engine.value, 'overlay', 'saved with Overlay, opened where it is offered');
+});
+
+test('choosing Overlay hides the prompt and the LLM button, and says nothing is redrawn', async () => {
+  const h = harness({ segments: scenes(), overlayAvailable: true, postJson: async (url) => overlayReplies[url] });
+  const picked = await pickFrame(h);
+  const { engine } = overlayControls(h);
+  const hint = h.all.find((node) => /edits the frame by instruction|keeps every pixel/.test(node.textContent));
+  assert.ok(hint);
+  engine.value = 'overlay';
+  engine.listeners.change[0]();
+  assert.match(hint.textContent, /keeps every pixel of your frame/);
+  assert.match(hint.textContent, /No AI redraws anything, so the person and the scene cannot change/);
+  assert.equal(h.button('Write prompt with LLM').style.display, 'none');
+  assert.equal(picked.change.value, '65', 'the Change slider is for restyles');
+  engine.value = 'krea2_2pass';
+  engine.listeners.change[0]();
+  assert.equal(h.button('Write prompt with LLM').style.display, '', 'the LLM button is back for an image workflow');
+  assert.match(hint.textContent, /redraws the frame, so the person, the face and the scene can change: use Overlay to keep them exactly/);
+});
+
+test('Generate with Overlay asks the Builder for the overlay and nothing else: no prompt, no LLM, no ComfyUI, no separate save', async () => {
+  const h = harness({ segments: scenes(), overlayAvailable: true, postJson: async (url) => overlayReplies[url] });
+  await pickFrame(h);
+  const { engine, color, position, strength } = overlayControls(h);
+  const titleInput = h.all.find((node) => node.tag === 'input' && node.maxLength === 120);
+  titleInput.value = 'HEAT';
+  engine.value = 'overlay';
+  engine.listeners.change[0]();
+  color.value = 'cyan';
+  position.value = 'top';
+  strength.value = '80';
+  await h.button('Generate thumbnail').onclick();
+  const urls = h.calls.map(([url]) => url);
+  assert.deepEqual(urls, ['/vrgdg/music_builder/thumbnail/frame', '/vrgdg/music_builder/thumbnail/overlay'], 'only the frame and the overlay');
+  const [, sent] = h.calls.at(-1);
+  assert.deepEqual(JSON.parse(JSON.stringify(sent)), {
+    project_folder: 'C:/p', source_path: 'C:/p/thumbnail/source_0001.png', title: 'HEAT', color: 'cyan', position: 'top', strength: 80,
+  });
+  const intro = h.state.thumbnailIntro;
+  assert.equal(intro.image_path, 'C:/p/thumbnail/thumbnail_0001.png', 'the Builder saved it, so that is the picture');
+  assert.equal(intro.engine, 'overlay');
+  assert.deepEqual(JSON.parse(JSON.stringify(intro.overlay)), { color: 'cyan', position: 'top', strength: 80 }, 'the look is remembered');
+  assert.equal(intro.history.length, 1);
+  assert.equal(intro.history[0].engine, 'overlay');
+  assert.equal(intro.history[0].prompt, '');
+  assert.equal(h.toasts.length, 0);
+  assert.equal(h.state.thumbnailIntro.prompt, '', 'no prompt was written or required');
+});
+
+test('Overlay without a title still makes the picture, and says there is no text', async () => {
+  const h = harness({ segments: scenes(), overlayAvailable: true, postJson: async (url) => overlayReplies[url] });
+  await pickFrame(h);
+  const { engine } = overlayControls(h);
+  engine.value = 'overlay';
+  engine.listeners.change[0]();
+  await h.button('Generate thumbnail').onclick();
+  assert.equal(h.calls.at(-1)[1].title, '');
+  const status = h.all.find((node) => /no title text because the title is empty/.test(node.textContent));
+  assert.ok(status);
+});
+
+test('Overlay reopens with the color, position and strength that were chosen, and strength 0 is kept', () => {
+  const h = harness({ segments: scenes(), overlayAvailable: true, intro: { engine: 'overlay', overlay: { color: 'red', position: 'bottom', strength: 0 } } });
+  h.open();
+  const { color, position, strength } = overlayControls(h);
+  assert.equal(color.value, 'red');
+  assert.equal(position.value, 'bottom');
+  assert.equal(strength.value, '0');
+});
+
+test('an Overlay that fails says why and leaves the dialog usable', async () => {
+  const h = harness({
+    segments: scenes(), overlayAvailable: true,
+    postJson: async (url) => {
+      if (url.endsWith('/thumbnail/overlay')) throw new Error('The frame was not found: C:/gone.png');
+      return overlayReplies[url];
+    },
+  });
+  await pickFrame(h);
+  const { engine } = overlayControls(h);
+  engine.value = 'overlay';
+  engine.listeners.change[0]();
+  await h.button('Generate thumbnail').onclick();
+  assert.equal(h.toasts.at(-1)[1], true);
+  assert.match(h.toasts.at(-1)[0], /The frame was not found/);
+  assert.equal(h.button('Generate thumbnail').disabled, false, 'it can be tried again');
+  assert.equal(h.state.thumbnailIntro.image_path, '');
 });

@@ -10,11 +10,11 @@ import { BUILDER_FONT_STACK, DEFAULT_NB_IMAGE_MODEL } from "./constants.mjs";
 import { makeButton, makeCheckbox, makeField, makeInput, makeSelect, toast } from "./controls.mjs";
 import { fluxKleinLoraPayload } from "./image_generation.mjs";
 import { loadMossReferenceSettings } from "./moss_settings.mjs";
-import { THUMBNAIL_ENGINE_LABELS, thumbnailEngineRequest } from "./thumbnail_engines.mjs";
+import { THUMBNAIL_ENGINE_LABELS, thumbnailEngineRequest, thumbnailOverlayRequest } from "./thumbnail_engines.mjs";
 import {
-  clampThumbnailChange, ensureThumbnailTitle, formatThumbnailTime, normalizeThumbnailIntro, thumbnailEngineKind, thumbnailFrameRange,
-  thumbnailHistoryWith, thumbnailIntroForStitch, thumbnailItemAt, thumbnailLocalSeconds, thumbnailTimelineItems, THUMBNAIL_ENGINES,
-  THUMBNAIL_FPS,
+  clampThumbnailChange, ensureThumbnailTitle, formatThumbnailTime, normalizeThumbnailIntro, normalizeThumbnailOverlay, thumbnailEngineKind,
+  thumbnailFrameRange, thumbnailHistoryWith, thumbnailIntroForStitch, thumbnailItemAt, thumbnailLocalSeconds, thumbnailTimelineItems,
+  THUMBNAIL_ENGINES, THUMBNAIL_FPS,
 } from "./thumbnail_state.mjs";
 
 const THUMBNAIL_PREPEND_TIMEOUT_MS = 30 * 60 * 1000;
@@ -23,10 +23,21 @@ const THUMBNAIL_FRAME_TIMEOUT_MS = 2 * 60 * 1000;
 // Where inside a frame's time slot the player is parked, so it shows that frame and not the one before it.
 const FRAME_SEEK_OFFSET = 0.25;
 const ENGINE_OPTIONS = THUMBNAIL_ENGINES.map((value) => ({ value, label: THUMBNAIL_ENGINE_LABELS[value] }));
-const EDIT_HINT = "This workflow edits the frame by instruction, so the prompt tells it what to change.";
-const RESTYLE_HINT = "This workflow restyles the frame from a description of the finished picture. The prompt describes the thumbnail, and Change sets how far it moves from the frame.";
-const MOSS_EDIT_HINT = "MOSS-Image Edit changes the frame by a short instruction (the Edit LoRA under Models > MOSS-Image, and ComfyUI 0.43 or newer). It keeps the picture and the composition and does what the prompt adds, including the title text.";
+// The AI workflows redraw the frame, so the person, the face and the scene can drift. Overlay is the one that cannot change them.
+const REDRAW_WARNING = " It redraws the frame, so the person, the face and the scene can change: use Overlay to keep them exactly.";
+const EDIT_HINT = `This workflow edits the frame by instruction, so the prompt tells it what to change.${REDRAW_WARNING}`;
+const RESTYLE_HINT = `This workflow restyles the frame from a description of the finished picture. The prompt describes the thumbnail, and Change sets how far it moves from the frame.${REDRAW_WARNING}`;
+const MOSS_EDIT_HINT = "MOSS-Image Edit changes the frame by a short instruction (the Edit LoRA under Models > MOSS-Image, and ComfyUI 0.43 or newer). It keeps the picture and the composition and does what the prompt adds, including the title text, but it still redraws faces, so the skin tone and the face can drift: use Overlay to keep the person exactly.";
 const MOSS_RESTYLE_HINT = `${RESTYLE_HINT} A restyle keeps the frame's composition and does not draw the title text reliably: use MOSS-Image Edit when the thumbnail needs text.`;
+const OVERLAY_HINT = "Overlay keeps every pixel of your frame and puts the layers on top, like a thumbnail made in an image editor: a color grade, a glow on the brights, a vignette and the title with an outline and a glow, placed in the calmest part of the frame. No AI redraws anything, so the person and the scene cannot change. It needs no prompt.";
+const OVERLAY_COLOR_OPTIONS = [
+  { value: "yellow", label: "Yellow" }, { value: "white", label: "White" }, { value: "orange", label: "Orange" },
+  { value: "cyan", label: "Cyan" }, { value: "red", label: "Red" },
+];
+const OVERLAY_POSITION_OPTIONS = [
+  { value: "auto", label: "Automatic (the calmest part of the frame)" }, { value: "top", label: "Top" }, { value: "bottom", label: "Bottom" },
+  { value: "left", label: "Left" }, { value: "right", label: "Right" },
+];
 // The settings of the two MOSS-Image workflows are the ones saved by the MOSS-Image tab of Models > Select models.
 const MOSS_ENGINES = ["moss_image", "moss_image_edit"];
 
@@ -39,9 +50,11 @@ export async function loadThumbnailCapabilities(state) {
     const data = response.ok ? await response.json().catch(() => null) : null;
     state.thumbnailAvailable = Boolean(data && data.ok !== false && data.version);
     state.thumbnailFrameAvailable = Boolean(state.thumbnailAvailable && data.frame);
+    state.thumbnailOverlayAvailable = Boolean(state.thumbnailAvailable && data.overlay);
   } catch {
     state.thumbnailAvailable = false;
     state.thumbnailFrameAvailable = false;
+    state.thumbnailOverlayAvailable = false;
   }
   return state.thumbnailAvailable;
 }
@@ -151,8 +164,8 @@ export function openThumbnailDialog(deps) {
   title.style.cssText = "font-size:17px;font-weight:600;color:#cffafe;";
   const note = document.createElement("div");
   note.textContent = canFrame
-    ? "1. Scrub the video to the exact moment you want and click Use this frame. 2. The LLM looks at that frame and writes the edit prompt. 3. NanoBanana or Flux/Klein turns it into a thumbnail. When it is on, the final video starts with the thumbnail."
-    : "This build cannot take a frame of a video, so pick the scene whose image you want to start from. The LLM looks at it and writes the edit prompt, and NanoBanana or Flux/Klein turns it into a thumbnail.";
+    ? "1. Scrub the video to the exact moment you want and click Use this frame. 2. Choose Overlay to keep that frame exactly and put a grade and the title on top, or an image workflow (the LLM looks at the frame and writes its prompt) to redraw it. 3. Make the thumbnail. When it is on, the final video starts with the thumbnail."
+    : "This build cannot take a frame of a video, so pick the scene whose image you want to start from. Choose Overlay to keep that image exactly and put a grade and the title on top, or an image workflow (the LLM looks at it and writes its prompt) to redraw it.";
   note.style.cssText = "font-size:12px;line-height:1.45;color:#cbd5e1;";
 
   // Step 1: the player and the scrubber over the whole timeline.
@@ -249,8 +262,10 @@ export function openThumbnailDialog(deps) {
   const sourceCaption = document.createElement("div");
   sourceCaption.style.cssText = "font-size:12px;color:#93c5fd;line-height:1.4;";
 
-  // Step 2 and 3: the prompt and the picture.
-  const engineSelect = makeSelect(ENGINE_OPTIONS, intro.engine);
+  // Step 2 and 3: the prompt and the picture. A build without the overlay route does not offer that engine, and a project saved with
+  // it opens on the first engine that is offered.
+  const engineOptions = ENGINE_OPTIONS.filter((option) => option.value !== "overlay" || state.thumbnailOverlayAvailable);
+  const engineSelect = makeSelect(engineOptions, engineOptions.some((option) => option.value === intro.engine) ? intro.engine : engineOptions[0].value);
   const engineHint = document.createElement("div");
   engineHint.style.cssText = "font-size:11px;line-height:1.4;color:#94a3b8;";
   // How far a restyle workflow may move away from the frame. Edit workflows follow an instruction instead, so it is hidden for them.
@@ -267,14 +282,47 @@ export function openThumbnailDialog(deps) {
     const label = changeField.children[0];
     if (label) label.textContent = `Change: ${changeInput.value}%  (lower keeps the frame, higher restyles more)`;
   };
+  // The Overlay engine's choices: the color of the title, where it goes, and how strong the grade, the glow and the vignette are.
+  const overlayColor = makeSelect(OVERLAY_COLOR_OPTIONS, intro.overlay.color);
+  const overlayPosition = makeSelect(OVERLAY_POSITION_OPTIONS, intro.overlay.position);
+  const overlayStrength = document.createElement("input");
+  overlayStrength.type = "range";
+  overlayStrength.min = "0";
+  overlayStrength.max = "100";
+  overlayStrength.step = "5";
+  overlayStrength.value = String(intro.overlay.strength);
+  overlayStrength.style.cssText = "width:100%;accent-color:#22d3ee;";
+  overlayStrength.setAttribute("aria-label", "How strong the grade, the glow and the vignette are");
+  const overlayStrengthField = makeField("Strength", overlayStrength);
+  const paintOverlayStrength = () => {
+    const label = overlayStrengthField.children[0];
+    if (label) label.textContent = `Strength: ${overlayStrength.value}%  (the grade, the glow and the vignette; 0 leaves the frame alone)`;
+  };
+  overlayStrength.addEventListener("input", paintOverlayStrength);
+  const overlayGroup = document.createElement("div");
+  overlayGroup.style.cssText = COLUMN_CSS;
+  overlayGroup.append(makeField("Title color", overlayColor), makeField("Title position", overlayPosition), overlayStrengthField);
+  // What an engine that follows a prompt needs and Overlay does not: the style notes, the prompt and the LLM button.
+  const styleInput = textArea(intro.style_notes, 2, "Optional look: neon city, moody blue and orange, glowing eyes, comic outline ...");
+  const promptInput = textArea(intro.prompt, 7, "The edit prompt. Click Write prompt with LLM, or type your own.");
+  const writeButton = makeButton("Write prompt with LLM");
+  const styleField = makeField("Style notes", styleInput);
+  const promptField = makeField("Edit prompt", promptInput);
   const kindOfEngine = () => thumbnailEngineKind(engineSelect.value);
   const paintEngine = () => {
+    const overlayOn = engineSelect.value === "overlay";
     const restyle = kindOfEngine() === "restyle";
     changeField.style.display = restyle ? "flex" : "none";
-    if (engineSelect.value === "moss_image_edit") engineHint.textContent = MOSS_EDIT_HINT;
+    overlayGroup.style.display = overlayOn ? "flex" : "none";
+    styleField.style.display = overlayOn ? "none" : "flex";
+    promptField.style.display = overlayOn ? "none" : "flex";
+    writeButton.style.display = overlayOn ? "none" : "";
+    if (overlayOn) engineHint.textContent = OVERLAY_HINT;
+    else if (engineSelect.value === "moss_image_edit") engineHint.textContent = MOSS_EDIT_HINT;
     else if (engineSelect.value === "moss_image") engineHint.textContent = MOSS_RESTYLE_HINT;
     else engineHint.textContent = restyle ? RESTYLE_HINT : EDIT_HINT;
     paintChange();
+    paintOverlayStrength();
   };
   changeInput.addEventListener("input", paintChange);
   // The two kinds want different prompts, so a prompt written for the other kind is flagged instead of being sent as it is.
@@ -283,7 +331,8 @@ export function openThumbnailDialog(deps) {
     paintEngine();
     if (kindOfEngine() !== promptKind) {
       promptKind = kindOfEngine();
-      if (promptInput.value.trim()) {
+      // Overlay has no prompt, so there is nothing to flag when it is chosen.
+      if (promptInput.value.trim() && promptKind !== "overlay") {
         status.style.color = "#fcd34d";
         status.textContent = "This workflow needs a different kind of prompt. Click Write prompt with LLM again, or edit the one you have.";
       }
@@ -292,9 +341,6 @@ export function openThumbnailDialog(deps) {
   const titleInput = makeInput(intro.title);
   titleInput.maxLength = 120;
   titleInput.placeholder = "Words on the thumbnail, for example NEVER LOOK BACK (leave empty for no text)";
-  const styleInput = textArea(intro.style_notes, 2, "Optional look: neon city, moody blue and orange, glowing eyes, comic outline ...");
-  const promptInput = textArea(intro.prompt, 7, "The edit prompt. Click Write prompt with LLM, or type your own.");
-  const writeButton = makeButton("Write prompt with LLM");
   const generateButton = makeButton("Generate thumbnail", "primary");
   const status = document.createElement("div");
   status.style.cssText = "min-height:16px;font-size:12px;color:#93c5fd;white-space:pre-wrap;";
@@ -319,6 +365,7 @@ export function openThumbnailDialog(deps) {
     enabled: enableBox.input.checked,
     engine: engineSelect.value,
     change: clampThumbnailChange(Number(changeInput.value) / 100),
+    overlay: normalizeThumbnailOverlay({ color: overlayColor.value, position: overlayPosition.value, strength: Number(overlayStrength.value) }),
     title: titleInput.value,
     style_notes: styleInput.value,
     prompt: promptInput.value,
@@ -364,7 +411,9 @@ export function openThumbnailDialog(deps) {
   };
   const setBusy = (value, text = "") => {
     busy = value;
-    for (const control of [useButton, writeButton, generateButton, engineSelect, changeInput, titleInput, styleInput, promptInput]) control.disabled = value;
+    for (const control of [useButton, writeButton, generateButton, engineSelect, changeInput, overlayColor, overlayPosition, overlayStrength, titleInput, styleInput, promptInput]) {
+      control.disabled = value;
+    }
     status.style.color = "#93c5fd";
     status.textContent = text;
   };
@@ -430,8 +479,39 @@ export function openThumbnailDialog(deps) {
     }
   };
 
+  // The Overlay engine: the Builder keeps the frame and puts the layers on it (no prompt, no LLM, no ComfyUI) and saves the result.
+  const makeOverlayThumbnail = async () => {
+    commit(readInputs());
+    setBusy(true, "Putting the layers on the frame...");
+    let progress = null;
+    try {
+      progress = createProgressWindow?.("Creating the thumbnail");
+      progress?.set("Putting the layers on the frame...", 50);
+      const { url, payload } = thumbnailOverlayRequest({
+        sourcePath: current().source_path, title: titleInput.value, overlay: current().overlay, projectFolder: projectFolder(),
+      });
+      const saved = await postJson(url, payload);
+      const entry = { path: saved.image_path, prompt: "", engine: "overlay", scene_id: current().scene_id };
+      commit({ ...readInputs(), image_path: saved.image_path, history: thumbnailHistoryWith(current().history, entry) });
+      showImage(saved.image_path);
+      paintHistory();
+      progress?.set("Thumbnail ready.", 100);
+      progress?.close?.(600);
+      setBusy(false, titleInput.value.trim()
+        ? "Thumbnail ready. Change the color, position or strength and make it again, or pick an earlier one below."
+        : "Thumbnail ready, with no title text because the title is empty.");
+    } catch (error) {
+      progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+      fail(error);
+    }
+  };
+
   generateButton.onclick = async () => {
     if (busy || !requireSource()) return;
+    if (engineSelect.value === "overlay") {
+      await makeOverlayThumbnail();
+      return;
+    }
     const typed = promptInput.value.trim();
     if (!typed) {
       toast("Write the edit prompt first: click Write prompt with LLM or type one.", true);
@@ -497,8 +577,8 @@ export function openThumbnailDialog(deps) {
   const buttons = document.createElement("div");
   buttons.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;";
   buttons.append(writeButton, generateButton);
-  left.append(sectionTitle("2. Write the prompt, 3. Make the thumbnail"), makeField("Image workflow", engineSelect), engineHint, changeField,
-    makeField("Title text", titleInput), makeField("Style notes", styleInput), makeField("Edit prompt", promptInput), buttons, status);
+  left.append(sectionTitle("2. Choose how, 3. Make the thumbnail"), makeField("Image workflow", engineSelect), engineHint, changeField,
+    makeField("Title text", titleInput), overlayGroup, styleField, promptField, buttons, status);
   const right = document.createElement("div");
   right.style.cssText = COLUMN_CSS;
   right.append(sectionTitle("The thumbnail"), previewEmpty, preview, historyStrip);

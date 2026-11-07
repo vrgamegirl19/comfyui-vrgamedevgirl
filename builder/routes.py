@@ -27,6 +27,7 @@ from .video_profiles import (
 )
 from .export_video import _export_final_video
 from .thumbnail import _extract_thumbnail_frame, _prepend_thumbnail_intro, _save_thumbnail_image, _thumbnail_capabilities
+from .thumbnail_overlay import _make_thumbnail_overlay
 from .paths import _open_local_file, _open_native_picker, _resolve_existing_file
 from .elevenlabs import list_voices
 from ..general.lyrics import unload_stable_ts_models
@@ -859,6 +860,15 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = await asyncio.to_thread(_extract_thumbnail_frame, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/thumbnail/overlay")
+    async def vrgdg_music_builder_thumbnail_overlay(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_make_thumbnail_overlay, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

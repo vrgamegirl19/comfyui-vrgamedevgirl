@@ -36,7 +36,9 @@ test('the change setting is kept between 0 and 1, and a missing one is 0.65', ()
 
 test('every image workflow is known, with the kind of prompt it needs', () => {
   const c = load();
-  assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_ENGINES', c)), ['nano_banana', 'flux_klein', 'moss_image_edit', 'krea2_2pass', 'zimage', 'ernie_image', 'moss_image']);
+  assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_ENGINES', c)), ['overlay', 'nano_banana', 'flux_klein', 'moss_image_edit', 'krea2_2pass', 'zimage', 'ernie_image', 'moss_image']);
+  assert.equal(c.thumbnailEngineKind('overlay'), 'overlay', 'it is not an image workflow: no prompt, no LLM, no ComfyUI');
+  assert.equal(c.normalizeThumbnailIntro({ engine: 'overlay' }).engine, 'overlay');
   for (const edit of ['nano_banana', 'flux_klein']) assert.equal(c.thumbnailEngineKind(edit), 'edit');
   assert.equal(c.thumbnailEngineKind('moss_image_edit'), 'moss_edit', 'MOSS-Image Edit follows its own short instruction');
   for (const restyle of ['krea2_2pass', 'zimage', 'ernie_image', 'moss_image']) assert.equal(c.thumbnailEngineKind(restyle), 'restyle');
@@ -46,6 +48,22 @@ test('every image workflow is known, with the kind of prompt it needs', () => {
   assert.equal(c.normalizeThumbnailIntro({ history: [{ path: 'a.png', engine: 'moss_image_edit' }] }).history[0].engine, 'moss_image_edit');
   assert.equal(c.normalizeThumbnailIntro({ engine: 'bogus' }).engine, 'nano_banana');
   assert.equal(c.normalizeThumbnailIntro({ history: [{ path: 'a.png', engine: 'zimage' }] }).history[0].engine, 'zimage');
+});
+
+test('the overlay choices are kept to what the pack knows, and a missing or wrong one is the default', () => {
+  const c = load();
+  const plain = (value) => JSON.parse(JSON.stringify(value));
+  assert.deepEqual(plain(c.normalizeThumbnailOverlay(undefined)), { color: 'yellow', position: 'auto', strength: 60 });
+  assert.deepEqual(plain(c.normalizeThumbnailOverlay({ color: 'cyan', position: 'right', strength: 35.4 })), { color: 'cyan', position: 'right', strength: 35 });
+  assert.deepEqual(plain(c.normalizeThumbnailOverlay({ color: 'chartreuse', position: 'diagonal', strength: 'abc' })), { color: 'yellow', position: 'auto', strength: 60 });
+  assert.equal(c.normalizeThumbnailOverlay({ strength: 0 }).strength, 0, 'zero is a real choice: it leaves the frame alone');
+  assert.equal(c.normalizeThumbnailOverlay({ strength: -4 }).strength, 0);
+  assert.equal(c.normalizeThumbnailOverlay({ strength: 900 }).strength, 100);
+  for (const empty of ['', null]) assert.equal(c.normalizeThumbnailOverlay({ strength: empty }).strength, 60);
+  assert.deepEqual(plain(c.normalizeThumbnailIntro({}).overlay), { color: 'yellow', position: 'auto', strength: 60 });
+  assert.deepEqual(plain(c.normalizeThumbnailIntro({ overlay: { color: 'red', strength: 20 } }).overlay), { color: 'red', position: 'auto', strength: 20 });
+  assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_OVERLAY_COLORS', c)), ['yellow', 'white', 'orange', 'cyan', 'red']);
+  assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_OVERLAY_POSITIONS', c)), ['auto', 'top', 'bottom', 'left', 'right']);
 });
 
 test('the title sentence asks for the exact text: an instruction for edits, a statement of the picture for restyles, nothing without a title', () => {

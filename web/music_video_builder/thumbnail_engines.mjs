@@ -19,6 +19,7 @@ const ENGINE_ROUTES = {
 };
 
 export const THUMBNAIL_ENGINE_LABELS = {
+  overlay: "Overlay: your frame exactly, no AI (grade, glow, title)",
   nano_banana: "NanoBanana (API, edit)",
   flux_klein: "Flux/Klein (local, edit)",
   moss_image_edit: "MOSS-Image Edit (local, edit)",
@@ -27,6 +28,21 @@ export const THUMBNAIL_ENGINE_LABELS = {
   ernie_image: "Ernie (local, restyle)",
   moss_image: "MOSS-Image (local, restyle)",
 };
+
+// The Overlay engine is not an image workflow: it has its own route, which keeps the frame and puts the grade and the title on top,
+// and saves the result in the project itself (so there is no ComfyUI queue and no separate save). `{ url, payload, label }`.
+export function thumbnailOverlayRequest({ sourcePath, title, overlay, projectFolder }) {
+  const path = String(sourcePath || "").trim();
+  if (!path) throw new Error("Choose the frame first: scrub the video to the moment you want and click Use this frame.");
+  const folder = String(projectFolder || "").trim();
+  if (!folder) throw new Error("Create or load a project before making a thumbnail.");
+  const look = overlay && typeof overlay === "object" ? overlay : {};
+  return {
+    url: "/vrgdg/music_builder/thumbnail/overlay",
+    payload: { project_folder: folder, source_path: path, title: String(title || ""), color: look.color, position: look.position, strength: look.strength },
+    label: THUMBNAIL_ENGINE_LABELS.overlay,
+  };
+}
 
 function unitChange(change) {
   if (change === null || change === undefined || change === "") return 0.65;
