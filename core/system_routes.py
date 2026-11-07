@@ -425,6 +425,7 @@ _CUSTOM_NODES_DIR = Path(_NODE_DIR).parent
 VIDEO_BUILDER_CUSTOM_NODES = {
     "videohelpersuite": {"install": "comfyui-videohelpersuite", "folders": ("ComfyUI-VideoHelperSuite", "comfyui-videohelpersuite")},
     "kjnodes": {"install": "comfyui-kjnodes", "folders": ("ComfyUI-KJNodes", "comfyui-kjnodes")},
+    "euler_flow_matching": {"install": "erosdiffusion-eulerflowmatchingdiscretescheduler", "folders": ("erosdiffusion-eulerflowmatchingdiscretescheduler", "ComfyUI-EulerDiscreteScheduler", "ComfyUI-EulerFlowMatchingDiscreteScheduler")},
     "gguf": {"install": "ComfyUI-GGUF", "folders": ("ComfyUI-GGUF",)},
     "ltxvideo": {"install": "ComfyUI-LTXVideo", "folders": ("ComfyUI-LTXVideo",)},
     "te_speed_minimax_h3": {"install": "https://github.com/HELPMEEADICE/TE-Speed-MiniMaxH3-OSS.git", "folders": ("TE-Speed-MiniMaxH3-OSS",)},
