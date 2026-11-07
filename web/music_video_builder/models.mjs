@@ -15,7 +15,10 @@ export const LTX_25_MODEL_DOWNLOADS = [
   { label: "LTX 2.5 Latent Upscaler", url: "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors" },
 ];
 export const MINIMAX_H3_MODEL_DOWNLOADS = [
-  { label: "Diffusion model", url: "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors" },
+  { label: "Diffusion models", choices: [
+    { label: "Official MiniMax H3 — FL2VA / Ref2VA", url: "https://huggingface.co/Comfy-Org/MiniMax-H3/tree/main/diffusion_models" },
+    { label: "Singularity models", url: "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/tree/main" },
+  ] },
   { label: "Qwen3-VL text encoder", url: "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors" },
   { label: "Video VAE", url: "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_video_vae_fp16.safetensors" },
   { label: "Audio VAE", url: "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_audio_vae_fp32.safetensors" },
