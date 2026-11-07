@@ -41,8 +41,8 @@ MONITOR = [
 ]
 
 R9700 = {"slot": 0, "name": "AMD Radeon AI PRO R9700", "uuid": "37363835-6133-3438-6338-356263386535",
-         "total_bytes": 32624 * 1000 * 1000, "free_bytes": 5724000000, "pci_bus": "0000:03:00.0"}
-IGPU = {"slot": 1, "name": "AMD Radeon Graphics", "uuid": "", "total_bytes": 2048 * 1000 * 1000, "free_bytes": 2048 * 1000 * 1000,
+         "total_bytes": 32624 * 1024 ** 2, "free_bytes": 5724000000, "pci_bus": "0000:03:00.0"}
+IGPU = {"slot": 1, "name": "AMD Radeon Graphics", "uuid": "", "total_bytes": 2048 * 1024 ** 2, "free_bytes": 2048 * 1024 ** 2,
         "pci_bus": "0000:7b:00.0"}
 
 
@@ -109,8 +109,8 @@ class ReadingTests(unittest.TestCase):
         self.assertEqual(amd_smi._clean(56), 56)
 
     def test_the_units_amd_smi_chose_become_bytes(self):
-        self.assertEqual(amd_smi._bytes({"value": 32624, "unit": "MB"}), 32624 * 1000 ** 2)
-        self.assertEqual(amd_smi._bytes({"value": 26.9, "unit": "GB"}), 26900000000)
+        self.assertEqual(amd_smi._bytes({"value": 32624, "unit": "MB"}), 34208743424, "the amount is exactly 32624 MiB, the tool only spells it MB")
+        self.assertEqual(amd_smi._bytes({"value": 26.9, "unit": "GB"}), int(round(26.9 * 1024 ** 3)))
         self.assertIsNone(amd_smi._bytes("N/A"))
         self.assertIsNone(amd_smi._bytes({"value": 1, "unit": "furlongs"}))
 
@@ -126,8 +126,8 @@ class ReadingTests(unittest.TestCase):
         r9700 = cards[0]
         self.assertEqual(r9700["name"], "AMD Radeon AI PRO R9700")
         self.assertEqual(r9700["pci_bus"], "0000:03:00.0")
-        self.assertEqual(r9700["total"], 32624 * 1000 ** 2)
-        self.assertEqual((r9700["used"], r9700["free"]), (26900000000, 32624 * 1000 ** 2 - 26900000000))
+        self.assertEqual(r9700["total"], 34208743424)
+        self.assertEqual((r9700["used"], r9700["free"]), (28883655066, 34208743424 - 28883655066))
         self.assertEqual((r9700["load"], r9700["clock"], r9700["power"], r9700["power_limit"]), (5, 84, 52, 300))
         self.assertEqual(r9700["temperature"], 56)
         self.assertIsNone(r9700["fan"], "this card reports no fan")
@@ -159,7 +159,7 @@ class ResourceMonitorTests(unittest.TestCase):
             rows = amd_smi.parse_sensors(amd_smi.gpus_amd())
         self.assertEqual([(row["index"], row["name"]) for row in rows], [("0", "AMD Radeon AI PRO R9700"), ("1", "AMD Radeon Graphics")])
         self.assertEqual(set(rows[0]), {"index", "name", "load", "used", "total", "temperature", "fan", "clock", "power", "power_limit"})
-        self.assertEqual(rows[0]["used"], 26900000000)
+        self.assertEqual(rows[0]["used"], 28883655066)
         self.assertIsNone(rows[1]["fan"])
         json.dumps({"gpus": rows}, allow_nan=False)
 
@@ -175,8 +175,8 @@ class GpuListTests(unittest.TestCase):
             listing = gpus.list_gpus()
         first, second = listing["gpus"]
         self.assertEqual((first["number"], first["visible"], first["comfyui_gpu"]), (0, True, True), "the UUID from the serial pairs the card")
-        self.assertEqual(first["total_gb"], 30.4, "32624 MB of the card list is 30.4 GiB here")
-        self.assertEqual(first["free_gb"], 5.3)
+        self.assertEqual(first["total_gb"], 31.9, "the 32624 MiB card is 31.9 GiB, same as torch and the driver report")
+        self.assertEqual(first["free_gb"], 5.0, "the 31.9 GiB card with 26.9 GiB in use leaves 5.0 free")
         self.assertEqual(second["number"], 1, "the iGPU with no serial is paired by its name")
         self.assertEqual(listing["note"], "")
 

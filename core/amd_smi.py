@@ -11,8 +11,9 @@ is, how much VRAM is in use, its temperature, its clock, its fan and its power d
 Every reading is a ``{"value": 26.9, "unit": "GB"}`` object, and a sensor the card does not have is the string ``"N/A"`` rather than a number, so
 every field can come back ``None``.
 
-Memory numbers come back in decimal units (``32624 MB`` = 32.6 GB) while ComfyUI shows binary ones (30.4 GiB), so they are converted to bytes here
-and nothing has to know which units ``amd-smi`` chose.
+Memory numbers carry decimal-sounding labels but binary amounts: the 32 GiB card says ``32624 MB``, and the driver reports exactly 32624 * 1024 * 1024
+bytes in its own sysfs files, while ``monitor`` writes ``31.9 GB`` for the same 31.9 GiB. They are converted to bytes here so everything downstream
+sees honest numbers no matter which units ``amd-smi`` chose.
 """
 
 import json
@@ -23,8 +24,9 @@ import subprocess
 import sys
 from typing import Any, Dict, List, Optional
 
-# ``amd-smi`` writes plain decimal multiples: 1 kB is 1000 bytes, 1 GB is 1000^3.
-_UNITS = {"B": 1, "KB": 10 ** 3, "MB": 10 ** 6, "GB": 10 ** 9, "TB": 10 ** 12}
+# ``amd-smi`` labels memory ``MB``/``GB`` but means the binary multiples: the driver's sysfs total for this card is 34,208,743,424 bytes,
+# exactly 32624 * 1024 * 1024, while ``amd-smi static`` prints that same amount as "32624 MB" and ``monitor`` as "31.9 GB".
+_UNITS = {"B": 1, "KB": 1024, "MB": 1024 ** 2, "GB": 1024 ** 3, "TB": 1024 ** 4}
 
 
 def find_amd_smi() -> Optional[str]:
