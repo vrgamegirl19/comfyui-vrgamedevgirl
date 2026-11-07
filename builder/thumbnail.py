@@ -6,6 +6,7 @@ calls ``_save_thumbnail_image`` to keep it in ``<project>/thumbnail``. After the
 clips, the timeline and the audio sync are never touched: only the stitched video is rewritten.
 """
 
+import math
 import os
 import shutil
 import subprocess
@@ -26,8 +27,8 @@ _VIDEO_SUFFIXES = frozenset({".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"})
 
 
 def _thumbnail_capabilities() -> Dict[str, Any]:
-    """Tell the Builder that this build can save thumbnails and prepend the intro."""
-    return {"version": THUMBNAIL_CAPABILITIES_VERSION}
+    """Tell the Builder that this build can save thumbnails, prepend the intro and take one exact frame of a video."""
+    return {"version": THUMBNAIL_CAPABILITIES_VERSION, "frame": True}
 
 
 def _clean_path(raw: Any) -> str:
@@ -45,13 +46,13 @@ def _intro_seconds(value: Any) -> float:
     return max(MIN_INTRO_SECONDS, min(MAX_INTRO_SECONDS, seconds))
 
 
-def _next_thumbnail_path(folder: str) -> str:
-    """Return ``thumbnail_NNNN.png`` with the first number that is free in ``folder``."""
+def _next_thumbnail_path(folder: str, prefix: str = "thumbnail") -> str:
+    """Return ``<prefix>_NNNN.png`` with the first number that is free in ``folder``."""
     taken = set(os.listdir(folder)) if os.path.isdir(folder) else set()
     number = 1
-    while f"thumbnail_{number:04d}.png" in taken:
+    while f"{prefix}_{number:04d}.png" in taken:
         number += 1
-    return os.path.join(folder, f"thumbnail_{number:04d}.png")
+    return os.path.join(folder, f"{prefix}_{number:04d}.png")
 
 
 def _save_thumbnail_image(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -104,6 +105,55 @@ def _frame_rate(values: Dict[str, str]) -> Fraction:
         if rate > 0:
             return rate
     return Fraction(24)
+
+
+def _extract_thumbnail_frame(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Take one exact frame of a video as ``<project>/thumbnail/source_NNNN.png`` (the picture the thumbnail is made from).
+
+    ``seconds`` is the moment in ``video_path``. It is snapped to the nearest frame, and the seek lands half a frame
+    before that frame's time, so the frame the Builder showed at that moment is the one that is saved, not its neighbor.
+    A moment past the end gives the last frame.
+    """
+    from ..runner.paths import _find_ffmpeg_path
+    from ..runner.video_files import _probe_stream_fields, _safe_project_subfolder
+
+    if not str(payload.get("project_folder") or "").strip().strip('"'):
+        raise ValueError("Project folder is empty.")
+    video = _clean_path(payload.get("video_path"))
+    if not os.path.isfile(video) or os.path.splitext(video)[1].lower() not in _VIDEO_SUFFIXES:
+        raise FileNotFoundError(f"The video to take the frame from was not found: {video}")
+    try:
+        seconds = float(payload.get("seconds"))
+    except (TypeError, ValueError):
+        raise ValueError("Say which moment of the video to use (seconds).") from None
+    if not math.isfinite(seconds) or seconds < 0:
+        raise ValueError("The moment in the video must be 0 seconds or more.")
+
+    ffmpeg_path = _find_ffmpeg_path()
+    fields = _probe_stream_fields(video, ffmpeg_path, "v:0", ["width", "height", "r_frame_rate", "avg_frame_rate"])
+    rate = _frame_rate(fields)
+    duration = _format_duration(video, ffmpeg_path)
+    frame = int(math.floor(seconds * float(rate) + 0.5))
+    if duration > 0:
+        frame = min(frame, max(0, int(math.floor(duration * float(rate) + 0.5)) - 1))
+    start = max(0.0, (frame - 0.5) / float(rate)) if frame > 0 else 0.0
+
+    _project, folder = _safe_project_subfolder(payload.get("project_folder", ""), THUMBNAIL_FOLDER)
+    target = _next_thumbnail_path(folder, "source")
+    try:
+        _run_ffmpeg([ffmpeg_path, "-y", "-ss", f"{start:.6f}", "-i", video, "-frames:v", "1", "-an", target])
+        if not os.path.isfile(target) or os.path.getsize(target) == 0:
+            raise RuntimeError("FFmpeg did not find a frame at that moment of the video.")
+        with Image.open(target) as image:
+            width, height = image.size
+    except Exception:
+        if os.path.isfile(target):
+            os.remove(target)
+        raise
+    return {
+        "image_path": target, "width": width, "height": height,
+        "frame": frame, "seconds": frame / float(rate), "fps": float(rate),
+    }
 
 
 def _run_ffmpeg(command: List[str]) -> None:

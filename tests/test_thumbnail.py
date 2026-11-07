@@ -146,6 +146,81 @@ class PrependTests(unittest.TestCase):
             self.assertEqual(sorted(os.listdir(folder)), before)
 
 
+def _make_two_color_video(path, rate=24):
+    """One second of red, then one second of blue: frames 0-23 are red and 24-47 are blue at 24 fps."""
+    subprocess.run(
+        [FFMPEG, "-y", "-f", "lavfi", "-i", f"color=c=red:s=160x90:r={rate}:d=1",
+         "-f", "lavfi", "-i", f"color=c=blue:s=160x90:r={rate}:d=1",
+         "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[v]", "-map", "[v]",
+         "-c:v", "libx264", "-pix_fmt", "yuv420p", path],
+        check=True, capture_output=True)
+    return path
+
+
+def _dominant(path):
+    """``"red"``, ``"blue"`` or ``"other"`` for the average color of a picture."""
+    with Image.open(path) as image:
+        red, green, blue = image.convert("RGB").resize((1, 1)).getpixel((0, 0))
+    if red > 150 and blue < 100:
+        return "red"
+    if blue > 150 and red < 100:
+        return "blue"
+    return "other"
+
+
+@unittest.skipUnless(FFMPEG, "ffmpeg is not installed")
+class FrameTests(unittest.TestCase):
+    def _take(self, project, video, seconds):
+        return thumbnail._extract_thumbnail_frame({"project_folder": project, "video_path": video, "seconds": seconds})
+
+    def test_the_frame_at_a_moment_is_the_frame_the_player_shows_there(self):
+        with tempfile.TemporaryDirectory() as project:
+            video = _make_two_color_video(os.path.join(project, "scene.mp4"))
+            # Frame 23 is the last red one, frame 24 the first blue one: a cut that lands exactly on a frame edge.
+            before = self._take(project, video, 23 / 24)
+            after = self._take(project, video, 24 / 24)
+            self.assertEqual((before["frame"], _dominant(before["image_path"])), (23, "red"))
+            self.assertEqual((after["frame"], _dominant(after["image_path"])), (24, "blue"))
+            self.assertEqual(_dominant(self._take(project, video, 0)["image_path"]), "red")
+            self.assertEqual(_dominant(self._take(project, video, 0.5)["image_path"]), "red")
+            self.assertEqual(_dominant(self._take(project, video, 1.5)["image_path"]), "blue")
+
+    def test_a_moment_between_frames_snaps_to_the_nearest_frame(self):
+        with tempfile.TemporaryDirectory() as project:
+            video = _make_two_color_video(os.path.join(project, "scene.mp4"))
+            snapped = self._take(project, video, 0.9999)
+            self.assertEqual(snapped["frame"], 24)
+            self.assertAlmostEqual(snapped["seconds"], 1.0, places=6)
+            self.assertEqual(snapped["fps"], 24.0)
+            self.assertEqual((snapped["width"], snapped["height"]), (160, 90))
+
+    def test_a_moment_past_the_end_gives_the_last_frame(self):
+        with tempfile.TemporaryDirectory() as project:
+            video = _make_two_color_video(os.path.join(project, "scene.mp4"))
+            last = self._take(project, video, 99)
+            self.assertEqual(last["frame"], 47)
+            self.assertEqual(_dominant(last["image_path"]), "blue")
+
+    def test_each_frame_gets_its_own_numbered_file_in_the_thumbnail_folder(self):
+        with tempfile.TemporaryDirectory() as project:
+            video = _make_two_color_video(os.path.join(project, "scene.mp4"))
+            names = [os.path.basename(self._take(project, video, 0.1)["image_path"]) for _ in range(2)]
+            self.assertEqual(names, ["source_0001.png", "source_0002.png"])
+            self.assertEqual(sorted(os.listdir(os.path.join(project, "thumbnail"))), names)
+
+    def test_bad_requests_are_refused_and_leave_nothing_behind(self):
+        with tempfile.TemporaryDirectory() as project:
+            video = _make_two_color_video(os.path.join(project, "scene.mp4"))
+            with self.assertRaises(ValueError):
+                thumbnail._extract_thumbnail_frame({"project_folder": "", "video_path": video, "seconds": 0})
+            with self.assertRaises(FileNotFoundError):
+                self._take(project, os.path.join(project, "missing.mp4"), 0)
+            for bad in (-1, "abc", None, float("nan")):
+                with self.assertRaises(ValueError):
+                    self._take(project, video, bad)
+            self.assertFalse(os.path.isdir(os.path.join(project, "thumbnail")) and os.listdir(os.path.join(project, "thumbnail")))
+
+
 class PromptTextTests(unittest.TestCase):
     def test_a_title_is_asked_for_exactly_and_no_title_means_no_text(self):
         with_title = prompts.thumbnail_instruction('NEVER "LOOK" BACK')

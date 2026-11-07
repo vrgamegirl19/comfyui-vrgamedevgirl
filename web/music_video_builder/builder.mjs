@@ -973,6 +973,7 @@ export function openBuilder(node, options = {}) {
     overlayAvailable: false,
     thumbnailIntro: normalizeThumbnailIntro(),
     thumbnailAvailable: false,
+    thumbnailFrameAvailable: false,
     activeOverlayId: "",
     overlayLaneOpen: false,
     sceneTransitions: [],
@@ -2563,6 +2564,7 @@ export function openBuilder(node, options = {}) {
     button: thumbnailButton, state, projectInput, createProgressWindow,
     runnerPayload: currentLlmRunnerPayload,
     sceneImagePath: (segment) => selectedSegmentImagePath(segment),
+    sceneVideoPath: (segment) => selectedSegmentVideoPath(segment),
     sceneLabel: (segment, index) => sceneDisplayName(segment, index),
     save: () => autoSaveSessionQuiet("Thumbnail"),
   });

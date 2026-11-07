@@ -1,36 +1,44 @@
-// Thumbnail intro. The Thumbnail button opens a dialog: pick a scene, let the Builder's LLM look at its image and write a
-// YouTube-style edit prompt, send the image through NanoBanana or Flux/Klein, keep the result. When the intro is on, the
-// final stitch puts the picture in front of the video for a few seconds (`POST /vrgdg/music_builder/thumbnail/prepend`).
-// The scenes, the timeline and the audio sync are never touched. The pure parts are in thumbnail_state.mjs.
+// Thumbnail intro. The Thumbnail button opens a dialog: scrub the video to the exact moment you want and take that frame, let the
+// Builder's LLM look at it and write a YouTube-style edit prompt, send the frame through NanoBanana or Flux/Klein, keep the result.
+// When the intro is on, the final stitch puts the picture in front of the video for a few seconds
+// (`POST /vrgdg/music_builder/thumbnail/prepend`). The scenes, the timeline and the audio sync are never touched. The pure parts
+// (the saved settings, the timeline of frames) are in thumbnail_state.mjs.
 
 import { api } from "../../../scripts/api.js";
-import { makeEditorImageUrl, postJson, queueWorkflowPrompt, waitForImages } from "./comfy_api.mjs";
+import { makeEditorImageUrl, makeEditorVideoUrl, postJson, queueWorkflowPrompt, waitForImages } from "./comfy_api.mjs";
 import { BUILDER_FONT_STACK, DEFAULT_NB_IMAGE_MODEL } from "./constants.mjs";
 import { makeButton, makeCheckbox, makeField, makeInput, makeSelect, toast } from "./controls.mjs";
 import { fluxKleinLoraPayload } from "./image_generation.mjs";
 import {
-  clampThumbnailSeconds, normalizeThumbnailIntro, thumbnailHistoryWith, thumbnailIntroForStitch,
+  clampThumbnailSeconds, formatThumbnailTime, normalizeThumbnailIntro, thumbnailFrameRange, thumbnailHistoryWith,
+  thumbnailIntroForStitch, thumbnailItemAt, thumbnailLocalSeconds, thumbnailTimelineItems, THUMBNAIL_FPS,
   THUMBNAIL_MAX_SECONDS, THUMBNAIL_MIN_SECONDS,
 } from "./thumbnail_state.mjs";
 
 const THUMBNAIL_PREPEND_TIMEOUT_MS = 30 * 60 * 1000;
 const THUMBNAIL_PROMPT_TIMEOUT_MS = 10 * 60 * 1000;
+const THUMBNAIL_FRAME_TIMEOUT_MS = 2 * 60 * 1000;
 const THUMBNAIL_WIDTH = 1280;
 const THUMBNAIL_HEIGHT = 720;
+// Where inside a frame's time slot the player is parked, so it shows that frame and not the one before it.
+const FRAME_SEEK_OFFSET = 0.25;
 const ENGINE_LABELS = [
   { value: "nano_banana", label: "NanoBanana (API)" },
   { value: "flux_klein", label: "Flux/Klein (local)" },
 ];
 
-// Asks whether this build can make thumbnails. A build without the routes answers 404, which is an answer here and not an
-// error for the project's error log, so the button stays hidden and nothing else changes.
+// Asks whether this build can make thumbnails, and whether it can take one exact frame of a video. A build without the routes
+// answers 404, which is an answer here and not an error for the project's error log, so the button stays hidden and nothing
+// else changes.
 export async function loadThumbnailCapabilities(state) {
   try {
     const response = await api.fetchApi("/vrgdg/music_builder/thumbnail/capabilities", { timeoutMs: null });
     const data = response.ok ? await response.json().catch(() => null) : null;
     state.thumbnailAvailable = Boolean(data && data.ok !== false && data.version);
+    state.thumbnailFrameAvailable = Boolean(state.thumbnailAvailable && data.frame);
   } catch {
     state.thumbnailAvailable = false;
+    state.thumbnailFrameAvailable = false;
   }
   return state.thumbnailAvailable;
 }
@@ -57,7 +65,7 @@ export async function applyThumbnailIntroAfterStitch(state, stitched, { progress
   }
 }
 
-// Sends the scene image through the chosen image workflow and returns the ComfyUI view descriptor of the result.
+// Sends the chosen frame through the chosen image workflow and returns the ComfyUI view descriptor of the result.
 async function generateThumbnailImage({ state, engine, prompt, sourcePath, onStatus }) {
   const ingredients = [{ path: sourcePath }];
   let built;
@@ -98,7 +106,10 @@ async function generateThumbnailImage({ state, engine, prompt, sourcePath, onSta
   return image;
 }
 
-const PANEL_CSS = `width:min(980px,calc(100vw - 40px));max-height:calc(100vh - 40px);overflow:auto;box-sizing:border-box;border:1px solid #155e75;border-radius:10px;background:#0f172a;color:#f8fafc;box-shadow:0 24px 80px rgba(0,0,0,.65);padding:16px;display:flex;flex-direction:column;gap:12px;font-family:${BUILDER_FONT_STACK};`;
+const PANEL_CSS = `width:min(1040px,calc(100vw - 40px));max-height:calc(100vh - 40px);overflow:auto;box-sizing:border-box;border:1px solid #155e75;border-radius:10px;background:#0f172a;color:#f8fafc;box-shadow:0 24px 80px rgba(0,0,0,.65);padding:16px;display:flex;flex-direction:column;gap:12px;font-family:${BUILDER_FONT_STACK};`;
+const COLUMN_CSS = "display:flex;flex-direction:column;gap:8px;min-width:0;";
+const FRAME_CSS = "display:block;width:100%;aspect-ratio:16/9;object-fit:contain;border:1px solid #3f3f46;border-radius:6px;background:#09090b;";
+const EMPTY_FRAME_CSS = "display:flex;align-items:center;justify-content:center;width:100%;aspect-ratio:16/9;box-sizing:border-box;border:1px dashed #3f3f46;border-radius:6px;color:#71717a;font-size:12px;text-align:center;padding:8px;";
 
 function textArea(value, rows, placeholder) {
   const area = document.createElement("textarea");
@@ -109,24 +120,38 @@ function textArea(value, rows, placeholder) {
   return area;
 }
 
+function sectionTitle(text) {
+  const title = document.createElement("div");
+  title.textContent = text;
+  title.style.cssText = "font-size:12px;font-weight:600;color:#67e8f9;letter-spacing:.02em;";
+  return title;
+}
+
 // The dialog. `deps` come from the Builder: state, projectInput, runnerPayload() (the LLM Runner settings), sceneImagePath(segment),
-// sceneLabel(segment, index), save() (a quiet autosave) and createProgressWindow(title).
+// sceneVideoPath(segment) (its rendered video), sceneLabel(segment, index), save() (a quiet autosave) and createProgressWindow(title).
 export function openThumbnailDialog(deps) {
-  const { state, projectInput, runnerPayload, sceneImagePath, sceneLabel, save, createProgressWindow } = deps;
+  const { state, projectInput, runnerPayload, sceneImagePath, sceneVideoPath, sceneLabel, save, createProgressWindow } = deps;
   const projectFolder = () => String(projectInput?.value || state.projectFolder || "").trim();
   if (!projectFolder()) {
     toast("Create or load a project before making a thumbnail.", true);
     return null;
   }
-  const scenes = (state.segments || [])
-    .map((segment, index) => ({ segment, index, path: String(sceneImagePath(segment) || "").trim() }))
-    .filter((item) => item.path);
-  if (!scenes.length) {
-    toast("No scene has an image yet. Make or choose a scene image first, then open Thumbnail.", true);
+  // The scenes the picker moves through. Without the frame route a scene can only offer its image.
+  const canFrame = Boolean(state.thumbnailFrameAvailable);
+  const items = thumbnailTimelineItems((state.segments || []).map((segment, index) => ({
+    segment, index, start: segment.start, end: segment.end,
+    video: canFrame ? String(sceneVideoPath?.(segment) || "").trim() : "",
+    image: String(sceneImagePath?.(segment) || "").trim(),
+  })));
+  if (!items.length) {
+    toast("No scene has a rendered video or an image yet. Render a scene or make a scene image first, then open Thumbnail.", true);
     return null;
   }
+  const { min: minFrame, max: maxFrame } = thumbnailFrameRange(items);
   const intro = normalizeThumbnailIntro(state.thumbnailIntro);
   let busy = false;
+  let frame = Math.max(minFrame, Math.min(maxFrame, intro.source_kind ? intro.source_frame : minFrame));
+  let loadToken = 0;
 
   const backdrop = document.createElement("div");
   backdrop.style.cssText = "position:fixed;inset:0;z-index:100050;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;";
@@ -139,39 +164,106 @@ export function openThumbnailDialog(deps) {
   title.textContent = "Thumbnail Intro";
   title.style.cssText = "font-size:17px;font-weight:600;color:#cffafe;";
   const note = document.createElement("div");
-  note.textContent = "Pick a scene. The LLM looks at its image and writes the edit prompt, then NanoBanana or Flux/Klein turns it into a thumbnail. When it is on, the final video starts with the thumbnail.";
+  note.textContent = canFrame
+    ? "1. Scrub the video to the exact moment you want and click Use this frame. 2. The LLM looks at that frame and writes the edit prompt. 3. NanoBanana or Flux/Klein turns it into a thumbnail. When it is on, the final video starts with the thumbnail."
+    : "This build cannot take a frame of a video, so pick the scene whose image you want to start from. The LLM looks at it and writes the edit prompt, and NanoBanana or Flux/Klein turns it into a thumbnail.";
   note.style.cssText = "font-size:12px;line-height:1.45;color:#cbd5e1;";
 
-  // Scene picker: one tile per scene that has an image.
-  const strip = document.createElement("div");
-  strip.style.cssText = "display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;";
-  const tiles = new Map();
-  let selected = scenes.find((item) => item.segment.id === intro.scene_id) || scenes[0];
-  const paintTiles = () => {
-    for (const [id, tile] of tiles) tile.style.borderColor = id === selected.segment.id ? "#22d3ee" : "#3f3f46";
-  };
-  for (const item of scenes) {
-    const tile = document.createElement("button");
-    tile.type = "button";
-    tile.title = sceneLabel(item.segment, item.index);
-    tile.style.cssText = "flex:0 0 auto;width:132px;border:2px solid #3f3f46;border-radius:6px;background:#18181b;color:#e2e8f0;padding:4px;cursor:pointer;font-size:11px;font-family:inherit;";
-    const picture = document.createElement("img");
-    picture.src = makeEditorImageUrl(item.path);
-    picture.alt = "";
-    picture.style.cssText = "display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:3px;";
-    const label = document.createElement("div");
-    label.textContent = sceneLabel(item.segment, item.index);
-    label.style.cssText = "margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-    tile.append(picture, label);
-    tile.onclick = () => {
-      selected = item;
-      paintTiles();
-    };
-    tiles.set(item.segment.id, tile);
-    strip.append(tile);
-  }
-  paintTiles();
+  // Step 1: the player and the scrubber over the whole timeline.
+  const video = document.createElement("video");
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = "auto";
+  video.style.cssText = `${FRAME_CSS}display:none;`;
+  const still = document.createElement("img");
+  still.alt = "";
+  still.style.cssText = `${FRAME_CSS}display:none;`;
+  const scrub = document.createElement("input");
+  scrub.type = "range";
+  scrub.min = String(minFrame);
+  scrub.max = String(maxFrame);
+  scrub.step = "1";
+  scrub.style.cssText = "width:100%;accent-color:#22d3ee;";
+  scrub.setAttribute("aria-label", "Moment of the video");
+  const readout = document.createElement("div");
+  readout.style.cssText = "font-size:12px;color:#e2e8f0;font-variant-numeric:tabular-nums;";
+  const stepRow = document.createElement("div");
+  stepRow.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;align-items:center;";
+  const useButton = makeButton("Use this frame", "primary");
 
+  const sceneItemAt = (at) => thumbnailItemAt(items, at);
+  const paintReadout = (item) => {
+    const seconds = frame / THUMBNAIL_FPS;
+    const kind = item.video ? "video" : "scene image";
+    readout.textContent = `${sceneLabel(item.segment, item.index)}  ·  ${formatThumbnailTime(seconds)}  ·  frame ${frame}  (${kind})`;
+  };
+  // Shows the frame: the scene's video parked on that frame, or the scene's image for a scene with no video.
+  const showFrame = (next) => {
+    frame = Math.max(minFrame, Math.min(maxFrame, Math.round(Number(next) || 0)));
+    scrub.value = String(frame);
+    const item = sceneItemAt(frame);
+    paintReadout(item);
+    const token = ++loadToken;
+    if (item.video) {
+      still.style.display = "none";
+      video.style.display = "block";
+      const seek = () => {
+        if (token === loadToken) video.currentTime = (thumbnailLocalSeconds(item, frame, THUMBNAIL_FPS) * THUMBNAIL_FPS + FRAME_SEEK_OFFSET) / THUMBNAIL_FPS;
+      };
+      if (video.dataset.path !== item.video) {
+        video.dataset.path = item.video;
+        video.addEventListener("loadedmetadata", seek, { once: true });
+        video.src = makeEditorVideoUrl(item.video, item.segment.video_cache_bust);
+      } else {
+        seek();
+      }
+    } else {
+      video.style.display = "none";
+      still.style.display = "block";
+      still.src = makeEditorImageUrl(item.image);
+    }
+  };
+  scrub.addEventListener("input", () => showFrame(Number(scrub.value)));
+  // Shift with the arrow keys moves a second at a time. The plain arrows move one frame (the slider's own step).
+  scrub.addEventListener("keydown", (event) => {
+    if (!event.shiftKey || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) return;
+    event.preventDefault();
+    showFrame(frame + (event.key === "ArrowRight" ? THUMBNAIL_FPS : -THUMBNAIL_FPS));
+  });
+  const stepButton = (label, title, move) => {
+    const button = makeButton(label);
+    button.title = title;
+    button.style.padding = "6px 9px";
+    button.onclick = () => showFrame(move());
+    stepRow.append(button);
+    return button;
+  };
+  stepButton("◀ Scene", "Jump to the start of the previous scene (or to the start of this one).", () => {
+    const item = sceneItemAt(frame);
+    const before = items.filter((other) => other.startFrame < item.startFrame).pop();
+    return frame > item.startFrame ? item.startFrame : (before || item).startFrame;
+  });
+  stepButton("− 1 s", "Back one second.", () => frame - THUMBNAIL_FPS);
+  stepButton("− 1 frame", "Back one frame.", () => frame - 1);
+  stepButton("+ 1 frame", "Forward one frame.", () => frame + 1);
+  stepButton("+ 1 s", "Forward one second.", () => frame + THUMBNAIL_FPS);
+  stepButton("Scene ▶", "Jump to the start of the next scene.", () => {
+    const item = sceneItemAt(frame);
+    return (items.find((other) => other.startFrame > item.startFrame) || item).startFrame;
+  });
+  stepRow.append(useButton);
+
+  // The frame in use: what the LLM looks at and what the image workflow starts from.
+  const sourceImage = document.createElement("img");
+  sourceImage.alt = "";
+  sourceImage.style.cssText = `${FRAME_CSS}display:none;`;
+  const sourceEmpty = document.createElement("div");
+  sourceEmpty.textContent = "No frame chosen yet. Scrub to the moment you want and click Use this frame.";
+  sourceEmpty.style.cssText = EMPTY_FRAME_CSS;
+  const sourceCaption = document.createElement("div");
+  sourceCaption.style.cssText = "font-size:12px;color:#93c5fd;line-height:1.4;";
+
+  // Step 2 and 3: the prompt and the picture.
   const engineSelect = makeSelect(ENGINE_LABELS, intro.engine);
   const titleInput = makeInput(intro.title);
   titleInput.maxLength = 120;
@@ -185,10 +277,10 @@ export function openThumbnailDialog(deps) {
 
   const preview = document.createElement("img");
   preview.alt = "";
-  preview.style.cssText = "display:none;width:100%;aspect-ratio:16/9;object-fit:contain;border:1px solid #3f3f46;border-radius:6px;background:#09090b;";
+  preview.style.cssText = `${FRAME_CSS}display:none;`;
   const previewEmpty = document.createElement("div");
   previewEmpty.textContent = "No thumbnail yet.";
-  previewEmpty.style.cssText = "display:flex;align-items:center;justify-content:center;width:100%;aspect-ratio:16/9;border:1px dashed #3f3f46;border-radius:6px;color:#71717a;font-size:12px;";
+  previewEmpty.style.cssText = EMPTY_FRAME_CSS;
   const historyStrip = document.createElement("div");
   historyStrip.style.cssText = "display:flex;gap:6px;overflow-x:auto;";
 
@@ -212,9 +304,22 @@ export function openThumbnailDialog(deps) {
     title: titleInput.value,
     style_notes: styleInput.value,
     prompt: promptInput.value,
-    scene_id: selected.segment.id,
   });
+  // The scene the chosen frame came from, for its lyrics.
+  const sourceSegment = () => (state.segments || []).find((segment) => segment.id === current().scene_id) || null;
 
+  const paintSource = () => {
+    const saved = current();
+    const has = Boolean(saved.source_path);
+    sourceImage.style.display = has ? "block" : "none";
+    sourceEmpty.style.display = has ? "none" : "flex";
+    if (has) sourceImage.src = makeEditorImageUrl(saved.source_path);
+    const segment = sourceSegment();
+    const index = segment ? (state.segments || []).indexOf(segment) : -1;
+    sourceCaption.textContent = has
+      ? `${segment ? sceneLabel(segment, index) : "Scene"}  ·  ${formatThumbnailTime(saved.source_seconds)}  ·  frame ${saved.source_frame}  (${saved.source_kind === "frame" ? "video frame" : "scene image"})`
+      : "";
+  };
   const showImage = (path) => {
     const has = Boolean(path);
     preview.style.display = has ? "block" : "none";
@@ -241,7 +346,7 @@ export function openThumbnailDialog(deps) {
   };
   const setBusy = (value, text = "") => {
     busy = value;
-    for (const control of [writeButton, generateButton, engineSelect, titleInput, styleInput, promptInput]) control.disabled = value;
+    for (const control of [useButton, writeButton, generateButton, engineSelect, titleInput, styleInput, promptInput]) control.disabled = value;
     status.style.color = "#93c5fd";
     status.textContent = text;
   };
@@ -251,18 +356,51 @@ export function openThumbnailDialog(deps) {
     status.textContent = String(error?.message || error);
     toast(String(error?.message || error), true);
   };
+  const requireSource = () => {
+    if (current().source_path) return true;
+    toast("Choose the frame first: scrub the video to the moment you want and click Use this frame.", true);
+    return false;
+  };
+
+  useButton.onclick = async () => {
+    if (busy) return;
+    const item = sceneItemAt(frame);
+    setBusy(true, item.video ? "Taking that frame of the video..." : "Using the scene image...");
+    try {
+      let kind = "image";
+      let path = item.image;
+      if (item.video) {
+        const reply = await postJson("/vrgdg/music_builder/thumbnail/frame", {
+          project_folder: projectFolder(),
+          video_path: item.video,
+          seconds: thumbnailLocalSeconds(item, frame, THUMBNAIL_FPS),
+        }, THUMBNAIL_FRAME_TIMEOUT_MS);
+        kind = "frame";
+        path = reply.image_path;
+      }
+      commit({
+        ...readInputs(), source_kind: kind, source_path: path, source_frame: frame, source_seconds: frame / THUMBNAIL_FPS,
+        scene_id: item.segment.id,
+      });
+      paintSource();
+      setBusy(false, "Frame chosen. Write the prompt with the LLM, or scrub again to pick a different moment.");
+    } catch (error) {
+      fail(error);
+    }
+  };
 
   writeButton.onclick = async () => {
-    if (busy) return;
-    setBusy(true, "The LLM is looking at the scene image and writing the prompt...");
+    if (busy || !requireSource()) return;
+    const saved = current();
+    setBusy(true, "The LLM is looking at the frame and writing the prompt...");
     try {
       const reply = await postJson("/vrgdg/music_builder/thumbnail/prompt", {
         ...(runnerPayload?.() || {}),
-        image_path: selected.path,
+        image_path: saved.source_path,
         title: titleInput.value,
         style_notes: styleInput.value,
         project_name: projectFolder().split(/[\\/]/).filter(Boolean).pop() || "",
-        scene_lyrics: String(selected.segment.lyric_text || selected.segment.lyrics || ""),
+        scene_lyrics: String(sourceSegment()?.lyric_text || sourceSegment()?.lyrics || ""),
       }, THUMBNAIL_PROMPT_TIMEOUT_MS);
       promptInput.value = String(reply.prompt || "");
       commit(readInputs());
@@ -273,7 +411,7 @@ export function openThumbnailDialog(deps) {
   };
 
   generateButton.onclick = async () => {
-    if (busy) return;
+    if (busy || !requireSource()) return;
     const prompt = promptInput.value.trim();
     if (!prompt) {
       toast("Write the edit prompt first: click Write prompt with LLM or type one.", true);
@@ -288,10 +426,10 @@ export function openThumbnailDialog(deps) {
         status.textContent = message;
         progress?.set(message, 50);
       };
-      const image = await generateThumbnailImage({ state, engine: engineSelect.value, prompt, sourcePath: selected.path, onStatus });
+      const image = await generateThumbnailImage({ state, engine: engineSelect.value, prompt, sourcePath: current().source_path, onStatus });
       onStatus("Saving the thumbnail in the project...");
       const saved = await postJson("/vrgdg/music_builder/thumbnail/save", { project_folder: projectFolder(), image });
-      const entry = { path: saved.image_path, prompt, engine: engineSelect.value, scene_id: selected.segment.id };
+      const entry = { path: saved.image_path, prompt, engine: engineSelect.value, scene_id: current().scene_id };
       commit({ ...readInputs(), image_path: saved.image_path, history: thumbnailHistoryWith(current().history, entry) });
       showImage(saved.image_path);
       paintHistory();
@@ -308,21 +446,33 @@ export function openThumbnailDialog(deps) {
   closeButton.onclick = () => {
     if (busy && !window.confirm("A thumbnail is still being made. Close this window anyway? It keeps running in the background.")) return;
     commit(readInputs());
+    video.pause();
     backdrop.remove();
   };
+
+  // Layout: the picker (player on the left, the frame in use on the right), then the prompt and the result, then the footer.
+  const pickerGrid = document.createElement("div");
+  pickerGrid.style.cssText = "display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:14px;align-items:start;";
+  const playerColumn = document.createElement("div");
+  playerColumn.style.cssText = COLUMN_CSS;
+  playerColumn.append(sectionTitle(canFrame ? "1. Pick the moment" : "1. Pick the scene"), video, still, scrub, readout, stepRow);
+  const sourceColumn = document.createElement("div");
+  sourceColumn.style.cssText = COLUMN_CSS;
+  sourceColumn.append(sectionTitle("The frame in use"), sourceEmpty, sourceImage, sourceCaption);
+  pickerGrid.append(playerColumn, sourceColumn);
 
   const settingsGrid = document.createElement("div");
   settingsGrid.style.cssText = "display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:14px;align-items:start;";
   const left = document.createElement("div");
-  left.style.cssText = "display:flex;flex-direction:column;gap:10px;min-width:0;";
+  left.style.cssText = COLUMN_CSS;
   const buttons = document.createElement("div");
   buttons.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;";
   buttons.append(writeButton, generateButton);
-  left.append(makeField("Image workflow", engineSelect), makeField("Title text", titleInput),
-    makeField("Style notes", styleInput), makeField("Edit prompt", promptInput), buttons, status);
+  left.append(sectionTitle("2. Write the prompt, 3. Make the thumbnail"), makeField("Image workflow", engineSelect),
+    makeField("Title text", titleInput), makeField("Style notes", styleInput), makeField("Edit prompt", promptInput), buttons, status);
   const right = document.createElement("div");
-  right.style.cssText = "display:flex;flex-direction:column;gap:8px;min-width:0;";
-  right.append(previewEmpty, preview, historyStrip);
+  right.style.cssText = COLUMN_CSS;
+  right.append(sectionTitle("The thumbnail"), previewEmpty, preview, historyStrip);
   settingsGrid.append(left, right);
 
   const footer = document.createElement("div");
@@ -332,9 +482,11 @@ export function openThumbnailDialog(deps) {
   footerLeft.append(enableBox.wrapper, secondsField);
   footer.append(footerLeft, closeButton);
 
-  box.append(title, note, strip, settingsGrid, footer);
+  box.append(title, note, pickerGrid, settingsGrid, footer);
   backdrop.append(box);
   document.body.append(backdrop);
+  showFrame(frame);
+  paintSource();
   showImage(intro.image_path);
   paintHistory();
   return backdrop;
