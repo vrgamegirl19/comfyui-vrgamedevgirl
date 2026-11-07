@@ -1121,6 +1121,7 @@ export function openBuilder(node, options = {}) {
     builderStoryLayer: normalizeBuilderStoryLayer({}),
     builderStoryboardDefaults: normalizeBuilderStoryboardDefaults({}),
     autoBuildPreparation: normalizeAutoBuildPreparation({}),
+    autoBuildDraft: null,
     wizardBetaDraft: null,
     postProcessTab: "luts",
     adjustLivePreview: false,
