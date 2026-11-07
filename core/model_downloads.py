@@ -27,7 +27,8 @@ _FREE_SPACE_MARGIN_BYTES = 256 * 1024 * 1024
 _MAX_SAFETENSORS_HEADER_BYTES = 100 * 1024 * 1024
 
 # id -> where it comes from and where it goes. ``folder`` is a ComfyUI model folder name (``loras``). Keep the urls
-# in step with DMAD_MODEL_FILES in web/music_video_builder/models.mjs (tests/test_model_downloads.py checks it).
+# in step with DMAD_MODEL_FILES and MOSS_IMAGE_MODEL_DOWNLOADS in web/music_video_builder/models.mjs
+# (tests/test_model_downloads.py checks it). ``filename`` is the name the file is saved as, which need not be the name in the url.
 DOWNLOADABLE_MODELS: Dict[str, Dict[str, str]] = {
     "dmad_lora": {
         "label": "DMAD 4-step LoRA",
@@ -46,6 +47,17 @@ DOWNLOADABLE_MODELS: Dict[str, Dict[str, str]] = {
         "url": "https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/loras/minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors",
         "page": "https://huggingface.co/Kijai/MiniMax-H3-experimental/blob/main/loras/minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors",
         "note": "Pass 2 LoRA. Restores detail in 2 to 3 steps.",
+    },
+    # Hugging Face calls this file adapter_model.safetensors, a name that would collide with any other adapter. It is saved
+    # under the name the MOSS-Image settings look for (MOSS_EDIT_LORA in web/music_video_builder/moss_settings.mjs).
+    "moss_edit_lora": {
+        "label": "MOSS-Image Edit LoRA",
+        "group": "moss",
+        "folder": "loras",
+        "filename": "moss_image_edit_lora.safetensors",
+        "url": "https://huggingface.co/chinoll/Moss-Image-Edit/resolve/main/adapter_model.safetensors",
+        "page": "https://huggingface.co/chinoll/Moss-Image-Edit/tree/main",
+        "note": "Follows a written instruction with one to four reference images. Saved as moss_image_edit_lora.safetensors. Needs a ComfyUI newer than v0.42.1.",
     },
 }
 

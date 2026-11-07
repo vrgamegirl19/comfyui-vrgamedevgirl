@@ -14,7 +14,7 @@ import {
 export const MOSS_PANEL_LABEL = "MOSS-Image";
 export const MOSS_OPTION_VALUE = "moss_image_settings";
 
-const EDIT_LORA_MISSING = `The Edit LoRA is not in ComfyUI/models/loras yet. Download it under Models > Download models > MOSS-Image and rename it to ${MOSS_EDIT_LORA}. It needs a ComfyUI with the Text Encode MOSS-Image Edit node (newer than v0.42.1).`;
+const EDIT_LORA_MISSING = `The Edit LoRA is not in ComfyUI/models/loras yet. Install it with the Edit LoRA button under Models > Download models > Image Models > MOSS-Image, which saves it as ${MOSS_EDIT_LORA}. It needs a ComfyUI with the Text Encode MOSS-Image Edit node (newer than v0.42.1).`;
 
 // Adds "MOSS-Image (models)" to the Image tab's model list, before "+ Custom". MOSS-Image has its models and settings here, not a scene
 // generator, so choosing it calls `openModels` and puts the list back on the mode in use. Every other choice goes to the list's own handler.

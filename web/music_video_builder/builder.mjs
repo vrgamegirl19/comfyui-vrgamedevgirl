@@ -3198,10 +3198,11 @@ export function openBuilder(node, options = {}) {
     segmentTrack, snapSceneEdgeToNearestBeat, undo,
   });
 
-  // The Models dialog's Dmad Models tab finished installing a file: reload the LoRA lists so the pickers and the DMAD
-  // "not found" note see it.
+  // The Models dialog (the Dmad Models tab, the MOSS-Image Edit LoRA button) finished installing a file: reload the LoRA lists so the
+  // pickers, the DMAD "not found" note and the MOSS-Image tab see it.
   builderLifecycle.modelsChangedHandler = () => {
     refreshLoraChoices().then(() => syncMiniMaxH3Panel()).catch(() => null);
+    mossImagePanel.refresh();
   };
   window.addEventListener("vrgdg-models-changed", builderLifecycle.modelsChangedHandler);
 

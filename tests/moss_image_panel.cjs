@@ -1,107 +1,10 @@
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const { test } = require('node:test');
-const { readBuilderModule } = require('./builder_source.cjs');
+const { fakeStorage, fire, loadDialog, makeContext, makeNode, walk } = require('./models_dialog_harness.cjs');
 
 // The MOSS-Image tab of Models > Select models (web/music_video_builder/moss_image_panel.mjs), the "MOSS-Image (models)" choice in the
 // Image tab's model list, and the Models dialog opening on that tab, driven against a small fake DOM with a real parent/child tree.
-
-function detach(node) {
-  const parent = node.parentElement;
-  if (parent) parent.children.splice(parent.children.indexOf(node), 1);
-  node.parentElement = null;
-}
-
-function makeNode(tag) {
-  const node = {
-    tag, style: {}, dataset: {}, attrs: {}, children: [], listeners: {}, value: '', textContent: '', parentElement: null, disabled: false,
-    get nextSibling() {
-      const parent = this.parentElement;
-      return parent ? parent.children[parent.children.indexOf(this) + 1] || null : null;
-    },
-    append(...kids) {
-      for (const kid of kids) {
-        if (typeof kid === 'string') continue;
-        detach(kid);
-        kid.parentElement = this;
-        this.children.push(kid);
-      }
-    },
-    prepend(...kids) {
-      for (const kid of kids.reverse()) {
-        detach(kid);
-        kid.parentElement = this;
-        this.children.unshift(kid);
-      }
-    },
-    insertBefore(child, reference) {
-      detach(child);
-      child.parentElement = this;
-      const index = reference ? this.children.indexOf(reference) : -1;
-      if (index < 0) this.children.push(child);
-      else this.children.splice(index, 0, child);
-    },
-    replaceChildren(...kids) {
-      for (const child of this.children) child.parentElement = null;
-      this.children = [];
-      this.append(...kids);
-    },
-    querySelector(selector) {
-      const wanted = /^option\[value="(.*)"\]$/.exec(selector);
-      return this.children.find((child) => child.tag === 'option' && wanted && child.value === wanted[1]) || null;
-    },
-    addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); },
-    setAttribute(key, value) { this.attrs[key] = value; },
-    remove() { detach(this); this.removed = true; },
-  };
-  return node;
-}
-
-function fire(node, type) {
-  for (const fn of node.listeners[type] || []) fn({ preventDefault() {}, stopPropagation() {} });
-}
-
-function fakeStorage(initial = {}) {
-  const data = { ...initial };
-  return { data, getItem: (key) => (key in data ? data[key] : null), setItem: (key, value) => { data[key] = String(value); } };
-}
-
-function makeContext() {
-  const documentListeners = {};
-  const body = makeNode('body');
-  const context = vm.createContext({
-    document: {
-      createElement: makeNode,
-      body,
-      addEventListener(type, fn) { (documentListeners[type] ||= []).push(fn); },
-      removeEventListener(type, fn) { documentListeners[type] = (documentListeners[type] || []).filter((item) => item !== fn); },
-    },
-    window: { open() {} },
-    BUILDER_FONT_STACK: 'sans-serif',
-    getJson: async () => ({}),
-    postJson: async () => ({}),
-    toast() {},
-    makeEditorImageUrl: () => '',
-    renderDmadModelsTab: () => () => {},
-    makeButton: (label) => Object.assign(makeNode('button'), { textContent: label }),
-    makeMiniButton: (label) => Object.assign(makeNode('button'), { textContent: label }),
-    makeInput: (value = '', type = 'text') => Object.assign(makeNode('input'), { value, type }),
-    makeSelect: (options, value) => {
-      const select = Object.assign(makeNode('select'), { value });
-      for (const item of options) select.append(Object.assign(makeNode('option'), { value: item.value ?? item }));
-      return select;
-    },
-    makeField: (label, control) => { const field = makeNode('label'); field.append(control); return field; },
-    makeSettingsSection: (title, children) => { const section = makeNode('details'); section.append(...children); return section; },
-    makeSearchableLoraPicker: (value) => ({ wrapper: makeNode('div'), input: Object.assign(makeNode('input'), { value }), list: makeNode('div'), options: [], matches: [], activeIndex: -1 }),
-    // The real one wires typing and the suggestion list; the test only needs the change callback to call as typing would.
-    wireSearchablePicker: (picker, onChange) => { picker.onChange = onChange; },
-  });
-  vm.runInContext(readBuilderModule('moss_settings.mjs'), context);
-  vm.runInContext(readBuilderModule('moss_image_panel.mjs'), context);
-  context.documentListeners = documentListeners;
-  return context;
-}
 
 const choices = (unets = ['moss_image_sft_bf16.safetensors'], clip = ['qwen3.5_9b_int8_convrot.safetensors'], vae = ['flux2-vae.safetensors']) => ({ unets, clip, vae });
 const fetcher = ({ models = choices(), loras = ['[none]', 'moss_image_edit_lora.safetensors'] } = {}) => async (url) => {
@@ -160,6 +63,7 @@ test('the Edit LoRA note shows only when the LoRA list is known and the file is 
   await missing.panel.ready;
   assert.equal(missing.panel.editLoraNote.style.display, 'block');
   assert.match(missing.panel.editLoraNote.textContent, /moss_image_edit_lora\.safetensors/);
+  assert.match(missing.panel.editLoraNote.textContent, /Edit LoRA button/, 'it points at the button that installs it under that name');
   assert.match(missing.panel.editLoraNote.textContent, /v0\.42\.1/);
 
   const installed = openPanel({ fetchJson: fetcher({ loras: ['[none]', 'moss\\moss_image_edit_lora.safetensors'] }) });
@@ -171,6 +75,17 @@ test('the Edit LoRA note shows only when the LoRA list is known and the file is 
   missing.panel.pickers.editLora.onChange();
   assert.equal(missing.panel.editLoraNote.style.display, 'none', 'choosing no Edit LoRA is fine');
   assert.equal(missing.stored().edit_lora_name, '[none]');
+});
+
+test('the Edit LoRA warning clears when the file shows up and the tab is refreshed', async () => {
+  let loras = ['[none]'];
+  const { panel } = openPanel({ fetchJson: async (url) => (url.endsWith('/lora_list') ? { loras } : choices()) });
+  await panel.ready;
+  assert.equal(panel.editLoraNote.style.display, 'block');
+  loras = ['[none]', 'moss_image_edit_lora.safetensors'];
+  await panel.refresh();
+  assert.equal(panel.editLoraNote.style.display, 'none');
+  assert.equal(panel.pickers.editLora.input.value, 'moss_image_edit_lora.safetensors');
 });
 
 test('a ComfyUI that cannot be asked leaves the saved names alone', async () => {
@@ -280,22 +195,16 @@ test('choosing it opens the models and puts the list back, and the other choices
 // The Models dialog itself, with the real models.mjs and dialogs.mjs.
 function openDialog(select) {
   const context = makeContext();
-  vm.runInContext(readBuilderModule('models.mjs'), context);
-  vm.runInContext(readBuilderModule('dialogs.mjs'), context);
+  loadDialog(context);
   const first = makeNode('div');
   const firstHolder = makeNode('div');
   firstHolder.append(first);
-  const { panel } = (() => {
-    context.storage = fakeStorage();
-    context.args = { fetchJson: fetcher(), storage: context.storage };
-    return { panel: vm.runInContext('createMossImagePanel(args)', context) };
-  })();
+  context.storage = fakeStorage();
+  context.args = { fetchJson: fetcher(), storage: context.storage };
+  const panel = vm.runInContext('createMossImagePanel(args)', context);
   context.args = { modelSelections: [{ label: 'Video', content: first }, panel.modelSelection], select };
   vm.runInContext('showModelDownloadModal(args)', context);
-  const all = [];
-  const walk = (node) => { all.push(node); node.children.forEach(walk); };
-  walk(context.document.body);
-  const find = (predicate) => all.find(predicate);
+  const find = (predicate) => walk(context.document.body).find(predicate);
   return { context, panel, first, firstHolder, find };
 }
 
