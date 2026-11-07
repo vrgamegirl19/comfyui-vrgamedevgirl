@@ -33,6 +33,7 @@ async function stitchPayload({builtIn, song = '/proj/song.wav', engine = 'minima
     projectInput: {value: '/proj'},
     postJson: async (url, body) => { posted = {url, body}; return {final_video_path: '/proj/PREVIEW.mp4'}; },
   });
+  vm.runInContext(functionSource(readBuilderModule('thumbnail_state.mjs'), 'stitchIsFullVideo'), c);
   vm.runInContext(functionSource(readBuilderModule('video_render.mjs'), 'stitchRenderedScenes'), c);
   const segments = [
     {start: 0, end: 6.76, video_path: '/proj/rendered_scene_videos/video_0001-audio.mp4'},

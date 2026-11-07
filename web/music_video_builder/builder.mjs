@@ -36,7 +36,8 @@ import {
   setWidgetValue,
   toast,
 } from "./controls.mjs";
-import { pickProjectSessionFile, showInfoModal, showLastProgressWindow, showLoadProjectModal, showTextInputModal } from "./dialogs.mjs";
+import { pickProjectSessionFile, showInfoModal, showLastProgressWindow, showLoadProjectModal, showModelDownloadModal, showTextInputModal } from "./dialogs.mjs";
+import { addMossImageOption, createMossImagePanel, MOSS_PANEL_LABEL } from "./moss_image_panel.mjs";
 import { cloneMiniMaxH3Settings } from "./minimax_h3.mjs";
 import { DEFAULT_KREA2_REFERENCE_SETTINGS } from "./models.mjs";
 import { defaultNotificationSettings } from "./notifications.mjs";
@@ -3090,8 +3091,12 @@ export function openBuilder(node, options = {}) {
     useSceneMiniMaxH3Settings, useSceneNBImageSettings, useSceneZImageSettings, useT2VVisionReference,
     useVisionReference,
   });
+  // MOSS-Image has its models and settings in Models > Select models. The Image tab's model list opens that dialog on its tab.
+  const mossImagePanel = createMossImagePanel();
+  const modelSelections = [videoSubTabs.modelSelection, miniMaxSubTabs.modelSelection, ...imageModelSelections, mossImagePanel.modelSelection];
+  addMossImageOption(imageModelSelect, () => showModelDownloadModal({ modelSelections, select: MOSS_PANEL_LABEL }));
   wireToolbar({
-    modelSelections: [videoSubTabs.modelSelection, miniMaxSubTabs.modelSelection, ...imageModelSelections],
+    modelSelections,
     render,
     activeSegment, addOverlaySegment, addOverlaySegmentButton, addSegment, addSegmentButton,
     addTimelineMarkerButton, addTimelineMarkerFromSelection, applyBuilderFullscreen, autoBuildButton,

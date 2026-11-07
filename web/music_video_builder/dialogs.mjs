@@ -341,7 +341,8 @@ export function showFinalVideoReadyModal(videoPath) {
   };
 }
 
-export function showModelDownloadModal({ modelSelections = [] } = {}) {
+// `select` is the label of a Select models tab to open on (the dialog opens on Select models with that tab showing).
+export function showModelDownloadModal({ modelSelections = [], select = "" } = {}) {
   const tabs = [
     {
       id: "ltx",
@@ -757,6 +758,11 @@ export function showModelDownloadModal({ modelSelections = [] } = {}) {
   backdrop.addEventListener("click", (event) => {
     if (event.target === backdrop) finish();
   });
+  const wanted = select ? selectionButtons.find(([entry]) => entry.label === select) : null;
+  if (wanted) {
+    choose("select");
+    selectPanel(wanted[0]);
+  }
 }
 
 export function showTextInputModal({ title, label, value = "", placeholder = "", confirmLabel = "Continue" } = {}) {

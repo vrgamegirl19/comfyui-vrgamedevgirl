@@ -9,7 +9,7 @@ import { makeEditorImageUrl, makeEditorVideoUrl, postJson, queueWorkflowPrompt, 
 import { BUILDER_FONT_STACK, DEFAULT_NB_IMAGE_MODEL } from "./constants.mjs";
 import { makeButton, makeCheckbox, makeField, makeInput, makeSelect, toast } from "./controls.mjs";
 import { fluxKleinLoraPayload } from "./image_generation.mjs";
-import { loadMossReferenceSettings } from "./reference_generation.mjs";
+import { loadMossReferenceSettings } from "./moss_settings.mjs";
 import { THUMBNAIL_ENGINE_LABELS, thumbnailEngineRequest } from "./thumbnail_engines.mjs";
 import {
   clampThumbnailChange, formatThumbnailTime, normalizeThumbnailIntro, thumbnailEngineKind, thumbnailFrameRange, thumbnailHistoryWith,
