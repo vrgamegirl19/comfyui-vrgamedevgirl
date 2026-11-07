@@ -5,14 +5,14 @@
 // "edit" workflows (NanoBanana, Flux/Klein) take the frame as a reference picture. "restyle" workflows (Krea 2, Z-Image, Ernie,
 // MOSS-Image) use it as an image-to-image source, and how far they may move away from it is the `change` setting (0 to 1).
 
-const WORKFLOW_ROUTE = "/vrgdg/workflow_runner/";
+// The build route of each workflow, written out in full so a search for a route finds this module.
 const ENGINE_ROUTES = {
-  nano_banana: "build_nb_image_prompt",
-  flux_klein: "build_flux_klein_prompt",
-  krea2_2pass: "build_krea2_2pass_prompt",
-  zimage: "build_zimage_prompt",
-  ernie_image: "build_ernie_image_prompt",
-  moss_image: "build_moss_image_prompt",
+  nano_banana: "/vrgdg/workflow_runner/build_nb_image_prompt",
+  flux_klein: "/vrgdg/workflow_runner/build_flux_klein_prompt",
+  krea2_2pass: "/vrgdg/workflow_runner/build_krea2_2pass_prompt",
+  zimage: "/vrgdg/workflow_runner/build_zimage_prompt",
+  ernie_image: "/vrgdg/workflow_runner/build_ernie_image_prompt",
+  moss_image: "/vrgdg/workflow_runner/build_moss_image_prompt",
 };
 
 export const THUMBNAIL_ENGINE_LABELS = {
@@ -138,5 +138,5 @@ export function thumbnailEngineRequest({ engine, prompt, sourcePath, change, set
       use_image_to_image: true, image_to_image_path: path, denoise: denoiseFor(change),
     };
   }
-  return { url: `${WORKFLOW_ROUTE}${route}`, payload, label: THUMBNAIL_ENGINE_LABELS[engine] };
+  return { url: route, payload, label: THUMBNAIL_ENGINE_LABELS[engine] };
 }
