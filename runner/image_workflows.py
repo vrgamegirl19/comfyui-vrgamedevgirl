@@ -460,18 +460,9 @@ def _patch_flux_klein_api_prompt(prompt, payload):
         _set_api_input(prompt, "1057", "height", height)
         _set_api_input(prompt, "1057", "batch_size", 1)
     _set_api_input(prompt, "1056", "noise_seed", seed)
-    # The saved settings may carry a factory default spelled with a folder (`flux\...`) that this install does not use. Each name is
-    # replaced by the spelling ComfyUI lists, and a model that is not installed says so, instead of ComfyUI's own "failed validation".
-    for node_id, key, categories, label in (
-        ("1068", "unet_name", ("diffusion_models", "unet"), "Flux/Klein diffusion model"),
-        ("1066", "clip_name", ("text_encoders", "clip"), "Flux/Klein text encoder"),
-        ("1064", "vae_name", "vae", "Flux/Klein VAE"),
-    ):
-        requested = str(payload.get(key, "") or "")
-        if requested.strip():
-            _require_model_choice(categories, requested, label)
-            requested = _resolve_model_choice(categories, requested) or requested
-        _set_api_input(prompt, node_id, key, requested)
+    _set_api_input(prompt, "1068", "unet_name", str(payload.get("unet_name", "") or ""))
+    _set_api_input(prompt, "1066", "clip_name", str(payload.get("clip_name", "") or ""))
+    _set_api_input(prompt, "1064", "vae_name", str(payload.get("vae_name", "") or ""))
     lora_node_id = _api_node_id_by_class(prompt, "VRGDG_OptionalMultiLoraModelOnly", fallback=1075)
     use_custom_loras = _bool_payload(payload, "use_custom_loras", False)
     lora_count = _int_payload(payload, "lora_count", 0, 0, _MAX_LORA_SLOTS)
@@ -787,9 +778,30 @@ def _build_ernie_image_api_prompt(payload):
     }
 
 
+def _resolve_flux_klein_models(payload):
+    """A copy of ``payload`` whose model names are the spellings ComfyUI lists.
+
+    The saved settings may carry a factory default spelled with a folder (``flux\\flux2-vae.safetensors``) that this install does not
+    use. ComfyUI only accepts the exact spelling it lists, so each name is replaced by it, and a model that is not installed says
+    so here instead of as ComfyUI's own "Prompt outputs failed validation". An empty name is left as it is. This is done when the
+    graph is built, not in ``_patch_flux_klein_api_prompt``, which only fills a template from the values it is given.
+    """
+    resolved = dict(payload)
+    for key, categories, label in (
+        ("unet_name", ("diffusion_models", "unet"), "Flux/Klein diffusion model"),
+        ("clip_name", ("text_encoders", "clip"), "Flux/Klein text encoder"),
+        ("vae_name", "vae", "Flux/Klein VAE"),
+    ):
+        requested = str(payload.get(key, "") or "")
+        if requested.strip():
+            _require_model_choice(categories, requested, label)
+            resolved[key] = _resolve_model_choice(categories, requested) or requested
+    return resolved
+
+
 def _build_flux_klein_api_prompt(payload):
     workflow_path, prompt = _load_api_template(_flux_klein_api_template_path())
-    patched_prompt = _patch_flux_klein_api_prompt(prompt, payload)
+    patched_prompt = _patch_flux_klein_api_prompt(prompt, _resolve_flux_klein_models(payload))
     return {
         "workflow_path": workflow_path,
         "prompt": patched_prompt,
