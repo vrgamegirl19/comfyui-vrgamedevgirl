@@ -475,6 +475,25 @@ export function showModelDownloadModal({ modelSelections = [] } = {}) {
         button.addEventListener("click", (event) => {
           event.preventDefault();
           event.stopPropagation();
+          if (item.choices?.length) {
+            const choices = document.createElement("div");
+            choices.style.cssText = "display:flex;flex-direction:column;gap:12px;";
+            for (const choice of item.choices) {
+              const open = makeButton(choice.label, "primary");
+              open.addEventListener("click", () => window.open(choice.url, "_blank", "noopener,noreferrer"));
+              choices.append(open);
+            }
+            showInfoModal({
+              title: "MiniMax H3 Diffusion Models",
+              lines: [
+                "Choose a collection, then download the model variant you want from its Hugging Face page.",
+                choices,
+                "Place downloaded checkpoints in your ComfyUI diffusion_models folder, then refresh the model list. Select a checkpoint that matches your render mode.",
+              ],
+              confirmLabel: "Close",
+            });
+            return;
+          }
           window.open(item.url, "_blank", "noopener,noreferrer");
         });
         buttons.append(button);
