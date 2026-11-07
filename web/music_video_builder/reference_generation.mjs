@@ -68,7 +68,7 @@ const DEFAULT_MOSS_REFERENCE_SETTINGS = {
   seed_mode: "random",
 };
 
-function loadMossReferenceSettings() {
+export function loadMossReferenceSettings() {
   try {
     const saved = JSON.parse(window.localStorage.getItem(MOSS_REFERENCE_STORAGE_KEY) || "{}");
     return { ...DEFAULT_MOSS_REFERENCE_SETTINGS, ...(saved && typeof saved === "object" ? saved : {}) };

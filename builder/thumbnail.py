@@ -2,8 +2,9 @@
 
 The Builder's Thumbnail dialog makes the picture (an LLM writes the edit prompt, NanoBanana or Flux/Klein draws it) and
 calls ``_save_thumbnail_image`` to keep it in ``<project>/thumbnail``. After the final stitch the Builder calls
-``_prepend_thumbnail_intro``, which shows the picture for a few seconds in silence before the first scene. The scene
-clips, the timeline and the audio sync are never touched: only the stitched video is rewritten.
+``_prepend_thumbnail_intro``, which makes the picture the video's first frame: exactly one frame in front of the first
+scene, with the same length of silence. The scene clips, the timeline and the audio sync are never touched: only the
+stitched video is rewritten.
 """
 
 import math
@@ -18,11 +19,6 @@ from PIL import Image
 
 THUMBNAIL_FOLDER = "thumbnail"
 THUMBNAIL_CAPABILITIES_VERSION = 1
-DEFAULT_INTRO_SECONDS = 2.0
-MIN_INTRO_SECONDS = 0.5
-MAX_INTRO_SECONDS = 10.0
-# How far the joined video may differ from source + intro before the stream-copy join is thrown away.
-_DURATION_TOLERANCE_SECONDS = 0.35
 _VIDEO_SUFFIXES = frozenset({".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"})
 
 
@@ -33,17 +29,6 @@ def _thumbnail_capabilities() -> Dict[str, Any]:
 
 def _clean_path(raw: Any) -> str:
     return os.path.abspath(str(raw or "").strip().strip('"'))
-
-
-def _intro_seconds(value: Any) -> float:
-    """Return the intro length in seconds, clamped to the supported range (the default for anything else)."""
-    try:
-        seconds = float(value)
-    except (TypeError, ValueError):
-        return DEFAULT_INTRO_SECONDS
-    if seconds != seconds:  # NaN
-        return DEFAULT_INTRO_SECONDS
-    return max(MIN_INTRO_SECONDS, min(MAX_INTRO_SECONDS, seconds))
 
 
 def _next_thumbnail_path(folder: str, prefix: str = "thumbnail") -> str:
@@ -94,6 +79,17 @@ def _format_duration(path: str, ffmpeg_path: str) -> float:
         return float((result.stdout or "").strip())
     except ValueError:
         return 0.0
+
+
+def _video_packets(path: str, ffmpeg_path: str) -> int:
+    """How many video frames a file holds, counted from its packets (no decoding, so it is quick even for a long video)."""
+    from ..runner.video_files import _probe_stream_fields
+
+    fields = _probe_stream_fields(path, ffmpeg_path, "v:0", ["nb_read_packets"], count_packets=True)
+    try:
+        return int(fields.get("nb_read_packets") or 0)
+    except ValueError:
+        return 0
 
 
 def _frame_rate(values: Dict[str, str]) -> Fraction:
@@ -166,17 +162,20 @@ def _intro_command(
     ffmpeg_path: str, image_path: str, output: str, seconds: float, size: Tuple[int, int], rate: Fraction,
     audio: Optional[Tuple[int, int]], crf: Any,
 ) -> List[str]:
-    """ffmpeg command that turns the picture into a silent clip with the video's size, frame rate and audio format."""
+    """ffmpeg command that turns the picture into a one frame clip (with a matching silence) in the video's size, frame rate and audio format.
+
+    ``seconds`` is the length of that one frame (1 / frame rate). ``-frames:v 1`` makes it exactly one frame.
+    """
     from ..runner.video_files import _scene_audio_encode_args, _scene_video_encode_args
 
     width, height = size
     fill = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},setsar=1,format=yuv420p"
-    command = [ffmpeg_path, "-y", "-loop", "1", "-framerate", str(rate), "-t", f"{seconds:.3f}", "-i", image_path]
+    command = [ffmpeg_path, "-y", "-loop", "1", "-framerate", str(rate), "-t", f"{seconds:.6f}", "-i", image_path]
     if audio:
         sample_rate, channels = audio
         layout = "mono" if channels == 1 else "stereo"
-        command += ["-f", "lavfi", "-t", f"{seconds:.3f}", "-i", f"anullsrc=r={sample_rate}:cl={layout}"]
-    command += ["-vf", fill, "-r", str(rate), *_scene_video_encode_args(crf)]
+        command += ["-f", "lavfi", "-t", f"{seconds:.6f}", "-i", f"anullsrc=r={sample_rate}:cl={layout}"]
+    command += ["-vf", fill, "-r", str(rate), "-frames:v", "1", *_scene_video_encode_args(crf)]
     if audio:
         command += [*_scene_audio_encode_args(), "-ar", str(audio[0]), "-ac", str(audio[1]), "-shortest"]
     else:
@@ -208,7 +207,7 @@ def _join_by_encoding(ffmpeg_path: str, intro: str, source: str, output: str, ha
 
 
 def _prepend_thumbnail_intro(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Show ``image_path`` for a few seconds in front of ``input_path`` (a stitched video), in place by default."""
+    """Make ``image_path`` the first frame of ``input_path`` (a stitched video): one frame in front of it, in place by default."""
     from ..runner.paths import _find_ffmpeg_path
     from ..runner.video_files import _probe_stream_fields, _source_crf
 
@@ -220,7 +219,6 @@ def _prepend_thumbnail_intro(payload: Dict[str, Any]) -> Dict[str, Any]:
         raise FileNotFoundError(f"The thumbnail image was not found: {image_path}")
     with Image.open(image_path) as image:
         image.verify()
-    seconds = _intro_seconds(payload.get("seconds"))
     replace_source = payload.get("replace_source", True) is not False
 
     ffmpeg_path = _find_ffmpeg_path()
@@ -233,8 +231,9 @@ def _prepend_thumbnail_intro(payload: Dict[str, Any]) -> Dict[str, Any]:
         audio = (int(audio_fields["sample_rate"]), max(1, int(audio_fields.get("channels") or 2)))
     size = (int(video["width"]), int(video["height"]))
     rate = _frame_rate(video)
+    seconds = 1.0 / float(rate)
     crf = _source_crf([source], payload.get("crf"))
-    source_duration = _format_duration(source, ffmpeg_path)
+    source_frames = _video_packets(source, ffmpeg_path)
 
     folder = os.path.dirname(source)
     work = tempfile.mkdtemp(prefix=".thumbnail_intro_", dir=folder)
@@ -245,9 +244,9 @@ def _prepend_thumbnail_intro(payload: Dict[str, Any]) -> Dict[str, Any]:
         method = "copy"
         try:
             _join_by_copy(ffmpeg_path, intro, source, joined, work)
-            drift = abs(_format_duration(joined, ffmpeg_path) - (source_duration + seconds))
-            if source_duration > 0 and drift > _DURATION_TOLERANCE_SECONDS:
-                raise RuntimeError("The joined video has the wrong length.")
+            # One frame is far shorter than a length check could tell, so the frames are counted: exactly one more than before.
+            if _video_packets(joined, ffmpeg_path) != source_frames + 1:
+                raise RuntimeError("The joined video does not have exactly one more frame.")
         except RuntimeError:
             method = "reencode"
             _join_by_encoding(ffmpeg_path, intro, source, joined, audio is not None, crf)
@@ -261,6 +260,7 @@ def _prepend_thumbnail_intro(payload: Dict[str, Any]) -> Dict[str, Any]:
         shutil.rmtree(work, ignore_errors=True)
     return {
         "final_video_path": destination,
+        "intro_frames": 1,
         "intro_seconds": seconds,
         "method": method,
         "duration": _format_duration(destination, ffmpeg_path),

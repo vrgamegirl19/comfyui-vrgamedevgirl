@@ -2566,6 +2566,14 @@ export function openBuilder(node, options = {}) {
     sceneImagePath: (segment) => selectedSegmentImagePath(segment),
     sceneVideoPath: (segment) => selectedSegmentVideoPath(segment),
     sceneLabel: (segment, index) => sceneDisplayName(segment, index),
+    // The settings the Builder holds for each image workflow (MOSS-Image's are read by the dialog itself).
+    engineSettings: (engine) => ({
+      nano_banana: () => state.nbImageSettings,
+      flux_klein: () => activeFluxKleinSettings(),
+      krea2_2pass: () => activeKrea2TwoPassSettings(),
+      zimage: () => activeZImageSettings(),
+      ernie_image: () => activeErnieImageSettings(),
+    })[engine]?.(),
     save: () => autoSaveSessionQuiet("Thumbnail"),
   });
 

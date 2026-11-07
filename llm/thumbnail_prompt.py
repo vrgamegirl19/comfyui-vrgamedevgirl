@@ -33,13 +33,17 @@ def _user_block(payload: Dict[str, Any]) -> str:
 
 
 def _generate_thumbnail_prompt(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Look at the scene image and write one edit prompt that makes it a thumbnail."""
+    """Look at the chosen frame and write the prompt that makes it a thumbnail.
+
+    ``engine_kind`` says which kind of image workflow will use it: ``"edit"`` (the default) for an instruction an editor follows,
+    ``"restyle"`` for a description of the finished picture that an image-to-image workflow draws.
+    """
     path = str(payload.get("image_path") or "").strip()
     data = str(payload.get("image_data") or "").strip()
     if not (path or data):
         raise ValueError("Choose a scene with an image first. The LLM needs the picture to write the thumbnail prompt.")
     image = _image_from_prompt_payload(path, data, "Thumbnail source image").convert("RGB")
-    instruction = f"{thumbnail_instruction(payload.get('title', ''))}\n\n{_user_block(payload)}"
+    instruction = f"{thumbnail_instruction(payload.get('title', ''), payload.get('engine_kind', 'edit'))}\n\n{_user_block(payload)}"
     text, info = run_reference_vision(
         {**payload, "max_new_tokens": 900, "temperature": payload.get("temperature") or 0.75, "top_p": 0.95},
         instruction, [image],

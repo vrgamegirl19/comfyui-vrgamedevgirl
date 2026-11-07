@@ -7,7 +7,7 @@ import random
 import folder_paths
 
 from .paths import _bool_payload, _float_payload, _int_payload, _resolve_existing_file
-from .models import _MAX_LORA_SLOTS, _NONE_LORA, _clean_lora_name, _require_model_choice
+from .models import _MAX_LORA_SLOTS, _NONE_LORA, _clean_lora_name, _require_model_choice, _resolve_model_choice
 from .api_graph import _api_node_id_by_class, _ensure_placeholder_load_image, _expand_subgraphs, _load_api_template, _load_workflow_template, _node_by_id, _prepare_load_image_name, _set_api_input, _set_widget, _workflow_node_id_by_class, _workflow_to_api_prompt
 
 
@@ -460,9 +460,18 @@ def _patch_flux_klein_api_prompt(prompt, payload):
         _set_api_input(prompt, "1057", "height", height)
         _set_api_input(prompt, "1057", "batch_size", 1)
     _set_api_input(prompt, "1056", "noise_seed", seed)
-    _set_api_input(prompt, "1068", "unet_name", str(payload.get("unet_name", "") or ""))
-    _set_api_input(prompt, "1066", "clip_name", str(payload.get("clip_name", "") or ""))
-    _set_api_input(prompt, "1064", "vae_name", str(payload.get("vae_name", "") or ""))
+    # The saved settings may carry a factory default spelled with a folder (`flux\...`) that this install does not use. Each name is
+    # replaced by the spelling ComfyUI lists, and a model that is not installed says so, instead of ComfyUI's own "failed validation".
+    for node_id, key, categories, label in (
+        ("1068", "unet_name", ("diffusion_models", "unet"), "Flux/Klein diffusion model"),
+        ("1066", "clip_name", ("text_encoders", "clip"), "Flux/Klein text encoder"),
+        ("1064", "vae_name", "vae", "Flux/Klein VAE"),
+    ):
+        requested = str(payload.get(key, "") or "")
+        if requested.strip():
+            _require_model_choice(categories, requested, label)
+            requested = _resolve_model_choice(categories, requested) or requested
+        _set_api_input(prompt, node_id, key, requested)
     lora_node_id = _api_node_id_by_class(prompt, "VRGDG_OptionalMultiLoraModelOnly", fallback=1075)
     use_custom_loras = _bool_payload(payload, "use_custom_loras", False)
     lora_count = _int_payload(payload, "lora_count", 0, 0, _MAX_LORA_SLOTS)
@@ -658,11 +667,15 @@ def _build_krea2_api_prompt(payload):
 
 
 def _build_moss_image_api_prompt(payload):
-    """Build a MOSS-Image text-to-image graph from ComfyUI's native MOSS-Image support.
+    """Build a MOSS-Image graph from ComfyUI's native MOSS-Image support: text to image, or image to image.
 
     A model-only LoRA (the 8-step DMD turbo LoRA) is optional. The native model already
     samples with shift 5 and a timestep multiplier of 1, so there is no ModelSamplingSD3
     node: it forces a multiplier of 1000 and the result is noise.
+
+    Image to image (``use_image_to_image`` with ``image_to_image_path`` or ``image_to_image_data``) restyles a picture: it is scaled
+    to ``width`` x ``height`` (cropped from the center), encoded with the VAE and sampled from at ``denoise`` (0.05 to 1, 0.65 by
+    default; lower keeps more of the picture). MOSS-Image has no instruction edit, so the prompt describes the finished picture.
     """
     prompt_text = str(payload.get("prompt", "") or "").strip()
     if not prompt_text:
@@ -674,8 +687,16 @@ def _build_moss_image_api_prompt(payload):
     _require_model_choice(("diffusion_models", "unet"), unet_name, "MOSS-Image diffusion model")
     _require_model_choice(("text_encoders", "clip"), clip_name, "MOSS-Image text encoder")
     _require_model_choice("vae", vae_name, "MOSS-Image VAE")
+    # Each name is the spelling ComfyUI lists (a saved name may differ from it by a folder or by case).
+    unet_name = _resolve_model_choice(("diffusion_models", "unet"), unet_name) or unet_name
+    clip_name = _resolve_model_choice(("text_encoders", "clip"), clip_name) or clip_name
+    vae_name = _resolve_model_choice("vae", vae_name) or vae_name
     if lora_name != _NONE_LORA:
         _require_model_choice("loras", lora_name, "MOSS-Image LoRA")
+        lora_name = _resolve_model_choice("loras", lora_name) or lora_name
+    use_i2i = _bool_payload(payload, "use_image_to_image", False)
+    width = _int_payload(payload, "width", 1344, 256, 4096)
+    height = _int_payload(payload, "height", 768, 256, 4096)
 
     seed = _int_payload(payload, "seed", 1, 0, 0xFFFFFFFFFFFFFFFF)
     if str(payload.get("seed_mode", "fixed") or "fixed").strip().lower() in {"random", "randomize"}:
@@ -694,18 +715,32 @@ def _build_moss_image_api_prompt(payload):
             "strength_model": _float_payload(payload, "lora_strength", 1.0, -10.0, 10.0),
         }}
         model = ["4", 0]
+    if use_i2i:
+        image_name = _prepare_load_image_name(
+            payload.get("image_to_image_path", ""),
+            payload.get("image_to_image_data", ""),
+            payload.get("image_to_image_name", "image.png"),
+        )
+        if not image_name:
+            raise ValueError("MOSS-Image image-to-image is enabled, but no source image was provided.")
+        prompt["13"] = {"class_type": "LoadImage", "inputs": {"image": image_name}}
+        prompt["14"] = {"class_type": "ImageScale", "inputs": {
+            "image": ["13", 0], "upscale_method": "lanczos", "width": width, "height": height, "crop": "center",
+        }}
+        prompt["15"] = {"class_type": "VAEEncode", "inputs": {"pixels": ["14", 0], "vae": ["3", 0]}}
+        latent, denoise = ["15", 0], _float_payload(payload, "denoise", 0.65, 0.05, 1.0)
+    else:
+        prompt["9"] = {"class_type": "EmptyFlux2LatentImage", "inputs": {
+            "width": width, "height": height, "batch_size": _int_payload(payload, "batch_size", 1, 1, 16),
+        }}
+        latent, denoise = ["9", 0], 1.0
     prompt.update({
         "7": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["2", 0], "text": prompt_text}},
         "8": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["2", 0], "text": str(payload.get("negative_prompt") or "")}},
-        "9": {"class_type": "EmptyFlux2LatentImage", "inputs": {
-            "width": _int_payload(payload, "width", 1344, 256, 4096),
-            "height": _int_payload(payload, "height", 768, 256, 4096),
-            "batch_size": _int_payload(payload, "batch_size", 1, 1, 16),
-        }},
         "10": {"class_type": "KSampler", "inputs": {
-            "model": model, "positive": ["7", 0], "negative": ["8", 0], "latent_image": ["9", 0],
+            "model": model, "positive": ["7", 0], "negative": ["8", 0], "latent_image": latent,
             "seed": seed, "steps": _int_payload(payload, "steps", 8, 1, 200), "cfg": cfg,
-            "sampler_name": "euler", "scheduler": "sgm_uniform", "denoise": 1.0,
+            "sampler_name": "euler", "scheduler": "sgm_uniform", "denoise": denoise,
         }},
         "11": {"class_type": "VAEDecode", "inputs": {"samples": ["10", 0], "vae": ["3", 0]}},
         "12": {"class_type": "PreviewImage", "inputs": {"images": ["11", 0]}},

@@ -1,19 +1,36 @@
 // What the Thumbnail intro keeps in the project (`thumbnail_intro` in the session), and when the stitch uses it.
 // No browser code in here, so tests/thumbnail_state.cjs can run it.
 
-export const THUMBNAIL_MIN_SECONDS = 0.5;
-export const THUMBNAIL_MAX_SECONDS = 10;
-export const THUMBNAIL_DEFAULT_SECONDS = 2;
-export const THUMBNAIL_ENGINES = ["nano_banana", "flux_klein"];
+// The image workflows the thumbnail can be made with, and how each one uses the chosen frame. "edit" workflows (NanoBanana,
+// Flux/Klein) take the frame as a reference picture and follow an instruction such as "recrop the attached image". "restyle"
+// workflows (Krea 2, Z-Image, Ernie, MOSS-Image) start from the frame as an image-to-image source and need a prompt that describes
+// the finished picture, so the LLM writes a different kind of prompt for them.
+export const THUMBNAIL_ENGINE_KINDS = {
+  nano_banana: "edit",
+  flux_klein: "edit",
+  krea2_2pass: "restyle",
+  zimage: "restyle",
+  ernie_image: "restyle",
+  moss_image: "restyle",
+};
+export const THUMBNAIL_ENGINES = Object.keys(THUMBNAIL_ENGINE_KINDS);
+export const THUMBNAIL_DEFAULT_ENGINE = "nano_banana";
+export const THUMBNAIL_DEFAULT_CHANGE = 0.65;
 // The frame rate of the timeline: scene lengths are whole frames of it, and the frame picker steps by it.
 export const THUMBNAIL_FPS = 24;
 const THUMBNAIL_HISTORY_LIMIT = 12;
 const THUMBNAIL_SOURCE_KINDS = ["frame", "image"];
 
-export function clampThumbnailSeconds(value) {
-  const seconds = Number(value);
-  if (!Number.isFinite(seconds)) return THUMBNAIL_DEFAULT_SECONDS;
-  return Math.max(THUMBNAIL_MIN_SECONDS, Math.min(THUMBNAIL_MAX_SECONDS, seconds));
+// "edit" or "restyle". An unknown engine is treated like the default one.
+export function thumbnailEngineKind(engine) {
+  return THUMBNAIL_ENGINE_KINDS[engine] || THUMBNAIL_ENGINE_KINDS[THUMBNAIL_DEFAULT_ENGINE];
+}
+
+// How much a restyle workflow may change the frame, 0 to 1 (0.65 by default).
+export function clampThumbnailChange(value) {
+  const change = Number(value);
+  if (value === "" || value === null || value === undefined || !Number.isFinite(change)) return THUMBNAIL_DEFAULT_CHANGE;
+  return Math.max(0, Math.min(1, change));
 }
 
 function thumbnailText(value, limit) {
@@ -28,7 +45,7 @@ export function normalizeThumbnailIntro(value) {
     .map((item) => ({
       path: String(item.path).trim(),
       prompt: thumbnailText(item.prompt, 4000),
-      engine: THUMBNAIL_ENGINES.includes(item.engine) ? item.engine : "nano_banana",
+      engine: THUMBNAIL_ENGINES.includes(item.engine) ? item.engine : THUMBNAIL_DEFAULT_ENGINE,
       scene_id: thumbnailText(item.scene_id, 200),
     }))
     .slice(-THUMBNAIL_HISTORY_LIMIT);
@@ -40,13 +57,13 @@ export function normalizeThumbnailIntro(value) {
   return {
     enabled: data.enabled === true,
     image_path: thumbnailText(data.image_path, 2000).trim(),
-    seconds: clampThumbnailSeconds(data.seconds ?? THUMBNAIL_DEFAULT_SECONDS),
     source_path: sourcePath,
     source_kind: sourcePath && THUMBNAIL_SOURCE_KINDS.includes(data.source_kind) ? data.source_kind : (sourcePath ? "image" : ""),
     source_frame: Number.isFinite(frame) && frame > 0 ? Math.floor(frame) : 0,
     source_seconds: Number.isFinite(sourceSeconds) && sourceSeconds > 0 ? sourceSeconds : 0,
     scene_id: thumbnailText(data.scene_id, 200),
-    engine: THUMBNAIL_ENGINES.includes(data.engine) ? data.engine : "nano_banana",
+    engine: THUMBNAIL_ENGINES.includes(data.engine) ? data.engine : THUMBNAIL_DEFAULT_ENGINE,
+    change: clampThumbnailChange(data.change),
     title: thumbnailText(data.title, 120),
     style_notes: thumbnailText(data.style_notes, 1200),
     prompt: thumbnailText(data.prompt, 4000),
@@ -54,13 +71,13 @@ export function normalizeThumbnailIntro(value) {
   };
 }
 
-// The picture and length the stitch puts in front of the video, or null when it should not: this build cannot, it is switched off
-// or there is no picture yet.
+// The picture the stitch makes the first frame of the video, or null when it should not: this build cannot, it is switched off or
+// there is no picture yet. It is one frame, never a length of time, so there is nothing else to say about it.
 export function thumbnailIntroForStitch(state) {
   if (!state?.thumbnailAvailable) return null;
   const intro = normalizeThumbnailIntro(state.thumbnailIntro);
   if (!intro.enabled || !intro.image_path) return null;
-  return { image_path: intro.image_path, seconds: intro.seconds };
+  return { image_path: intro.image_path };
 }
 
 // Only the full video gets the picture. A preview of a few scenes, or of a slice of the song, is left as it is.

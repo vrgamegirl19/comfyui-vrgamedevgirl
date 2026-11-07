@@ -20,7 +20,7 @@ function fakeElement(tag, all) {
   return node;
 }
 
-function harness({ segments, frameAvailable = true, postJson } = {}) {
+function harness({ segments, frameAvailable = true, postJson, engineSettings = {}, moss = {} } = {}) {
   const all = [];
   const calls = [];
   const toasts = [];
@@ -36,6 +36,7 @@ function harness({ segments, frameAvailable = true, postJson } = {}) {
     makeEditorVideoUrl: (path, bust) => `video:${path}?${bust ?? ''}`,
     toast: (message, isError) => toasts.push([message, Boolean(isError)]),
     fluxKleinLoraPayload: () => ({}),
+    loadMossReferenceSettings: () => moss,
     makeButton: (label) => Object.assign(control('button'), { textContent: label }),
     makeInput: (value = '', type = 'text') => Object.assign(control('input'), { value, type }),
     makeSelect: (options, value) => Object.assign(control('select'), { value }),
@@ -49,6 +50,7 @@ function harness({ segments, frameAvailable = true, postJson } = {}) {
     waitForImages: async () => [{ filename: 'gen.png', subfolder: '', type: 'output' }],
   });
   vm.runInContext(readBuilderModule('thumbnail_state.mjs'), context);
+  vm.runInContext(readBuilderModule('thumbnail_engines.mjs'), context);
   vm.runInContext(readBuilderModule('thumbnail.mjs'), context);
   const state = {
     segments, projectFolder: 'C:/p', thumbnailAvailable: true, thumbnailFrameAvailable: frameAvailable,
@@ -56,6 +58,7 @@ function harness({ segments, frameAvailable = true, postJson } = {}) {
   };
   const deps = {
     state, projectInput: { value: 'C:/p' }, runnerPayload: () => ({ text_runner: 'builtin' }),
+    engineSettings: (engine) => ({ nano_banana: state.nbImageSettings, ...engineSettings })[engine],
     sceneImagePath: (segment) => segment.image || '', sceneVideoPath: (segment) => segment.video || '',
     sceneLabel: (segment, index) => `Scene ${index + 1}`, save: async () => { saves.push(JSON.stringify(state.thumbnailIntro.source_path)); },
     createProgressWindow: () => ({ set() {}, close() {} }),
@@ -211,4 +214,103 @@ test('reopening starts on the frame that was chosen', () => {
   assert.equal(scrub.value, '70');
   const shown = h.all.find((node) => node.tag === 'img' && node.src === 'image:C:/p/thumbnail/source_0003.png');
   assert.ok(shown, 'the frame in use is shown');
+});
+
+const frameReplies = {
+  '/vrgdg/music_builder/thumbnail/frame': { image_path: 'C:/p/thumbnail/source_0001.png' },
+  '/vrgdg/music_builder/thumbnail/prompt': { prompt: 'A close-up of a singer.', characters: 23 },
+  '/vrgdg/music_builder/thumbnail/save': { image_path: 'C:/p/thumbnail/thumbnail_0001.png' },
+};
+
+async function pickFrame(h) {
+  h.open();
+  const scrub = h.find((node) => node.type === 'range');
+  scrub.value = '60';
+  scrub.listeners.input[0]();
+  await h.button('Use this frame').onclick();
+  return {
+    select: h.find((node) => node.tag === 'select'),
+    change: h.find((node) => node.attrs && node.attrs['aria-label'] === 'How much to change the frame'),
+  };
+}
+
+test('every image workflow can be chosen, and MOSS-Image restyles the frame with image to image at the chosen change', async () => {
+  const replies = { ...frameReplies, '/vrgdg/workflow_runner/build_moss_image_prompt': { prompt: {} } };
+  const h = harness({
+    segments: scenes(), postJson: async (url) => replies[url],
+    moss: { unet_name: 'moss.safetensors', clip_name: 'q.safetensors', vae_name: 'f.safetensors', lora_name: 'turbo.safetensors', steps: 8, cfg: 1, width: 1280, height: 720 },
+  });
+  const { select, change } = await pickFrame(h);
+  assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_ENGINES', h.context)), ['nano_banana', 'flux_klein', 'krea2_2pass', 'zimage', 'ernie_image', 'moss_image']);
+  select.value = 'moss_image';
+  select.listeners.change[0]();
+  change.value = '40';
+  change.listeners.input[0]();
+  await h.button('Write prompt with LLM').onclick();
+  assert.equal(h.calls.find(([url]) => url.endsWith('/thumbnail/prompt'))[1].engine_kind, 'restyle', 'a restyle workflow is given a description of the picture');
+  await h.button('Generate thumbnail').onclick();
+  const [, built] = h.calls.find(([url]) => url.endsWith('/build_moss_image_prompt'));
+  assert.equal(built.use_image_to_image, true);
+  assert.equal(built.image_to_image_path, 'C:/p/thumbnail/source_0001.png');
+  assert.equal(built.denoise, 0.4);
+  assert.equal(built.unet_name, 'moss.safetensors', 'it runs with the models the user set for MOSS-Image');
+  assert.equal(built.prompt, 'A close-up of a singer.');
+  assert.equal(h.state.thumbnailIntro.engine, 'moss_image');
+  assert.equal(h.state.thumbnailIntro.change, 0.4);
+  assert.equal(h.state.thumbnailIntro.image_path, 'C:/p/thumbnail/thumbnail_0001.png');
+  assert.equal(h.state.thumbnailIntro.history[0].engine, 'moss_image');
+});
+
+test('an edit workflow is given the editing prompt, and the other workflows use the Builder\'s own settings for them', async () => {
+  const replies = { ...frameReplies, '/vrgdg/workflow_runner/build_nb_image_prompt': { prompt: {} }, '/vrgdg/workflow_runner/build_zimage_prompt': { prompt: {} } };
+  const h = harness({ segments: scenes(), postJson: async (url) => replies[url], engineSettings: { zimage: { unet_name: 'z.safetensors', first_pass_width: 960 } } });
+  const { select } = await pickFrame(h);
+  await h.button('Write prompt with LLM').onclick();
+  assert.equal(h.calls.find(([url]) => url.endsWith('/thumbnail/prompt'))[1].engine_kind, 'edit');
+  select.value = 'zimage';
+  select.listeners.change[0]();
+  await h.button('Generate thumbnail').onclick();
+  const [, built] = h.calls.find(([url]) => url.endsWith('/build_zimage_prompt'));
+  assert.equal(built.unet_name, 'z.safetensors');
+  assert.equal(built.first_pass_width, 960);
+  assert.equal(built.image_to_image_start_at_step, 3, 'the default change of 65 percent');
+});
+
+test('the change control is only shown for restyle workflows, and switching kind flags a prompt written for the other kind', async () => {
+  const h = harness({ segments: scenes(), postJson: async (url) => frameReplies[url] });
+  const { select, change } = await pickFrame(h);
+  const field = h.all.find((node) => node.tag === 'label' && node.style.display === 'none');
+  assert.ok(field, 'the change field starts hidden for the default edit workflow');
+  const hint = h.all.find((node) => /edits the frame by instruction/.test(node.textContent));
+  assert.ok(hint);
+  await h.button('Write prompt with LLM').onclick();
+  select.value = 'krea2_2pass';
+  select.listeners.change[0]();
+  assert.equal(field.style.display, 'flex');
+  assert.match(hint.textContent, /restyles the frame from a description/);
+  const status = h.all.find((node) => /different kind of prompt/.test(node.textContent));
+  assert.ok(status, 'the prompt was written for an edit workflow');
+  select.value = 'zimage';
+  select.listeners.change[0]();
+  assert.equal(field.style.display, 'flex', 'still a restyle workflow');
+  select.value = 'flux_klein';
+  select.listeners.change[0]();
+  assert.equal(field.style.display, 'none');
+});
+
+test('the thumbnail is the first frame, so there is no length to set and the stitch sends none', async () => {
+  const h = harness({ segments: scenes(), postJson: async () => ({ intro_frames: 1 }) });
+  h.open();
+  assert.equal(h.all.find((node) => /Seconds shown/.test(node.textContent)), undefined);
+  assert.equal(h.all.find((node) => node.tag === 'input' && node.type === 'number'), undefined, 'no number box for seconds');
+  const box = h.all.find((node) => node.tag === 'label');
+  assert.ok(h.context.normalizeThumbnailIntro({ seconds: 5 }).seconds === undefined, 'an old saved length is dropped');
+  h.state.thumbnailIntro = h.context.normalizeThumbnailIntro({ enabled: true, image_path: 'C:/p/thumbnail/thumbnail_0001.png', seconds: 5 });
+  h.state.thumbnailAvailable = true;
+  const stitched = await h.context.applyThumbnailIntroAfterStitch(h.state, { final_video_path: 'C:/p/FINAL_VIDEO.mp4' }, { projectFolder: 'C:/p' });
+  const [url, sent] = h.calls.at(-1);
+  assert.equal(url, '/vrgdg/music_builder/thumbnail/prepend');
+  assert.deepEqual(Object.keys(sent).sort(), ['image_path', 'input_path', 'project_folder', 'replace_source']);
+  assert.equal(stitched.thumbnail_intro.intro_frames, 1);
+  void box;
 });

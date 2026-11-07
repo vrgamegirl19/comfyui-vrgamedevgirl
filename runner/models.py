@@ -85,6 +85,32 @@ def _model_choice_exists(category, value):
     return False
 
 
+def _resolve_model_choice(category, value):
+    """The spelling ComfyUI lists for a model, or ``None`` when it is not installed.
+
+    The name as given when it is installed. Otherwise the installed file with the same path, ignoring slash direction and case, and
+    otherwise the installed file with the same file name, so a factory default such as ``flux\\flux2-vae.safetensors`` finds
+    ``flux2-vae.safetensors`` on an install that keeps its models in the models folder itself. ComfyUI only accepts the exact
+    spelling it lists, so a graph has to carry this one.
+    """
+    requested = str(value or "").strip()
+    if not requested:
+        return None
+    wanted = requested.replace("\\", "/").lower()
+    base = os.path.basename(wanted)
+    choices = [str(choice or "").strip() for choice in _folder_choices(category)]
+    choices = [choice for choice in choices if choice]
+    if requested in choices:
+        return requested
+    for choice in choices:
+        if choice.replace("\\", "/").lower() == wanted:
+            return choice
+    for choice in choices:
+        if os.path.basename(choice.replace("\\", "/")).lower() == base:
+            return choice
+    return None
+
+
 def _require_model_choice(category, value, label):
     if _model_choice_exists(category, value):
         return

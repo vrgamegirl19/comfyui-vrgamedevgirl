@@ -46,21 +46,25 @@ def _probe(path, entries, select=None):
     return subprocess.run(command, check=True, capture_output=True, text=True).stdout.split()
 
 
-def _first_frame_color(path, at):
-    """Average color of the frame at ``at`` seconds as an (r, g, b) tuple."""
-    frame = path + ".png"
-    subprocess.run([FFMPEG, "-y", "-ss", str(at), "-i", path, "-frames:v", "1", frame], check=True, capture_output=True)
+def _frame_color(path, number):
+    """Average color of frame ``number`` (0 is the first frame) as an (r, g, b) tuple."""
+    frame = f"{path}.{number}.png"
+    subprocess.run([FFMPEG, "-y", "-i", path, "-vf", f"select=eq(n\\,{number})", "-frames:v", "1", "-fps_mode", "passthrough", frame],
+                   check=True, capture_output=True)
     with Image.open(frame) as image:
         return image.convert("RGB").resize((1, 1)).getpixel((0, 0))
 
 
-class SecondsTests(unittest.TestCase):
-    def test_length_is_kept_in_range(self):
-        self.assertEqual(thumbnail._intro_seconds(0), thumbnail.MIN_INTRO_SECONDS)
-        self.assertEqual(thumbnail._intro_seconds(99), thumbnail.MAX_INTRO_SECONDS)
-        self.assertEqual(thumbnail._intro_seconds("3.5"), 3.5)
-        for bad in (None, "", "abc", float("nan")):
-            self.assertEqual(thumbnail._intro_seconds(bad), thumbnail.DEFAULT_INTRO_SECONDS)
+def _frame_count(path):
+    """How many video frames a file holds, counted from its packets."""
+    out = subprocess.run(["ffprobe", "-v", "error", "-count_packets", "-select_streams", "v:0", "-show_entries",
+                          "stream=nb_read_packets", "-of", "default=noprint_wrappers=1:nokey=1", path],
+                         check=True, capture_output=True, text=True).stdout.split()
+    return int(out[0])
+
+
+def _is_red(color):
+    return color[0] > 150 and color[1] < 90 and color[2] < 90
 
 
 class SaveImageTests(unittest.TestCase):
@@ -90,50 +94,65 @@ class SaveImageTests(unittest.TestCase):
 
 @unittest.skipUnless(FFMPEG, "ffmpeg is not installed")
 class PrependTests(unittest.TestCase):
-    def test_the_picture_shows_first_and_the_video_follows_with_its_audio(self):
+    def test_the_picture_is_exactly_the_first_frame_and_the_video_follows_unchanged(self):
+        with tempfile.TemporaryDirectory() as folder:
+            video = _make_video(os.path.join(folder, "FINAL_VIDEO.mp4"))
+            before = _frame_count(video)
+            self.assertEqual(before, 72)
+            second_frame_before = _frame_color(video, 1)
+            image = _make_image(os.path.join(folder, "thumb.png"))
+            result = thumbnail._prepend_thumbnail_intro({"input_path": video, "image_path": image})
+            self.assertEqual(result["final_video_path"], video)
+            self.assertEqual(result["intro_frames"], 1)
+            self.assertAlmostEqual(result["intro_seconds"], 1 / 24, places=6)
+            # One frame more, no more: the picture is frame 0, and the old first frame is now frame 1.
+            self.assertEqual(_frame_count(video), before + 1)
+            self.assertTrue(_is_red(_frame_color(video, 0)), "frame 0 is the picture")
+            self.assertFalse(_is_red(_frame_color(video, 1)), "frame 1 is the video's own first frame")
+            self.assertFalse(_is_red(_frame_color(video, 2)))
+            self.assertEqual(_probe(video, "stream=width,height", "v:0"), ["320", "180"])
+            self.assertEqual(_probe(video, "stream=codec_name", "a:0"), ["aac"])
+            # The audio is not pushed by more than the one frame: the file is 1/24 s longer, within an audio frame.
+            self.assertAlmostEqual(float(_probe(video, "format=duration")[0]), 3.0 + 1 / 24, delta=0.06)
+            self.assertAlmostEqual(result["duration"], 3.0 + 1 / 24, delta=0.06)
+            self.assertEqual(os.listdir(folder).count("FINAL_VIDEO.mp4"), 1)
+            self.assertFalse([name for name in os.listdir(folder) if name.startswith(".thumbnail_intro")])
+            del second_frame_before
+
+    def test_a_length_in_the_request_does_not_make_the_picture_stay_longer(self):
         with tempfile.TemporaryDirectory() as folder:
             video = _make_video(os.path.join(folder, "FINAL_VIDEO.mp4"))
             image = _make_image(os.path.join(folder, "thumb.png"))
-            result = thumbnail._prepend_thumbnail_intro({"input_path": video, "image_path": image, "seconds": 2})
-            self.assertEqual(result["final_video_path"], video)
-            self.assertAlmostEqual(result["duration"], 5.0, delta=0.4)
-            self.assertAlmostEqual(float(_probe(video, "format=duration")[0]), 5.0, delta=0.4)
-            self.assertEqual(_probe(video, "stream=width,height", "v:0"), ["320", "180"])
-            self.assertEqual(_probe(video, "stream=codec_name", "a:0"), ["aac"])
-            red, green, blue = _first_frame_color(video, 1.0)
-            self.assertGreater(red, 150)
-            self.assertLess(green, 90)
-            self.assertLess(blue, 90)
-            # The scene's own picture follows after the intro: testsrc2 is not red.
-            self.assertFalse(_first_frame_color(video, 3.0)[0] > 150 and _first_frame_color(video, 3.0)[1] < 90)
-            self.assertEqual(os.listdir(folder).count("FINAL_VIDEO.mp4"), 1)
-            self.assertFalse([name for name in os.listdir(folder) if name.startswith(".thumbnail_intro")])
+            result = thumbnail._prepend_thumbnail_intro({"input_path": video, "image_path": image, "seconds": 5})
+            self.assertEqual(_frame_count(video), 73)
+            self.assertEqual(result["intro_frames"], 1)
 
-    def test_a_video_without_audio_gets_a_silent_free_intro(self):
+    def test_a_video_without_audio_gets_no_audio(self):
         with tempfile.TemporaryDirectory() as folder:
             video = _make_video(os.path.join(folder, "silent.mp4"), audio=False)
             image = _make_image(os.path.join(folder, "thumb.png"))
-            thumbnail._prepend_thumbnail_intro({"input_path": video, "image_path": image, "seconds": 1})
+            thumbnail._prepend_thumbnail_intro({"input_path": video, "image_path": image})
             self.assertEqual(_probe(video, "stream=codec_type", "a:0"), [])
-            self.assertAlmostEqual(float(_probe(video, "format=duration")[0]), 4.0, delta=0.4)
+            self.assertEqual(_frame_count(video), 73)
 
-    def test_a_picture_of_another_shape_fills_the_frame_without_changing_the_video_size(self):
+    def test_a_picture_of_another_shape_fills_the_frame_without_changing_the_video_size_or_rate(self):
         with tempfile.TemporaryDirectory() as folder:
             video = _make_video(os.path.join(folder, "wide.mp4"), size="640x360", rate=30)
             image = _make_image(os.path.join(folder, "tall.png"), size=(400, 800))
-            thumbnail._prepend_thumbnail_intro({"input_path": video, "image_path": image, "seconds": 1})
+            result = thumbnail._prepend_thumbnail_intro({"input_path": video, "image_path": image})
             self.assertEqual(_probe(video, "stream=width,height", "v:0"), ["640", "360"])
             self.assertEqual(_probe(video, "stream=r_frame_rate", "v:0"), ["30/1"])
+            self.assertEqual(_frame_count(video), 91, "3 s at 30 fps plus one frame")
+            self.assertAlmostEqual(result["intro_seconds"], 1 / 30, places=6)
 
     def test_replace_source_false_leaves_the_original(self):
         with tempfile.TemporaryDirectory() as folder:
             video = _make_video(os.path.join(folder, "FINAL_VIDEO.mp4"))
             image = _make_image(os.path.join(folder, "thumb.png"))
-            result = thumbnail._prepend_thumbnail_intro(
-                {"input_path": video, "image_path": image, "seconds": 1, "replace_source": False})
+            result = thumbnail._prepend_thumbnail_intro({"input_path": video, "image_path": image, "replace_source": False})
             self.assertEqual(os.path.basename(result["final_video_path"]), "FINAL_VIDEO_with_thumbnail.mp4")
-            self.assertAlmostEqual(float(_probe(video, "format=duration")[0]), 3.0, delta=0.3)
-            self.assertAlmostEqual(float(_probe(result["final_video_path"], "format=duration")[0]), 4.0, delta=0.4)
+            self.assertEqual(_frame_count(video), 72)
+            self.assertEqual(_frame_count(result["final_video_path"]), 73)
 
     def test_missing_files_are_refused_and_nothing_is_left_behind(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -229,6 +248,19 @@ class PromptTextTests(unittest.TestCase):
         without = prompts.thumbnail_instruction("   ")
         self.assertIn("Do not add any text", without)
         self.assertNotIn("{text_rule}", without)
+
+    def test_a_restyle_workflow_gets_a_description_of_the_finished_picture_not_an_edit_instruction(self):
+        edit = prompts.thumbnail_instruction("RUN", "edit")
+        restyle = prompts.thumbnail_instruction("RUN", "restyle")
+        self.assertIn('Recrop the attached image', edit)
+        self.assertNotIn('Recrop the attached image', restyle)
+        self.assertIn("describes a finished", restyle)
+        self.assertIn("do not mention the attached image", restyle.lower())
+        self.assertIn('"RUN"', restyle)
+        self.assertNotIn("{text_rule}", restyle)
+        self.assertIn("Do not add any text", prompts.thumbnail_instruction("", "restyle"))
+        for other in (None, "", "edit", "anything else"):
+            self.assertEqual(prompts.thumbnail_instruction("RUN", other), edit)
 
     def test_the_reply_is_cleaned(self):
         clean = thumbnail_prompt.clean_thumbnail_prompt

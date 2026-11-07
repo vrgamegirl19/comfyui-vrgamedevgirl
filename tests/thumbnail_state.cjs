@@ -16,18 +16,33 @@ test('an empty or broken value loads as the defaults', () => {
     const intro = c.normalizeThumbnailIntro(value);
     assert.equal(intro.enabled, false);
     assert.equal(intro.image_path, '');
-    assert.equal(intro.seconds, 2);
+    assert.equal(intro.seconds, undefined, 'the thumbnail is one frame: there is no length');
+    assert.equal(intro.change, 0.65);
     assert.equal(intro.engine, 'nano_banana');
     assert.deepEqual(Array.from(intro.history), []);
   }
 });
 
-test('the length is kept between half a second and ten seconds', () => {
+test('the change setting is kept between 0 and 1, and a missing one is 0.65', () => {
   const c = load();
-  assert.equal(c.clampThumbnailSeconds(0), 0.5);
-  assert.equal(c.clampThumbnailSeconds(99), 10);
-  assert.equal(c.clampThumbnailSeconds('3.5'), 3.5);
-  assert.equal(c.clampThumbnailSeconds('abc'), 2);
+  assert.equal(c.clampThumbnailChange(0), 0);
+  assert.equal(c.clampThumbnailChange(2), 1);
+  assert.equal(c.clampThumbnailChange(-1), 0);
+  assert.equal(c.clampThumbnailChange('0.4'), 0.4);
+  for (const bad of ['', null, undefined, 'abc', NaN]) assert.equal(c.clampThumbnailChange(bad), 0.65);
+  assert.equal(c.normalizeThumbnailIntro({ change: 0.2 }).change, 0.2);
+  assert.equal(c.normalizeThumbnailIntro({ change: 9 }).change, 1);
+});
+
+test('every image workflow is known, with the kind of prompt it needs', () => {
+  const c = load();
+  assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_ENGINES', c)), ['nano_banana', 'flux_klein', 'krea2_2pass', 'zimage', 'ernie_image', 'moss_image']);
+  for (const edit of ['nano_banana', 'flux_klein']) assert.equal(c.thumbnailEngineKind(edit), 'edit');
+  for (const restyle of ['krea2_2pass', 'zimage', 'ernie_image', 'moss_image']) assert.equal(c.thumbnailEngineKind(restyle), 'restyle');
+  assert.equal(c.thumbnailEngineKind('unknown'), 'edit');
+  assert.equal(c.normalizeThumbnailIntro({ engine: 'moss_image' }).engine, 'moss_image');
+  assert.equal(c.normalizeThumbnailIntro({ engine: 'bogus' }).engine, 'nano_banana');
+  assert.equal(c.normalizeThumbnailIntro({ history: [{ path: 'a.png', engine: 'zimage' }] }).history[0].engine, 'zimage');
 });
 
 test('only a real engine and a real picture survive, and the history is limited', () => {
@@ -57,7 +72,7 @@ test('a new picture goes last in the history without a duplicate', () => {
 test('the stitch uses the picture only when this build can, it is on, and there is a picture', () => {
   const c = load();
   const on = { enabled: true, image_path: 'C:\\p\\a.png', seconds: 3 };
-  assert.deepEqual({ ...c.thumbnailIntroForStitch({ thumbnailAvailable: true, thumbnailIntro: on }) }, { image_path: 'C:\\p\\a.png', seconds: 3 });
+  assert.deepEqual({ ...c.thumbnailIntroForStitch({ thumbnailAvailable: true, thumbnailIntro: on }) }, { image_path: 'C:\\p\\a.png' }, 'one frame: only the picture');
   assert.equal(c.thumbnailIntroForStitch({ thumbnailAvailable: false, thumbnailIntro: on }), null);
   assert.equal(c.thumbnailIntroForStitch({ thumbnailAvailable: true, thumbnailIntro: { ...on, enabled: false } }), null);
   assert.equal(c.thumbnailIntroForStitch({ thumbnailAvailable: true, thumbnailIntro: { ...on, image_path: '' } }), null);

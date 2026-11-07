@@ -9,23 +9,21 @@ import { makeEditorImageUrl, makeEditorVideoUrl, postJson, queueWorkflowPrompt, 
 import { BUILDER_FONT_STACK, DEFAULT_NB_IMAGE_MODEL } from "./constants.mjs";
 import { makeButton, makeCheckbox, makeField, makeInput, makeSelect, toast } from "./controls.mjs";
 import { fluxKleinLoraPayload } from "./image_generation.mjs";
+import { loadMossReferenceSettings } from "./reference_generation.mjs";
+import { THUMBNAIL_ENGINE_LABELS, thumbnailEngineRequest } from "./thumbnail_engines.mjs";
 import {
-  clampThumbnailSeconds, formatThumbnailTime, normalizeThumbnailIntro, thumbnailFrameRange, thumbnailHistoryWith,
-  thumbnailIntroForStitch, thumbnailItemAt, thumbnailLocalSeconds, thumbnailTimelineItems, THUMBNAIL_FPS,
-  THUMBNAIL_MAX_SECONDS, THUMBNAIL_MIN_SECONDS,
+  clampThumbnailChange, formatThumbnailTime, normalizeThumbnailIntro, thumbnailEngineKind, thumbnailFrameRange, thumbnailHistoryWith,
+  thumbnailIntroForStitch, thumbnailItemAt, thumbnailLocalSeconds, thumbnailTimelineItems, THUMBNAIL_ENGINES, THUMBNAIL_FPS,
 } from "./thumbnail_state.mjs";
 
 const THUMBNAIL_PREPEND_TIMEOUT_MS = 30 * 60 * 1000;
 const THUMBNAIL_PROMPT_TIMEOUT_MS = 10 * 60 * 1000;
 const THUMBNAIL_FRAME_TIMEOUT_MS = 2 * 60 * 1000;
-const THUMBNAIL_WIDTH = 1280;
-const THUMBNAIL_HEIGHT = 720;
 // Where inside a frame's time slot the player is parked, so it shows that frame and not the one before it.
 const FRAME_SEEK_OFFSET = 0.25;
-const ENGINE_LABELS = [
-  { value: "nano_banana", label: "NanoBanana (API)" },
-  { value: "flux_klein", label: "Flux/Klein (local)" },
-];
+const ENGINE_OPTIONS = THUMBNAIL_ENGINES.map((value) => ({ value, label: THUMBNAIL_ENGINE_LABELS[value] }));
+const EDIT_HINT = "This workflow edits the frame by instruction, so the prompt tells it what to change.";
+const RESTYLE_HINT = "This workflow restyles the frame from a description of the finished picture. The prompt describes the thumbnail, and Change sets how far it moves from the frame.";
 
 // Asks whether this build can make thumbnails, and whether it can take one exact frame of a video. A build without the routes
 // answers 404, which is an answer here and not an error for the project's error log, so the button stays hidden and nothing
@@ -44,17 +42,17 @@ export async function loadThumbnailCapabilities(state) {
 }
 
 // `stitched` is what the stitch route returned. It comes back unchanged apart from `thumbnail_intro`, and `final_video_path` now
-// names the video with the picture in front. When it cannot be added the plain stitched video stays and the reason is shown.
+// names the video with the picture as its first frame (one frame, never a length of time). When it cannot be added the plain
+// stitched video stays and the reason is shown.
 export async function applyThumbnailIntroAfterStitch(state, stitched, { progress = null, projectFolder = "" } = {}) {
   const intro = thumbnailIntroForStitch(state);
   const path = String(stitched?.final_video_path || "");
   if (!intro || !path) return stitched;
-  progress?.set("Adding the thumbnail to the front of the video...", 98);
+  progress?.set("Making the thumbnail the first frame of the video...", 98);
   try {
     const reply = await postJson("/vrgdg/music_builder/thumbnail/prepend", {
       input_path: path,
       image_path: intro.image_path,
-      seconds: intro.seconds,
       replace_source: true,
       project_folder: projectFolder,
     }, THUMBNAIL_PREPEND_TIMEOUT_MS);
@@ -65,37 +63,17 @@ export async function applyThumbnailIntroAfterStitch(state, stitched, { progress
   }
 }
 
-// Sends the chosen frame through the chosen image workflow and returns the ComfyUI view descriptor of the result.
-async function generateThumbnailImage({ state, engine, prompt, sourcePath, onStatus }) {
-  const ingredients = [{ path: sourcePath }];
-  let built;
-  if (engine === "nano_banana") {
-    const settings = state.nbImageSettings || {};
-    if (!String(settings.api_key || "").trim()) {
-      throw new Error("The NanoBanana API key is missing. Enter it in the NanoBanana image settings, or choose Flux/Klein.");
-    }
-    onStatus("Building the NanoBanana workflow...");
-    built = await postJson("/vrgdg/workflow_runner/build_nb_image_prompt", {
-      api_key: settings.api_key,
-      model: settings.model || DEFAULT_NB_IMAGE_MODEL,
-      prompt,
-      image_ingredients: ingredients,
-    });
-  } else {
-    const settings = state.fluxKleinSettings || {};
-    onStatus("Building the Flux/Klein workflow...");
-    built = await postJson("/vrgdg/workflow_runner/build_flux_klein_prompt", {
-      prompt,
-      image_ingredients: ingredients,
-      unet_name: settings.unet_name || "",
-      clip_name: settings.clip_name || "",
-      vae_name: settings.vae_name || "",
-      width: THUMBNAIL_WIDTH,
-      height: THUMBNAIL_HEIGHT,
-      seed: Math.floor(Math.random() * 2 ** 31),
-      ...fluxKleinLoraPayload(settings),
-    });
-  }
+// Sends the chosen frame through the chosen image workflow and returns the ComfyUI view descriptor of the result. `settings` is the
+// Builder's own settings for that workflow, so it runs with the models, LoRAs and size the user already chose for it.
+async function generateThumbnailImage({ engine, prompt, sourcePath, change, settings, onStatus }) {
+  const { url, payload, label } = thumbnailEngineRequest({
+    engine, prompt, sourcePath, change, settings,
+    seed: Math.floor(Math.random() * 2 ** 31),
+    loraPayload: fluxKleinLoraPayload,
+    defaultNbModel: DEFAULT_NB_IMAGE_MODEL,
+  });
+  onStatus(`Building the ${label} workflow...`);
+  const built = await postJson(url, payload);
   onStatus("Queueing the image workflow...");
   const queued = await queueWorkflowPrompt(built.prompt);
   const promptId = queued?.prompt_id;
@@ -128,9 +106,12 @@ function sectionTitle(text) {
 }
 
 // The dialog. `deps` come from the Builder: state, projectInput, runnerPayload() (the LLM Runner settings), sceneImagePath(segment),
-// sceneVideoPath(segment) (its rendered video), sceneLabel(segment, index), save() (a quiet autosave) and createProgressWindow(title).
+// sceneVideoPath(segment) (its rendered video), sceneLabel(segment, index), engineSettings(engine) (the Builder's own settings for an
+// image workflow), save() (a quiet autosave) and createProgressWindow(title).
 export function openThumbnailDialog(deps) {
-  const { state, projectInput, runnerPayload, sceneImagePath, sceneVideoPath, sceneLabel, save, createProgressWindow } = deps;
+  const { state, projectInput, runnerPayload, sceneImagePath, sceneVideoPath, sceneLabel, engineSettings, save, createProgressWindow } = deps;
+  // The settings an image workflow runs with: the Builder's own for it (MOSS-Image's live in the Reference Builder's saved choices).
+  const settingsFor = (engine) => (engine === "moss_image" ? loadMossReferenceSettings() : engineSettings?.(engine)) || {};
   const projectFolder = () => String(projectInput?.value || state.projectFolder || "").trim();
   if (!projectFolder()) {
     toast("Create or load a project before making a thumbnail.", true);
@@ -264,7 +245,43 @@ export function openThumbnailDialog(deps) {
   sourceCaption.style.cssText = "font-size:12px;color:#93c5fd;line-height:1.4;";
 
   // Step 2 and 3: the prompt and the picture.
-  const engineSelect = makeSelect(ENGINE_LABELS, intro.engine);
+  const engineSelect = makeSelect(ENGINE_OPTIONS, intro.engine);
+  const engineHint = document.createElement("div");
+  engineHint.style.cssText = "font-size:11px;line-height:1.4;color:#94a3b8;";
+  // How far a restyle workflow may move away from the frame. Edit workflows follow an instruction instead, so it is hidden for them.
+  const changeInput = document.createElement("input");
+  changeInput.type = "range";
+  changeInput.min = "0";
+  changeInput.max = "100";
+  changeInput.step = "5";
+  changeInput.value = String(Math.round(intro.change * 100));
+  changeInput.style.cssText = "width:100%;accent-color:#22d3ee;";
+  changeInput.setAttribute("aria-label", "How much to change the frame");
+  const changeField = makeField("Change", changeInput);
+  const paintChange = () => {
+    const label = changeField.children[0];
+    if (label) label.textContent = `Change: ${changeInput.value}%  (lower keeps the frame, higher restyles more)`;
+  };
+  const kindOfEngine = () => thumbnailEngineKind(engineSelect.value);
+  const paintEngine = () => {
+    const restyle = kindOfEngine() === "restyle";
+    changeField.style.display = restyle ? "flex" : "none";
+    engineHint.textContent = restyle ? RESTYLE_HINT : EDIT_HINT;
+    paintChange();
+  };
+  changeInput.addEventListener("input", paintChange);
+  // The two kinds want different prompts, so a prompt written for the other kind is flagged instead of being sent as it is.
+  let promptKind = kindOfEngine();
+  engineSelect.addEventListener("change", () => {
+    paintEngine();
+    if (kindOfEngine() !== promptKind) {
+      promptKind = kindOfEngine();
+      if (promptInput.value.trim()) {
+        status.style.color = "#fcd34d";
+        status.textContent = "This workflow needs a different kind of prompt. Click Write prompt with LLM again, or edit the one you have.";
+      }
+    }
+  });
   const titleInput = makeInput(intro.title);
   titleInput.maxLength = 120;
   titleInput.placeholder = "Words on the thumbnail, for example NEVER LOOK BACK (leave empty for no text)";
@@ -284,13 +301,7 @@ export function openThumbnailDialog(deps) {
   const historyStrip = document.createElement("div");
   historyStrip.style.cssText = "display:flex;gap:6px;overflow-x:auto;";
 
-  const enableBox = makeCheckbox("Add the thumbnail to the front of the final video", intro.enabled);
-  const secondsInput = makeInput(String(intro.seconds), "number");
-  secondsInput.min = String(THUMBNAIL_MIN_SECONDS);
-  secondsInput.max = String(THUMBNAIL_MAX_SECONDS);
-  secondsInput.step = "0.5";
-  secondsInput.style.width = "90px";
-  const secondsField = makeField("Seconds shown", secondsInput);
+  const enableBox = makeCheckbox("Make the thumbnail the first frame of the final video (one frame, no more)", intro.enabled);
 
   const current = () => normalizeThumbnailIntro(state.thumbnailIntro);
   const commit = (changes, { persist = true } = {}) => {
@@ -299,8 +310,8 @@ export function openThumbnailDialog(deps) {
   };
   const readInputs = () => ({
     enabled: enableBox.input.checked,
-    seconds: clampThumbnailSeconds(secondsInput.value),
     engine: engineSelect.value,
+    change: clampThumbnailChange(Number(changeInput.value) / 100),
     title: titleInput.value,
     style_notes: styleInput.value,
     prompt: promptInput.value,
@@ -346,7 +357,7 @@ export function openThumbnailDialog(deps) {
   };
   const setBusy = (value, text = "") => {
     busy = value;
-    for (const control of [useButton, writeButton, generateButton, engineSelect, titleInput, styleInput, promptInput]) control.disabled = value;
+    for (const control of [useButton, writeButton, generateButton, engineSelect, changeInput, titleInput, styleInput, promptInput]) control.disabled = value;
     status.style.color = "#93c5fd";
     status.textContent = text;
   };
@@ -397,6 +408,7 @@ export function openThumbnailDialog(deps) {
       const reply = await postJson("/vrgdg/music_builder/thumbnail/prompt", {
         ...(runnerPayload?.() || {}),
         image_path: saved.source_path,
+        engine_kind: kindOfEngine(),
         title: titleInput.value,
         style_notes: styleInput.value,
         project_name: projectFolder().split(/[\\/]/).filter(Boolean).pop() || "",
@@ -426,7 +438,10 @@ export function openThumbnailDialog(deps) {
         status.textContent = message;
         progress?.set(message, 50);
       };
-      const image = await generateThumbnailImage({ state, engine: engineSelect.value, prompt, sourcePath: current().source_path, onStatus });
+      const image = await generateThumbnailImage({
+        engine: engineSelect.value, prompt, sourcePath: current().source_path, change: current().change,
+        settings: settingsFor(engineSelect.value), onStatus,
+      });
       onStatus("Saving the thumbnail in the project...");
       const saved = await postJson("/vrgdg/music_builder/thumbnail/save", { project_folder: projectFolder(), image });
       const entry = { path: saved.image_path, prompt, engine: engineSelect.value, scene_id: current().scene_id };
@@ -468,7 +483,7 @@ export function openThumbnailDialog(deps) {
   const buttons = document.createElement("div");
   buttons.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;";
   buttons.append(writeButton, generateButton);
-  left.append(sectionTitle("2. Write the prompt, 3. Make the thumbnail"), makeField("Image workflow", engineSelect),
+  left.append(sectionTitle("2. Write the prompt, 3. Make the thumbnail"), makeField("Image workflow", engineSelect), engineHint, changeField,
     makeField("Title text", titleInput), makeField("Style notes", styleInput), makeField("Edit prompt", promptInput), buttons, status);
   const right = document.createElement("div");
   right.style.cssText = COLUMN_CSS;
@@ -479,7 +494,7 @@ export function openThumbnailDialog(deps) {
   footer.style.cssText = "display:flex;gap:14px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;border-top:1px solid #1e293b;padding-top:10px;";
   const footerLeft = document.createElement("div");
   footerLeft.style.cssText = "display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;";
-  footerLeft.append(enableBox.wrapper, secondsField);
+  footerLeft.append(enableBox.wrapper);
   footer.append(footerLeft, closeButton);
 
   box.append(title, note, pickerGrid, settingsGrid, footer);
@@ -487,6 +502,7 @@ export function openThumbnailDialog(deps) {
   document.body.append(backdrop);
   showFrame(frame);
   paintSource();
+  paintEngine();
   showImage(intro.image_path);
   paintHistory();
   return backdrop;
