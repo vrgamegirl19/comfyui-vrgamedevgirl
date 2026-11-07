@@ -2,7 +2,8 @@
 // No browser code in here, so tests/thumbnail_state.cjs can run it.
 
 // The image workflows the thumbnail can be made with, and how each one uses the chosen frame. "edit" workflows (NanoBanana,
-// Flux/Klein) take the frame as a reference picture and follow an instruction such as "recrop the attached image". "moss_edit"
+// Flux/Klein) take the frame as a reference picture and follow an instruction such as "recrop the attached image". "qwen_edit" (Qwen
+// Image Edit) also follows an instruction, but one about the change only: the title lettering, then what to keep. "moss_edit"
 // (MOSS-Image Edit) also follows an instruction, but one in the short form its edit LoRA was trained on ("Add ... Keep the ...
 // unchanged."). "restyle" workflows (Krea 2, Z-Image, Ernie, MOSS-Image) start from the frame as an image-to-image source and need a
 // prompt that describes the finished picture. The LLM writes a different kind of prompt for each kind. "overlay" is not an image
@@ -10,7 +11,7 @@
 // only way to be sure the person and the scene do not change.
 export const THUMBNAIL_ENGINE_KINDS = {
   overlay: "overlay",
-  qwen_image_edit: "edit",
+  qwen_image_edit: "qwen_edit",
   nano_banana: "edit",
   flux_klein: "edit",
   moss_image_edit: "moss_edit",
@@ -58,10 +59,15 @@ function thumbnailTitleText(title) {
 }
 
 // The sentence that makes an image workflow draw the title: an instruction for the edit workflows, a statement of the finished
-// picture for the restyle ones. Empty when there is no title.
-export function thumbnailTitleClause(title, kind) {
+// picture for the restyle ones. Empty when there is no title. Qwen Image Edit's carries the lettering style from the style notes (a
+// graffiti style must not be asked for as "bold sans-serif capitals"), and falls back to bold lettering with an outline and a glow.
+export function thumbnailTitleClause(title, kind, styleNotes = "") {
   const text = thumbnailTitleText(title);
   if (!text) return "";
+  if (kind === "qwen_edit") {
+    const look = String(styleNotes ?? "").replace(/\s+/g, " ").trim().replace(/[.\s]+$/, "");
+    return `Add the text "${text}" as ${look ? `lettering in this style: ${look}` : "bold, high-contrast lettering with a thick outline and a glow"}, large enough to read on a phone, in a calm part of the frame, fully inside the frame and never covering the face.`;
+  }
   return kind === "restyle"
     ? `The title text "${text}" is written exactly as spelled ${THUMBNAIL_TITLE_LOOK}. No other text.`
     : `Add the title text "${text}" exactly as written and spelled ${THUMBNAIL_TITLE_LOOK}. Add no other text.`;
@@ -75,14 +81,14 @@ function escapeForPattern(text) {
 // it out or a prompt can be edited, so this runs before every generation: a title that is already in the prompt in quotes is put
 // back to exactly the spelling and case that was typed, and one that is missing gets the mandatory sentence at the end. No title or
 // no prompt changes nothing.
-export function ensureThumbnailTitle(prompt, title, kind) {
+export function ensureThumbnailTitle(prompt, title, kind, styleNotes = "") {
   const body = String(prompt ?? "").trim();
   const text = thumbnailTitleText(title);
   if (!text || !body) return body;
   const words = text.split(" ").map(escapeForPattern).join("\\s+");
   const quoted = new RegExp(`["\\u201C\\u201D'\\u2018\\u2019]\\s*${words}\\s*["\\u201C\\u201D'\\u2018\\u2019]`, "i");
   if (quoted.test(body)) return body.replace(quoted, () => `"${text}"`);
-  return `${body} ${thumbnailTitleClause(text, kind)}`;
+  return `${body} ${thumbnailTitleClause(text, kind, styleNotes)}`;
 }
 
 // How much a restyle workflow may change the frame, 0 to 1 (0.65 by default).

@@ -1,6 +1,7 @@
 """Instructions for the LLM that writes the YouTube-style thumbnail prompt.
 
-Every kind starts with the same creative brief, ``THUMBNAIL_ROLE_INSTRUCTIONS`` (the project owner's own text, kept word for word).
+Every kind except ``qwen_edit`` starts with the same creative brief, ``THUMBNAIL_ROLE_INSTRUCTIONS`` (the project owner's own text, kept
+word for word). ``qwen_edit`` has its own instruction, because Qwen Image Edit needs a prompt about the change, not the picture.
 It is written to an image editor that enhances a picture, but this step has to return a prompt, so what follows it is a short
 "Your Answer" section: write the one prompt the image workflow will receive, in the form that workflow needs, with the title rule.
 
@@ -73,6 +74,36 @@ THUMBNAIL_EDIT_PROMPT_INSTRUCTIONS = _with_answer(_EDIT_FORM)
 THUMBNAIL_RESTYLE_PROMPT_INSTRUCTIONS = _with_answer(_RESTYLE_FORM)
 THUMBNAIL_MOSS_EDIT_PROMPT_INSTRUCTIONS = _with_answer(_MOSS_EDIT_FORM)
 
+# Qwen Image Edit does not use the brief above. It already sees the frame, so a prompt that describes the picture (the person, the
+# scene, the camera, the grain) only buries the one thing that has to be made: the title lettering. On a real frame, a prompt that
+# spent its words on the picture gave a plain headline, and one that spent them on the lettering gave a full graffiti piece. The shape
+# is the one Qwen's own prompt rewriter asks for: direct and specific, the change first (all text in double quotes, the style by its key
+# visual features), then one short "Keep ... unchanged." (https://github.com/QwenLM/Qwen-Image, prompt_utils.py).
+THUMBNAIL_QWEN_EDIT_PROMPT_INSTRUCTIONS = """You write ONE edit prompt for Qwen Image Edit, an instruction-following image editor, to turn the attached video frame into a YouTube thumbnail. The model already sees the frame, so the prompt describes only what to ADD or CHANGE, never the picture itself: do not describe the person, the scene, the camera or the lighting that are already there.
+
+The title lettering is the star of the thumbnail, so most of your words go there. Write the prompt as plain, direct sentences, 50 to 100 words in total, in this order:
+1. Start with: Add the text "<the title>" as ... Describe the lettering by its key visual features: the lettering style (follow the style notes below and make them vivid and specific), the fill colors or gradient, the outline and glow, effects such as drips, splatter, sparks or shine, and decorative lines, swirls or shapes around it and their colors. Say where it goes: pick an empty or calm area you can see in the frame (for example "in the dark sky at the upper right"), say that it sits fully inside the frame, and say how big it is (for example "about a third of the image width"). It never covers the person's face.
+2. Optionally, one short sentence of overall enhancement, for example "Add a thin warm rim light along the person's profile and richer contrast." Nothing else: no recropping or reframing, no blur or depth of field, no film grain, no new objects or people.
+3. End with one short sentence that starts with "Keep" and names what must stay as it is, taken from what you see: the person, their headwear and clothes, and the main background, "unchanged". For example "Keep the man, his beanie and hoodie, the mural and the street unchanged."
+
+{text_rule}
+
+An example of the level of detail wanted. Use your own title, colors and style from the notes below, not this one: Add the text "HEAT" as a graffiti piece in the dark sky at the upper right, fully inside the frame and about a third of the image width: wildstyle graffiti lettering with an orange-to-red gradient fill, a glowing cyan neon outline, dripping paint, spray-paint splatter, and flowing calligraphic swirl lines in cyan, magenta and yellow around the letters. Add a thin warm rim light along his profile. Keep the man, his beanie and hoodie, the mural and the street unchanged.
+
+Match the mood of the song and the notes below.
+Output only the prompt: no title, no quotes around it, no explanation, no markdown.
+"""
+
+THUMBNAIL_QWEN_TEXT_RULE = (
+    'The title text is mandatory: the prompt must contain the text "{title}" in double quotes, spelled exactly as given, as the '
+    "lettering of step 1. If the style notes do not describe the lettering, use bold, high-contrast lettering with a thick outline and a glow."
+)
+
+THUMBNAIL_QWEN_NO_TEXT_RULE = (
+    "There is no title text: skip step 1, do not add any text, letters or numbers, and write only the enhancement and the Keep sentence. "
+    "Ignore the example below: it is about a title."
+)
+
 THUMBNAIL_TEXT_RULE = (
     '- The title text is mandatory: the prompt must contain "{title}" in double quotes, exactly as written and spelled, in huge bold '
     "sans-serif capital letters with a thick dark outline and a slight glow, placed in the calmer third of the frame, large enough "
@@ -91,17 +122,20 @@ THUMBNAIL_NO_TEXT_RULE = "- Do not add any text, letters or numbers to the image
 
 
 def thumbnail_instruction(title: str = "", kind: str = "edit") -> str:
-    """Return the instruction for ``kind`` (``"edit"``, ``"moss_edit"`` or ``"restyle"``; anything else is ``"edit"``).
+    """Return the instruction for ``kind`` (``"edit"``, ``"moss_edit"``, ``"qwen_edit"`` or ``"restyle"``; anything else is ``"edit"``).
 
     The rule for the title text is filled in, or the no-text rule when there is no title.
     """
     title = " ".join(str(title or "").split()).replace('"', "'")
     kind = str(kind or "").strip().lower()
+    no_text_rule = THUMBNAIL_NO_TEXT_RULE
     if kind == "restyle":
         template, text_rule = THUMBNAIL_RESTYLE_PROMPT_INSTRUCTIONS, THUMBNAIL_TEXT_RULE
     elif kind == "moss_edit":
         template, text_rule = THUMBNAIL_MOSS_EDIT_PROMPT_INSTRUCTIONS, THUMBNAIL_MOSS_TEXT_RULE
+    elif kind == "qwen_edit":
+        template, text_rule, no_text_rule = THUMBNAIL_QWEN_EDIT_PROMPT_INSTRUCTIONS, THUMBNAIL_QWEN_TEXT_RULE, THUMBNAIL_QWEN_NO_TEXT_RULE
     else:
         template, text_rule = THUMBNAIL_EDIT_PROMPT_INSTRUCTIONS, THUMBNAIL_TEXT_RULE
-    rule = text_rule.format(title=title) if title else THUMBNAIL_NO_TEXT_RULE
+    rule = text_rule.format(title=title) if title else no_text_rule
     return template.replace("{text_rule}", rule)

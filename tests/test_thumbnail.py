@@ -303,6 +303,33 @@ class PromptTextTests(unittest.TestCase):
         self.assertEqual(
             {prompts.thumbnail_instruction("HEAT", kind)[: len(brief)] for kind in ("edit", "restyle", "moss_edit")}, {brief})
 
+    def test_qwen_image_edit_gets_a_prompt_about_the_change_not_the_picture(self):
+        qwen = prompts.thumbnail_instruction("HEAT", "qwen_edit")
+        self.assertNotIn("# Role and Objective", qwen, "Qwen does not use the brief: it already sees the frame")
+        self.assertNotIn(prompts.THUMBNAIL_ROLE_INSTRUCTIONS, qwen)
+        self.assertIn("The model already sees the frame, so the prompt describes only what to ADD or CHANGE, never the picture itself", qwen)
+        self.assertIn("most of your words go there", qwen, "the lettering is where the words go")
+        self.assertIn("Add the text \"<the title>\" as", qwen)
+        for feature in ("lettering style", "fill colors or gradient", "outline and glow", "drips, splatter, sparks or shine", "decorative lines, swirls"):
+            self.assertIn(feature, qwen)
+        for placement in ("fully inside the frame", "how big it is", "never covers the person's face"):
+            self.assertIn(placement, qwen)
+        self.assertIn('starts with "Keep"', qwen)
+        self.assertIn("no recropping or reframing, no blur or depth of field, no film grain", qwen)
+        self.assertIn('The title text is mandatory: the prompt must contain the text "HEAT" in double quotes, spelled exactly as given', qwen)
+        self.assertIn("wildstyle graffiti lettering with an orange-to-red gradient fill", qwen, "the example shows how much detail the lettering needs")
+        self.assertNotIn("{text_rule}", qwen)
+        self.assertNotEqual(qwen, prompts.thumbnail_instruction("HEAT", "edit"))
+        self.assertEqual(prompts.thumbnail_instruction("HEAT", " QWEN_EDIT "), qwen, "the kind is matched without caring about case or spaces")
+        self.assertIn('the text "NEVER \'LOOK\' BACK" in double quotes', prompts.thumbnail_instruction('NEVER "LOOK" BACK', "qwen_edit"))
+
+    def test_qwen_image_edit_without_a_title_adds_no_text_and_ignores_the_example(self):
+        qwen = prompts.thumbnail_instruction("  ", "qwen_edit")
+        self.assertIn("There is no title text: skip step 1, do not add any text, letters or numbers", qwen)
+        self.assertIn("Ignore the example below: it is about a title.", qwen)
+        self.assertNotIn("is mandatory", qwen)
+        self.assertNotIn("{text_rule}", qwen)
+
     def test_the_title_is_mandatory_and_quoted_in_every_kind(self):
         for kind in ("edit", "restyle", "moss_edit"):
             with self.subTest(kind=kind):

@@ -29,7 +29,7 @@ const EDIT_HINT = `This workflow edits the frame by instruction, so the prompt t
 const RESTYLE_HINT = `This workflow restyles the frame from a description of the finished picture. The prompt describes the thumbnail, and Change sets how far it moves from the frame.${REDRAW_WARNING}`;
 const MOSS_EDIT_HINT = "MOSS-Image Edit changes the frame by a short instruction (the Edit LoRA under Models > MOSS-Image, and ComfyUI 0.43 or newer). It keeps the picture and the composition and does what the prompt adds, including the title text, but it still redraws faces, so the skin tone and the face can drift: use Overlay to keep the person exactly.";
 const MOSS_RESTYLE_HINT = `${RESTYLE_HINT} A restyle keeps the frame's composition and does not draw the title text reliably: use MOSS-Image Edit when the thumbnail needs text.`;
-const QWEN_EDIT_HINT = "Qwen Image Edit edits the frame by instruction and tends to keep the person and the scene as they are. It uses the newest Qwen Image Edit model you have installed (2511 before 2509) and its Lightning LoRA, so it needs no settings. It still redraws pixels, so fine detail can change a little: use Overlay when nothing may change.";
+const QWEN_EDIT_HINT = "Qwen Image Edit edits the frame by instruction and tends to keep the person and the scene as they are. Its prompt is about the change only, mostly the title lettering, so put the lettering you want in Style notes (for example: wildstyle graffiti, orange to red gradient, neon cyan outline, drips, splatter, swirl lines in cyan, magenta and yellow). It uses the newest Qwen Image Edit model you have installed (2511 before 2509) and its Lightning LoRA. It still redraws pixels, so fine detail can change a little: use Overlay when nothing may change.";
 const OVERLAY_HINT = "Overlay keeps every pixel of your frame and puts the layers on top, like a thumbnail made in an image editor: a color grade, a glow on the brights, a vignette and the title with an outline and a glow, placed in the calmest part of the frame. No AI redraws anything, so the person and the scene cannot change. It needs no prompt.";
 const OVERLAY_COLOR_OPTIONS = [
   { value: "yellow", label: "Yellow" }, { value: "white", label: "White" }, { value: "orange", label: "Orange" },
@@ -473,7 +473,7 @@ export function openThumbnailDialog(deps) {
         scene_lyrics: String(sourceSegment()?.lyric_text || sourceSegment()?.lyrics || ""),
       }, THUMBNAIL_PROMPT_TIMEOUT_MS);
       // The title text is mandatory: the LLM may have left it out or spelled it differently, so it is made certain here.
-      promptInput.value = ensureThumbnailTitle(String(reply.prompt || ""), titleInput.value, kindOfEngine());
+      promptInput.value = ensureThumbnailTitle(String(reply.prompt || ""), titleInput.value, kindOfEngine(), styleInput.value);
       commit(readInputs());
       setBusy(false, `Prompt ready (${promptInput.value.length} characters). Edit it if you like, then Generate.`);
     } catch (error) {
@@ -520,7 +520,7 @@ export function openThumbnailDialog(deps) {
       return;
     }
     // The title text is mandatory: a prompt that lost it (or never had it) gets it back before anything is sent, and the box shows it.
-    const prompt = ensureThumbnailTitle(typed, titleInput.value, kindOfEngine());
+    const prompt = ensureThumbnailTitle(typed, titleInput.value, kindOfEngine(), styleInput.value);
     if (prompt !== typed) {
       promptInput.value = prompt;
       toast("The title text was missing from the prompt, so it was added.");

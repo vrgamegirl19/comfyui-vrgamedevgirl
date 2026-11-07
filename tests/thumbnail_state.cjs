@@ -40,7 +40,8 @@ test('every image workflow is known, with the kind of prompt it needs', () => {
   assert.equal(c.thumbnailEngineKind('overlay'), 'overlay', 'it is not an image workflow: no prompt, no LLM, no ComfyUI');
   assert.equal(c.normalizeThumbnailIntro({ engine: 'overlay' }).engine, 'overlay');
   assert.equal(c.normalizeThumbnailIntro({ engine: 'qwen_image_edit' }).engine, 'qwen_image_edit');
-  for (const edit of ['nano_banana', 'flux_klein', 'qwen_image_edit']) assert.equal(c.thumbnailEngineKind(edit), 'edit');
+  for (const edit of ['nano_banana', 'flux_klein']) assert.equal(c.thumbnailEngineKind(edit), 'edit');
+  assert.equal(c.thumbnailEngineKind('qwen_image_edit'), 'qwen_edit', 'Qwen Image Edit gets a prompt about the change only');
   assert.equal(c.thumbnailEngineKind('moss_image_edit'), 'moss_edit', 'MOSS-Image Edit follows its own short instruction');
   for (const restyle of ['krea2_2pass', 'zimage', 'ernie_image', 'moss_image']) assert.equal(c.thumbnailEngineKind(restyle), 'restyle');
   assert.equal(c.thumbnailEngineKind('unknown'), 'edit');
@@ -75,6 +76,22 @@ test('the title sentence asks for the exact text: an instruction for edits, a st
   for (const empty of ['', '   ', null, undefined]) assert.equal(c.thumbnailTitleClause(empty, 'edit'), '');
   assert.match(c.thumbnailTitleClause('  Never   look  back ', 'edit'), /"Never look back"/, 'spaces are tidied');
   assert.match(c.thumbnailTitleClause('He said "go"', 'edit'), /"He said 'go'"/, 'a double quote inside the title cannot end the quoted text');
+});
+
+test('the title sentence for Qwen Image Edit carries the lettering style from the style notes, and does not ask for sans-serif capitals', () => {
+  const c = load();
+  const graffiti = c.thumbnailTitleClause('HEAT', 'qwen_edit', '  very artistic and graffiti style text and lines. ');
+  assert.equal(graffiti, 'Add the text "HEAT" as lettering in this style: very artistic and graffiti style text and lines, large enough to read on a phone, in a calm part of the frame, fully inside the frame and never covering the face.');
+  assert.doesNotMatch(graffiti, /sans-serif|capital letters/);
+  assert.match(c.thumbnailTitleClause('HEAT', 'qwen_edit'), /^Add the text "HEAT" as bold, high-contrast lettering with a thick outline and a glow, large enough/);
+  assert.match(c.thumbnailTitleClause('HEAT', 'qwen_edit', '   '), /as bold, high-contrast lettering/, 'blank notes are no notes');
+  assert.equal(c.thumbnailTitleClause('', 'qwen_edit', 'graffiti'), '');
+  // The other kinds ignore the notes: their sentence is the same as before.
+  assert.equal(c.thumbnailTitleClause('HEAT', 'edit', 'graffiti'), c.thumbnailTitleClause('HEAT', 'edit'));
+  // A prompt that has the title in quotes is left alone (only its spelling is made exact), with or without notes.
+  assert.equal(c.ensureThumbnailTitle('Add the text "heat" as a graffiti piece. Keep the man unchanged.', 'HEAT', 'qwen_edit', 'graffiti'),
+    'Add the text "HEAT" as a graffiti piece. Keep the man unchanged.');
+  assert.equal(c.ensureThumbnailTitle('Keep the man unchanged.', 'HEAT', 'qwen_edit', 'graffiti'), `Keep the man unchanged. ${c.thumbnailTitleClause('HEAT', 'qwen_edit', 'graffiti')}`);
 });
 
 test('a prompt always ends up with the title in it, exactly as typed', () => {
