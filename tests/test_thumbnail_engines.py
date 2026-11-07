@@ -23,7 +23,7 @@ INSTALLED = {
     "diffusion_models": ["flux-2-klein-4b-fp8.safetensors", "moss_image_sft_bf16.safetensors", "Other\\Model.safetensors"],
     "text_encoders": ["qwen_3_4b.safetensors", "qwen3.5_9b_int8_convrot.safetensors"],
     "vae": ["flux2-vae.safetensors"],
-    "loras": ["moss_image_sft_8_steps_dmd_lora.safetensors"],
+    "loras": ["moss_image_sft_8_steps_dmd_lora.safetensors", "moss\\moss_image_edit_lora.safetensors"],
 }
 
 
@@ -134,6 +134,113 @@ class MossImageToImageTests(unittest.TestCase):
         graph = self.build(vae_name="flux\\flux2-vae.safetensors", lora_name="moss_image_sft_8_steps_dmd_lora.safetensors")
         self.assertEqual(graph["3"]["inputs"]["vae_name"], "flux2-vae.safetensors")
         self.assertEqual(graph["4"]["inputs"]["lora_name"], "moss_image_sft_8_steps_dmd_lora.safetensors")
+
+
+class MossImageEditTests(unittest.TestCase):
+    """The instruction edit: the edit LoRA and ComfyUI's Text Encode MOSS-Image Edit, as in its own image_moss_image_edit template."""
+
+    def setUp(self):
+        patcher = patch.object(models, "_folder_choices", fake_folder_choices)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        copies = patch.object(workflows, "_prepare_load_image_name", side_effect=lambda path, *rest: f"copy_{os.path.basename(path)}")
+        copies.start()
+        self.addCleanup(copies.stop)
+        self.folder = tempfile.TemporaryDirectory()
+        self.addCleanup(self.folder.cleanup)
+        self.pictures = []
+        for index in range(5):
+            path = os.path.join(self.folder.name, f"frame{index}.png")
+            Image.new("RGB", (64, 36), (10, 10, 10)).save(path)
+            self.pictures.append(path)
+
+    def build(self, count=1, **changes):
+        payload = {
+            "use_edit": True, "prompt": 'Add the title text "HEAT". Keep the man unchanged.', "seed": 3,
+            "image_ingredients": [{"path": path} for path in self.pictures[:count]], **changes,
+        }
+        return workflows._build_moss_image_api_prompt(payload)
+
+    def test_the_graph_is_the_one_comfyui_ships_for_an_edit(self):
+        built = self.build()
+        graph = built["prompt"]
+        self.assertEqual(built["used_seed"], 3)
+        self.assertEqual({key: node["class_type"] for key, node in graph.items()}, {
+            "1": "UNETLoader", "2": "CLIPLoader", "3": "VAELoader", "4": "LoraLoaderModelOnly", "5": "SkipLayerGuidanceDiTSimple",
+            "20": "LoadImage", "30": "ImageScaleToTotalPixels", "40": "GetImageSize", "9": "EmptyFlux2LatentImage",
+            "7": "TextEncodeMOSSImageEdit", "8": "TextEncodeMOSSImageEdit", "10": "KSampler", "11": "VAEDecode", "12": "PreviewImage",
+        })
+        self.assertEqual(graph["2"]["inputs"]["type"], "moss_image")
+        # The edit LoRA runs on the model, then skip layer guidance, then the sampler.
+        self.assertEqual(graph["4"]["inputs"], {"model": ["1", 0], "lora_name": "moss\\moss_image_edit_lora.safetensors", "strength_model": 1.0})
+        self.assertEqual(graph["5"]["inputs"], {"model": ["4", 0], "double_layers": "", "single_layers": "22", "start_percent": 0.0, "end_percent": 1.0})
+        sampler = graph["10"]["inputs"]
+        self.assertEqual(sampler["model"], ["5", 0])
+        self.assertEqual(
+            (sampler["steps"], sampler["cfg"], sampler["sampler_name"], sampler["scheduler"], sampler["denoise"]), (30, 4.0, "euler", "normal", 1.0))
+        self.assertEqual((sampler["positive"], sampler["negative"], sampler["latent_image"]), (["7", 0], ["8", 0], ["9", 0]))
+
+    def test_the_picture_is_scaled_once_and_the_result_takes_its_size(self):
+        graph = self.build()["prompt"]
+        self.assertEqual(graph["20"]["inputs"], {"image": "copy_frame0.png"})
+        self.assertEqual(
+            graph["30"]["inputs"], {"image": ["20", 0], "upscale_method": "lanczos", "megapixels": 1.0, "resolution_steps": 16})
+        self.assertEqual(graph["40"]["inputs"], {"image": ["30", 0]})
+        self.assertEqual(graph["9"]["inputs"], {"width": ["40", 0], "height": ["40", 1], "batch_size": 1})
+        self.assertEqual(self.build(megapixels=9)["prompt"]["30"]["inputs"]["megapixels"], 4.0, "kept in range")
+
+    def test_both_encoders_see_the_picture_and_the_vae_and_the_negative_is_the_recommended_one(self):
+        graph = self.build()["prompt"]
+        for key in ("7", "8"):
+            inputs = graph[key]["inputs"]
+            self.assertEqual(inputs["clip"], ["2", 0])
+            self.assertEqual(inputs["edit_format"], "Moss-Image-Edit")
+            self.assertEqual(inputs["images.image_0"], ["30", 0])
+            self.assertEqual(inputs["vae"], ["3", 0], "without the VAE the picture only reaches the text encoder")
+            self.assertEqual(inputs["image_strength"], 1.0)
+        self.assertEqual(graph["7"]["inputs"]["prompt"], 'Add the title text "HEAT". Keep the man unchanged.')
+        self.assertEqual(graph["8"]["inputs"]["prompt"], "nsfw, worst quality, bad anatomy, watermark, jpeg artifact")
+        self.assertEqual(self.build(negative_prompt="blurry")["prompt"]["8"]["inputs"]["prompt"], "blurry")
+
+    def test_up_to_four_pictures_each_scaled_and_named_image_n(self):
+        graph = self.build(count=5)["prompt"]
+        for index in range(4):
+            self.assertEqual(graph[str(20 + index)]["inputs"], {"image": f"copy_frame{index}.png"})
+            self.assertEqual(graph[str(30 + index)]["inputs"]["image"], [str(20 + index), 0])
+            self.assertEqual(graph["7"]["inputs"][f"images.image_{index}"], [str(30 + index), 0])
+        self.assertNotIn("24", graph)
+        self.assertNotIn("images.image_4", graph["7"]["inputs"])
+        self.assertEqual(graph["40"]["inputs"]["image"], ["30", 0], "the size is the first picture's")
+
+    def test_the_turbo_settings_of_text_to_image_are_not_used(self):
+        graph = self.build(lora_name="moss_image_sft_8_steps_dmd_lora.safetensors", denoise=0.3, use_image_to_image=True)["prompt"]
+        self.assertEqual([node["inputs"].get("lora_name") for node in graph.values() if node["class_type"] == "LoraLoaderModelOnly"],
+                         ["moss\\moss_image_edit_lora.safetensors"])
+        self.assertEqual(graph["10"]["inputs"]["denoise"], 1.0)
+        self.assertEqual(graph["10"]["inputs"]["steps"], 30)
+        self.assertNotIn("ImageScale", {node["class_type"] for node in graph.values()})
+        self.assertNotIn("VAEEncode", {node["class_type"] for node in graph.values()})
+        self.assertEqual(self.build(steps=12, cfg=3)["prompt"]["10"]["inputs"]["steps"], 12)
+
+    def test_skip_layer_guidance_and_the_format_can_be_changed(self):
+        graph = self.build(skip_layer_guidance=False, edit_format="ai-toolkit")["prompt"]
+        self.assertNotIn("5", graph)
+        self.assertEqual(graph["10"]["inputs"]["model"], ["4", 0])
+        self.assertEqual(graph["7"]["inputs"]["edit_format"], "ai-toolkit")
+        self.assertEqual(self.build(edit_format="nonsense")["prompt"]["7"]["inputs"]["edit_format"], "Moss-Image-Edit")
+
+    def test_a_missing_picture_prompt_or_lora_is_refused_with_what_to_do(self):
+        with self.assertRaisesRegex(ValueError, "at least one reference image"):
+            self.build(count=0)
+        with self.assertRaisesRegex(ValueError, "Prompt text is empty"):
+            self.build(prompt="  ")
+        with self.assertRaises(ValueError) as caught:
+            self.build(edit_lora_name="not_there.safetensors")
+        self.assertIn("MOSS-Image Edit LoRA", str(caught.exception))
+
+    def test_a_random_seed_is_used_when_asked_for(self):
+        seeds = {self.build(seed_mode="random")["used_seed"] for _ in range(3)}
+        self.assertGreater(len(seeds), 1)
 
 
 if __name__ == "__main__":

@@ -113,6 +113,26 @@ test('MOSS-Image restyles the frame with image to image at a denoise that follow
   assert.equal(request(c, 'moss_image', {}).payload.lora_name, '[none]');
 });
 
+test('MOSS-Image Edit gets the frame as a reference for the edit LoRA, with no image to image and none of the Turbo sampling settings', () => {
+  const c = load();
+  const settings = {
+    unet_name: 'm.safetensors', clip_name: 'q.safetensors', vae_name: 'f.safetensors', edit_lora_name: 'e.safetensors',
+    lora_name: 'turbo.safetensors', steps: 8, cfg: 1, width: 1920, height: 1088,
+  };
+  const built = request(c, 'moss_image_edit', settings);
+  assert.equal(built.url, '/vrgdg/workflow_runner/build_moss_image_prompt');
+  assert.deepEqual(built.payload, {
+    prompt: 'A neon portrait.', image_ingredients: [{ path: 'C:/p/thumbnail/source_0001.png' }], use_edit: true,
+    unet_name: 'm.safetensors', clip_name: 'q.safetensors', vae_name: 'f.safetensors', edit_lora_name: 'e.safetensors', seed: 42, seed_mode: 'fixed',
+  });
+  for (const turbo of ['steps', 'cfg', 'lora_name', 'width', 'height', 'denoise', 'use_image_to_image']) {
+    assert.equal(turbo in built.payload, false, `${turbo} is for text to image: the builder uses the edit LoRA's own sampler`);
+  }
+  assert.equal(request(c, 'moss_image_edit', {}).payload.edit_lora_name, '', 'the builder falls back to moss_image_edit_lora.safetensors');
+  assert.equal(request(c, 'moss_image_edit', null).payload.use_edit, true, 'no settings at all still builds');
+  assert.equal(built.label, 'MOSS-Image Edit (local, edit)');
+});
+
 test('a missing prompt, a missing frame or an unknown workflow is refused with a message to act on', () => {
   const c = load();
   assert.throws(() => c.thumbnailEngineRequest({ engine: 'flux_klein', prompt: '  ', sourcePath: 'a.png', settings: {} }), /Write the prompt first/);
@@ -123,7 +143,7 @@ test('a missing prompt, a missing frame or an unknown workflow is refused with a
 
 test('every workflow has a label and a route', () => {
   const c = load();
-  const engines = ['nano_banana', 'flux_klein', 'krea2_2pass', 'zimage', 'ernie_image', 'moss_image'];
+  const engines = ['nano_banana', 'flux_klein', 'moss_image_edit', 'krea2_2pass', 'zimage', 'ernie_image', 'moss_image'];
   const labels = vm.runInContext('THUMBNAIL_ENGINE_LABELS', c);
   assert.deepEqual(Object.keys(labels), engines);
   for (const engine of engines) {

@@ -174,11 +174,13 @@ test('the LLM prompt and the thumbnail start from the chosen frame, not from a s
   assert.equal(prompt.title, 'RUN');
   assert.equal(prompt.scene_lyrics, 'second line', 'the lyrics are the chosen scene\'s');
   assert.equal(prompt.text_runner, 'builtin');
-  assert.equal(h.state.thumbnailIntro.prompt, 'Recrop the attached image.');
+  // The reply did not have the title, so the mandatory sentence was added before the prompt reached the box.
+  const withTitle = `Recrop the attached image. ${h.context.thumbnailTitleClause('RUN', 'edit')}`;
+  assert.equal(h.state.thumbnailIntro.prompt, withTitle);
   await h.button('Generate thumbnail').onclick();
   const built = h.calls.find(([url]) => url.endsWith('/build_nb_image_prompt'))[1];
   assert.deepEqual(JSON.parse(JSON.stringify(built.image_ingredients)), [{ path: 'C:/p/thumbnail/source_0001.png' }]);
-  assert.equal(built.prompt, 'Recrop the attached image.');
+  assert.equal(built.prompt, withTitle);
   const intro = h.state.thumbnailIntro;
   assert.equal(intro.image_path, 'C:/p/thumbnail/thumbnail_0001.png');
   assert.equal(intro.history.length, 1);
@@ -241,7 +243,7 @@ test('every image workflow can be chosen, and MOSS-Image restyles the frame with
     moss: { unet_name: 'moss.safetensors', clip_name: 'q.safetensors', vae_name: 'f.safetensors', lora_name: 'turbo.safetensors', steps: 8, cfg: 1, width: 1280, height: 720 },
   });
   const { select, change } = await pickFrame(h);
-  assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_ENGINES', h.context)), ['nano_banana', 'flux_klein', 'krea2_2pass', 'zimage', 'ernie_image', 'moss_image']);
+  assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_ENGINES', h.context)), ['nano_banana', 'flux_klein', 'moss_image_edit', 'krea2_2pass', 'zimage', 'ernie_image', 'moss_image']);
   select.value = 'moss_image';
   select.listeners.change[0]();
   change.value = '40';
@@ -313,4 +315,83 @@ test('the thumbnail is the first frame, so there is no length to set and the sti
   assert.deepEqual(Object.keys(sent).sort(), ['image_path', 'input_path', 'project_folder', 'replace_source']);
   assert.equal(stitched.thumbnail_intro.intro_frames, 1);
   void box;
+});
+
+test('the title is mandatory: it is in the prompt the LLM wrote, it comes back when the prompt loses it, and nothing is added without a title', async () => {
+  const replies = { ...frameReplies, '/vrgdg/workflow_runner/build_nb_image_prompt': { prompt: {} } };
+  const h = harness({ segments: scenes(), postJson: async (url) => replies[url] });
+  await pickFrame(h);
+  const titleInput = h.all.find((node) => node.tag === 'input' && node.maxLength === 120);
+  titleInput.value = 'HEAT';
+  const clause = h.context.thumbnailTitleClause('HEAT', 'edit');
+  // The reply ('A close-up of a singer.') has no title, so the box already has the sentence when it is shown.
+  await h.button('Write prompt with LLM').onclick();
+  assert.equal(h.state.thumbnailIntro.prompt, `A close-up of a singer. ${clause}`);
+  const promptBox = h.all.find((node) => node.tag === 'textarea' && String(node.value).startsWith('A close-up of a singer.'));
+  assert.ok(promptBox, 'the prompt box shows it');
+  assert.equal(h.toasts.length, 0, 'nothing is announced for a prompt that was written with it');
+
+  // The prompt is edited and the title is lost: Generate puts it back, shows it and says so.
+  promptBox.value = 'Make it pop.';
+  await h.button('Generate thumbnail').onclick();
+  const built = h.calls.find(([url]) => url.endsWith('/build_nb_image_prompt'))[1];
+  assert.equal(built.prompt, `Make it pop. ${clause}`, 'the request carries the title');
+  assert.equal(promptBox.value, `Make it pop. ${clause}`, 'the box shows what was sent');
+  assert.equal(h.state.thumbnailIntro.history[0].prompt, `Make it pop. ${clause}`);
+  assert.deepEqual(h.toasts.at(-1), ['The title text was missing from the prompt, so it was added.', false]);
+
+  // The spelling typed in the title field wins over how the LLM wrote it.
+  h.calls.length = 0;
+  promptBox.value = 'The word \u201CHeat\u201D in huge letters.';
+  await h.button('Generate thumbnail').onclick();
+  assert.equal(h.calls.find(([url]) => url.endsWith('/build_nb_image_prompt'))[1].prompt, 'The word "HEAT" in huge letters.');
+
+  // No title: the prompt goes as it is.
+  titleInput.value = '';
+  h.calls.length = 0;
+  const toasts = h.toasts.length;
+  promptBox.value = 'Make it pop.';
+  await h.button('Generate thumbnail').onclick();
+  assert.equal(h.calls.find(([url]) => url.endsWith('/build_nb_image_prompt'))[1].prompt, 'Make it pop.');
+  assert.equal(h.toasts.length, toasts);
+});
+
+test('MOSS-Image Edit asks the LLM for the short add-and-keep instruction and sends the frame as a reference with the saved Edit LoRA', async () => {
+  const replies = { ...frameReplies, '/vrgdg/workflow_runner/build_moss_image_prompt': { prompt: {} } };
+  const h = harness({
+    segments: scenes(), postJson: async (url) => replies[url],
+    moss: { unet_name: 'moss.safetensors', clip_name: 'q.safetensors', vae_name: 'f.safetensors', edit_lora_name: 'moss_image_edit_lora.safetensors', lora_name: 'turbo.safetensors', steps: 8, cfg: 1, width: 1920, height: 1088 },
+  });
+  const { select } = await pickFrame(h);
+  const field = h.all.find((node) => node.tag === 'label' && node.style.display === 'none');
+  const hint = h.all.find((node) => /edits the frame by instruction/.test(node.textContent));
+  const titleInput = h.all.find((node) => node.tag === 'input' && node.maxLength === 120);
+  titleInput.value = 'HEAT';
+  select.value = 'moss_image_edit';
+  select.listeners.change[0]();
+  assert.equal(field.style.display, 'none', 'it follows an instruction, so there is no Change to set');
+  assert.match(hint.textContent, /MOSS-Image Edit changes the frame by a short instruction/);
+  assert.match(hint.textContent, /including the title text/);
+  await h.button('Write prompt with LLM').onclick();
+  assert.equal(h.calls.find(([url]) => url.endsWith('/thumbnail/prompt'))[1].engine_kind, 'moss_edit', 'the LLM writes the short Add ... Keep ... unchanged instruction');
+  await h.button('Generate thumbnail').onclick();
+  const [, built] = h.calls.find(([url]) => url.endsWith('/build_moss_image_prompt'));
+  assert.equal(built.use_edit, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(built.image_ingredients)), [{ path: 'C:/p/thumbnail/source_0001.png' }]);
+  assert.equal(built.edit_lora_name, 'moss_image_edit_lora.safetensors');
+  assert.equal(built.unet_name, 'moss.safetensors', 'it runs with the models the user set for MOSS-Image');
+  for (const turbo of ['steps', 'cfg', 'lora_name', 'denoise', 'use_image_to_image']) assert.equal(turbo in built, false, turbo);
+  assert.match(built.prompt, /Add the title text "HEAT"/, 'the title is in what was sent');
+  assert.equal(h.state.thumbnailIntro.engine, 'moss_image_edit');
+  assert.equal(h.state.thumbnailIntro.history[0].engine, 'moss_image_edit');
+});
+
+test('the MOSS-Image restyle says it cannot be relied on for the title and points to MOSS-Image Edit', async () => {
+  const h = harness({ segments: scenes(), postJson: async (url) => frameReplies[url] });
+  const { select } = await pickFrame(h);
+  const hint = h.all.find((node) => /edits the frame by instruction/.test(node.textContent));
+  select.value = 'moss_image';
+  select.listeners.change[0]();
+  assert.match(hint.textContent, /restyles the frame from a description/);
+  assert.match(hint.textContent, /does not draw the title text reliably: use MOSS-Image Edit/);
 });

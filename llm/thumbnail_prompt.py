@@ -36,7 +36,8 @@ def _generate_thumbnail_prompt(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Look at the chosen frame and write the prompt that makes it a thumbnail.
 
     ``engine_kind`` says which kind of image workflow will use it: ``"edit"`` (the default) for an instruction an editor follows,
-    ``"restyle"`` for a description of the finished picture that an image-to-image workflow draws.
+    ``"moss_edit"`` for the short "Add ... Keep the ... unchanged." instruction MOSS-Image Edit was trained on, ``"restyle"`` for a
+    description of the finished picture that an image-to-image workflow draws.
     """
     path = str(payload.get("image_path") or "").strip()
     data = str(payload.get("image_data") or "").strip()

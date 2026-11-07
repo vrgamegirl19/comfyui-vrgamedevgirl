@@ -12,8 +12,9 @@ import { fluxKleinLoraPayload } from "./image_generation.mjs";
 import { loadMossReferenceSettings } from "./moss_settings.mjs";
 import { THUMBNAIL_ENGINE_LABELS, thumbnailEngineRequest } from "./thumbnail_engines.mjs";
 import {
-  clampThumbnailChange, formatThumbnailTime, normalizeThumbnailIntro, thumbnailEngineKind, thumbnailFrameRange, thumbnailHistoryWith,
-  thumbnailIntroForStitch, thumbnailItemAt, thumbnailLocalSeconds, thumbnailTimelineItems, THUMBNAIL_ENGINES, THUMBNAIL_FPS,
+  clampThumbnailChange, ensureThumbnailTitle, formatThumbnailTime, normalizeThumbnailIntro, thumbnailEngineKind, thumbnailFrameRange,
+  thumbnailHistoryWith, thumbnailIntroForStitch, thumbnailItemAt, thumbnailLocalSeconds, thumbnailTimelineItems, THUMBNAIL_ENGINES,
+  THUMBNAIL_FPS,
 } from "./thumbnail_state.mjs";
 
 const THUMBNAIL_PREPEND_TIMEOUT_MS = 30 * 60 * 1000;
@@ -24,6 +25,10 @@ const FRAME_SEEK_OFFSET = 0.25;
 const ENGINE_OPTIONS = THUMBNAIL_ENGINES.map((value) => ({ value, label: THUMBNAIL_ENGINE_LABELS[value] }));
 const EDIT_HINT = "This workflow edits the frame by instruction, so the prompt tells it what to change.";
 const RESTYLE_HINT = "This workflow restyles the frame from a description of the finished picture. The prompt describes the thumbnail, and Change sets how far it moves from the frame.";
+const MOSS_EDIT_HINT = "MOSS-Image Edit changes the frame by a short instruction (the Edit LoRA under Models > MOSS-Image, and ComfyUI 0.43 or newer). It keeps the picture and the composition and does what the prompt adds, including the title text.";
+const MOSS_RESTYLE_HINT = `${RESTYLE_HINT} A restyle keeps the frame's composition and does not draw the title text reliably: use MOSS-Image Edit when the thumbnail needs text.`;
+// The settings of the two MOSS-Image workflows are the ones saved by the MOSS-Image tab of Models > Select models.
+const MOSS_ENGINES = ["moss_image", "moss_image_edit"];
 
 // Asks whether this build can make thumbnails, and whether it can take one exact frame of a video. A build without the routes
 // answers 404, which is an answer here and not an error for the project's error log, so the button stays hidden and nothing
@@ -111,7 +116,7 @@ function sectionTitle(text) {
 export function openThumbnailDialog(deps) {
   const { state, projectInput, runnerPayload, sceneImagePath, sceneVideoPath, sceneLabel, engineSettings, save, createProgressWindow } = deps;
   // The settings an image workflow runs with: the Builder's own for it (MOSS-Image's live in the Reference Builder's saved choices).
-  const settingsFor = (engine) => (engine === "moss_image" ? loadMossReferenceSettings() : engineSettings?.(engine)) || {};
+  const settingsFor = (engine) => (MOSS_ENGINES.includes(engine) ? loadMossReferenceSettings() : engineSettings?.(engine)) || {};
   const projectFolder = () => String(projectInput?.value || state.projectFolder || "").trim();
   if (!projectFolder()) {
     toast("Create or load a project before making a thumbnail.", true);
@@ -266,7 +271,9 @@ export function openThumbnailDialog(deps) {
   const paintEngine = () => {
     const restyle = kindOfEngine() === "restyle";
     changeField.style.display = restyle ? "flex" : "none";
-    engineHint.textContent = restyle ? RESTYLE_HINT : EDIT_HINT;
+    if (engineSelect.value === "moss_image_edit") engineHint.textContent = MOSS_EDIT_HINT;
+    else if (engineSelect.value === "moss_image") engineHint.textContent = MOSS_RESTYLE_HINT;
+    else engineHint.textContent = restyle ? RESTYLE_HINT : EDIT_HINT;
     paintChange();
   };
   changeInput.addEventListener("input", paintChange);
@@ -414,9 +421,10 @@ export function openThumbnailDialog(deps) {
         project_name: projectFolder().split(/[\\/]/).filter(Boolean).pop() || "",
         scene_lyrics: String(sourceSegment()?.lyric_text || sourceSegment()?.lyrics || ""),
       }, THUMBNAIL_PROMPT_TIMEOUT_MS);
-      promptInput.value = String(reply.prompt || "");
+      // The title text is mandatory: the LLM may have left it out or spelled it differently, so it is made certain here.
+      promptInput.value = ensureThumbnailTitle(String(reply.prompt || ""), titleInput.value, kindOfEngine());
       commit(readInputs());
-      setBusy(false, `Prompt ready (${reply.characters || promptInput.value.length} characters). Edit it if you like, then Generate.`);
+      setBusy(false, `Prompt ready (${promptInput.value.length} characters). Edit it if you like, then Generate.`);
     } catch (error) {
       fail(error);
     }
@@ -424,10 +432,16 @@ export function openThumbnailDialog(deps) {
 
   generateButton.onclick = async () => {
     if (busy || !requireSource()) return;
-    const prompt = promptInput.value.trim();
-    if (!prompt) {
+    const typed = promptInput.value.trim();
+    if (!typed) {
       toast("Write the edit prompt first: click Write prompt with LLM or type one.", true);
       return;
+    }
+    // The title text is mandatory: a prompt that lost it (or never had it) gets it back before anything is sent, and the box shows it.
+    const prompt = ensureThumbnailTitle(typed, titleInput.value, kindOfEngine());
+    if (prompt !== typed) {
+      promptInput.value = prompt;
+      toast("The title text was missing from the prompt, so it was added.");
     }
     commit(readInputs());
     setBusy(true, "Starting...");

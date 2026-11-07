@@ -36,13 +36,50 @@ test('the change setting is kept between 0 and 1, and a missing one is 0.65', ()
 
 test('every image workflow is known, with the kind of prompt it needs', () => {
   const c = load();
-  assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_ENGINES', c)), ['nano_banana', 'flux_klein', 'krea2_2pass', 'zimage', 'ernie_image', 'moss_image']);
+  assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_ENGINES', c)), ['nano_banana', 'flux_klein', 'moss_image_edit', 'krea2_2pass', 'zimage', 'ernie_image', 'moss_image']);
   for (const edit of ['nano_banana', 'flux_klein']) assert.equal(c.thumbnailEngineKind(edit), 'edit');
+  assert.equal(c.thumbnailEngineKind('moss_image_edit'), 'moss_edit', 'MOSS-Image Edit follows its own short instruction');
   for (const restyle of ['krea2_2pass', 'zimage', 'ernie_image', 'moss_image']) assert.equal(c.thumbnailEngineKind(restyle), 'restyle');
   assert.equal(c.thumbnailEngineKind('unknown'), 'edit');
   assert.equal(c.normalizeThumbnailIntro({ engine: 'moss_image' }).engine, 'moss_image');
+  assert.equal(c.normalizeThumbnailIntro({ engine: 'moss_image_edit' }).engine, 'moss_image_edit');
+  assert.equal(c.normalizeThumbnailIntro({ history: [{ path: 'a.png', engine: 'moss_image_edit' }] }).history[0].engine, 'moss_image_edit');
   assert.equal(c.normalizeThumbnailIntro({ engine: 'bogus' }).engine, 'nano_banana');
   assert.equal(c.normalizeThumbnailIntro({ history: [{ path: 'a.png', engine: 'zimage' }] }).history[0].engine, 'zimage');
+});
+
+test('the title sentence asks for the exact text: an instruction for edits, a statement of the picture for restyles, nothing without a title', () => {
+  const c = load();
+  assert.match(c.thumbnailTitleClause('HEAT', 'edit'), /^Add the title text "HEAT" exactly as written and spelled in huge bold sans-serif capital letters .* Add no other text\.$/);
+  assert.equal(c.thumbnailTitleClause('HEAT', 'moss_edit'), c.thumbnailTitleClause('HEAT', 'edit'));
+  assert.match(c.thumbnailTitleClause('HEAT', 'restyle'), /^The title text "HEAT" is written exactly as spelled in huge bold .* No other text\.$/);
+  for (const empty of ['', '   ', null, undefined]) assert.equal(c.thumbnailTitleClause(empty, 'edit'), '');
+  assert.match(c.thumbnailTitleClause('  Never   look  back ', 'edit'), /"Never look back"/, 'spaces are tidied');
+  assert.match(c.thumbnailTitleClause('He said "go"', 'edit'), /"He said 'go'"/, 'a double quote inside the title cannot end the quoted text');
+});
+
+test('a prompt always ends up with the title in it, exactly as typed', () => {
+  const c = load();
+  const ensure = (prompt, title, kind = 'edit') => c.ensureThumbnailTitle(prompt, title, kind);
+  // Missing: the mandatory sentence goes on the end.
+  assert.equal(ensure('A close-up.', 'HEAT'), `A close-up. ${c.thumbnailTitleClause('HEAT', 'edit')}`);
+  assert.match(ensure('A close-up.', 'HEAT', 'restyle'), /The title text "HEAT" is written exactly as spelled/);
+  // Already in quotes: the spelling and case that were typed are put back and the quotes made plain.
+  assert.equal(ensure('The word “Heat” in huge letters.', 'HEAT'), 'The word "HEAT" in huge letters.');
+  assert.equal(ensure("The word 'heat' glows.", 'Heat'), 'The word "Heat" glows.');
+  assert.equal(ensure('Text "NEVER   LOOK back" at the top.', 'Never look back'), 'Text "Never look back" at the top.');
+  // The word without quotes is not the title (warm heat on a cheek): the sentence is added instead of guessing which one.
+  assert.match(ensure('Warm heat on his cheek.', 'HEAT'), /^Warm heat on his cheek\. Add the title text "HEAT"/);
+  // Characters that mean something in a pattern are only characters.
+  assert.match(ensure('x', 'What? (really) [now] $5 a+b'), /"What\? \(really\) \[now\] \$5 a\+b"/);
+  assert.equal(ensure('Say "What? (really)" loud.', 'what? (REALLY)'), 'Say "what? (REALLY)" loud.');
+  assert.match(ensure('x', 'He said "go"'), /"He said 'go'"/);
+  // No title or no prompt changes nothing, and doing it twice changes nothing more.
+  assert.equal(ensure('  A close-up. ', ''), 'A close-up.');
+  assert.equal(ensure('A close-up.', null), 'A close-up.');
+  assert.equal(ensure('', 'HEAT'), '');
+  const once = ensure('A close-up.', 'HEAT');
+  assert.equal(ensure(once, 'HEAT'), once);
 });
 
 test('only a real engine and a real picture survive, and the history is limited', () => {

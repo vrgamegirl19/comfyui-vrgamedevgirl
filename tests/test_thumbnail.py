@@ -262,6 +262,27 @@ class PromptTextTests(unittest.TestCase):
         for other in (None, "", "edit", "anything else"):
             self.assertEqual(prompts.thumbnail_instruction("RUN", other), edit)
 
+    def test_moss_image_edit_gets_the_short_add_and_keep_instruction_it_was_trained_on(self):
+        moss = prompts.thumbnail_instruction("HEAT", "moss_edit")
+        self.assertIn('Keep the <named things> unchanged', moss)
+        self.assertIn("always name the headwear, hair and clothes", moss)
+        self.assertIn("do not ask it to crop, reframe", moss)
+        self.assertNotIn("Recrop the attached image", moss)
+        self.assertNotIn("{text_rule}", moss)
+        self.assertNotEqual(moss, prompts.thumbnail_instruction("HEAT", "edit"))
+        self.assertIn("Do not add any text", prompts.thumbnail_instruction("", "moss_edit"))
+        self.assertEqual(prompts.thumbnail_instruction("HEAT", " MOSS_EDIT "), moss, "the kind is matched without caring about case or spaces")
+
+    def test_the_title_is_mandatory_and_quoted_in_every_kind(self):
+        for kind in ("edit", "restyle", "moss_edit"):
+            with self.subTest(kind=kind):
+                instruction = prompts.thumbnail_instruction('NEVER "LOOK" BACK', kind)
+                self.assertIn("is mandatory", instruction)
+                self.assertIn("in double quotes", instruction)
+                self.assertIn("\"NEVER 'LOOK' BACK\" in double quotes", instruction)
+                self.assertIn("Follow any lettering style in the style notes", instruction)
+                self.assertNotIn("is mandatory", prompts.thumbnail_instruction("", kind))
+
     def test_the_reply_is_cleaned(self):
         clean = thumbnail_prompt.clean_thumbnail_prompt
         self.assertEqual(clean('```text\n"Recrop the attached image.\nMake it pop."\n```'), "Recrop the attached image. Make it pop.")

@@ -2,12 +2,14 @@
 // No browser code in here, so tests/thumbnail_state.cjs can run it.
 
 // The image workflows the thumbnail can be made with, and how each one uses the chosen frame. "edit" workflows (NanoBanana,
-// Flux/Klein) take the frame as a reference picture and follow an instruction such as "recrop the attached image". "restyle"
-// workflows (Krea 2, Z-Image, Ernie, MOSS-Image) start from the frame as an image-to-image source and need a prompt that describes
-// the finished picture, so the LLM writes a different kind of prompt for them.
+// Flux/Klein) take the frame as a reference picture and follow an instruction such as "recrop the attached image". "moss_edit"
+// (MOSS-Image Edit) also follows an instruction, but one in the short form its edit LoRA was trained on ("Add ... Keep the ...
+// unchanged."). "restyle" workflows (Krea 2, Z-Image, Ernie, MOSS-Image) start from the frame as an image-to-image source and need a
+// prompt that describes the finished picture. The LLM writes a different kind of prompt for each kind.
 export const THUMBNAIL_ENGINE_KINDS = {
   nano_banana: "edit",
   flux_klein: "edit",
+  moss_image_edit: "moss_edit",
   krea2_2pass: "restyle",
   zimage: "restyle",
   ernie_image: "restyle",
@@ -21,9 +23,45 @@ export const THUMBNAIL_FPS = 24;
 const THUMBNAIL_HISTORY_LIMIT = 12;
 const THUMBNAIL_SOURCE_KINDS = ["frame", "image"];
 
-// "edit" or "restyle". An unknown engine is treated like the default one.
+// "edit", "moss_edit" or "restyle". An unknown engine is treated like the default one.
 export function thumbnailEngineKind(engine) {
   return THUMBNAIL_ENGINE_KINDS[engine] || THUMBNAIL_ENGINE_KINDS[THUMBNAIL_DEFAULT_ENGINE];
+}
+
+// How the title text is to look, in the words every image workflow gets. The sentence that asks for it is mandatory: see
+// ensureThumbnailTitle.
+const THUMBNAIL_TITLE_LOOK = "in huge bold sans-serif capital letters with a thick dark outline and a slight glow, large enough to read on a phone, in the calmest part of the frame and never covering the face";
+
+function thumbnailTitleText(title) {
+  return String(title ?? "").replace(/"/g, "'").replace(/\s+/g, " ").trim();
+}
+
+// The sentence that makes an image workflow draw the title: an instruction for the edit workflows, a statement of the finished
+// picture for the restyle ones. Empty when there is no title.
+export function thumbnailTitleClause(title, kind) {
+  const text = thumbnailTitleText(title);
+  if (!text) return "";
+  return kind === "restyle"
+    ? `The title text "${text}" is written exactly as spelled ${THUMBNAIL_TITLE_LOOK}. No other text.`
+    : `Add the title text "${text}" exactly as written and spelled ${THUMBNAIL_TITLE_LOOK}. Add no other text.`;
+}
+
+function escapeForPattern(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// The prompt with the title text in it, always. An image workflow only draws a title that its prompt asks for, and an LLM can leave
+// it out or a prompt can be edited, so this runs before every generation: a title that is already in the prompt in quotes is put
+// back to exactly the spelling and case that was typed, and one that is missing gets the mandatory sentence at the end. No title or
+// no prompt changes nothing.
+export function ensureThumbnailTitle(prompt, title, kind) {
+  const body = String(prompt ?? "").trim();
+  const text = thumbnailTitleText(title);
+  if (!text || !body) return body;
+  const words = text.split(" ").map(escapeForPattern).join("\\s+");
+  const quoted = new RegExp(`["\\u201C\\u201D'\\u2018\\u2019]\\s*${words}\\s*["\\u201C\\u201D'\\u2018\\u2019]`, "i");
+  if (quoted.test(body)) return body.replace(quoted, () => `"${text}"`);
+  return `${body} ${thumbnailTitleClause(text, kind)}`;
 }
 
 // How much a restyle workflow may change the frame, 0 to 1 (0.65 by default).

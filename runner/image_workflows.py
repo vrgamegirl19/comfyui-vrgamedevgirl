@@ -4,6 +4,7 @@ import copy
 import json
 import os
 import random
+import time
 import folder_paths
 
 from .paths import _bool_payload, _float_payload, _int_payload, _resolve_existing_file
@@ -657,8 +658,90 @@ def _build_krea2_api_prompt(payload):
     }
 
 
+_MOSS_EDIT_LORA = "moss_image_edit_lora.safetensors"
+_MOSS_EDIT_FORMATS = ("Moss-Image-Edit", "ai-toolkit", "ai-toolkit (kv_cache off)")
+_MOSS_EDIT_MAX_REFERENCES = 4
+# The negative line the edit LoRA's author recommends (ComfyUI's image_moss_image_edit template).
+_MOSS_EDIT_NEGATIVE = "nsfw, worst quality, bad anatomy, watermark, jpeg artifact"
+
+
+def _build_moss_image_edit_api_prompt(payload):
+    """MOSS-Image instruction edit: the edit LoRA on the MOSS-Image model, ComfyUI's ``TextEncodeMOSSImageEdit`` and 1 to 4 pictures.
+
+    Same graph as ComfyUI's own ``image_moss_image_edit`` template (needs ComfyUI 0.43 or newer, which has the node). Each reference
+    picture (``image_ingredients``: ``[{path}]`` or ``[{data}]``) is scaled to about ``megapixels`` (1 by default, a multiple of 16),
+    both encoders see all of them, and the new picture takes the size of the first one, so the result keeps its shape. The prompt
+    is an instruction in the phrasing the LoRA was trained on ("Change only X. Keep the character, face, hair, pose, background and
+    composition unchanged."), written for it, not a description of the finished picture. The sampler is the LoRA author's: 30 steps,
+    CFG 4, euler, normal, with skip layer guidance on layer 22, and the recommended negative line. The 8-step turbo LoRA is not used.
+    """
+    prompt_text = str(payload.get("prompt", "") or "").strip()
+    if not prompt_text:
+        raise ValueError("Prompt text is empty.")
+    paths = _image_paths_from_payload_ingredients(payload, "reference image")[:_MOSS_EDIT_MAX_REFERENCES]
+    if not paths:
+        raise ValueError("MOSS-Image Edit needs at least one reference image: the frame to edit.")
+    unet_name = _installed_model_choice(
+        ("diffusion_models", "unet"), str(payload.get("unet_name") or "moss_image_sft_bf16.safetensors").strip(), "MOSS-Image diffusion model")
+    clip_name = _installed_model_choice(
+        ("text_encoders", "clip"), str(payload.get("clip_name") or "qwen3.5_9b_int8_convrot.safetensors").strip(), "MOSS-Image text encoder")
+    vae_name = _installed_model_choice("vae", str(payload.get("vae_name") or "flux2-vae.safetensors").strip(), "MOSS-Image VAE")
+    edit_lora = _installed_model_choice(
+        "loras", str(payload.get("edit_lora_name") or _MOSS_EDIT_LORA).strip(), "MOSS-Image Edit LoRA (moss_image_edit_lora.safetensors)")
+    edit_format = str(payload.get("edit_format") or _MOSS_EDIT_FORMATS[0]).strip()
+    if edit_format not in _MOSS_EDIT_FORMATS:
+        edit_format = _MOSS_EDIT_FORMATS[0]
+    seed = _int_payload(payload, "seed", 1, 0, 0xFFFFFFFFFFFFFFFF)
+    if str(payload.get("seed_mode", "fixed") or "fixed").strip().lower() in {"random", "randomize"}:
+        seed = random.randint(0, 0xFFFFFFFFFFFFFFFF)
+    negative = payload.get("negative_prompt")
+    negative = _MOSS_EDIT_NEGATIVE if negative is None else str(negative)
+
+    prompt = {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": unet_name, "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": clip_name, "type": "moss_image", "device": "default"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": vae_name}},
+        "4": {"class_type": "LoraLoaderModelOnly", "inputs": {
+            "model": ["1", 0], "lora_name": edit_lora, "strength_model": _float_payload(payload, "edit_lora_strength", 1.0, -10.0, 10.0),
+        }},
+    }
+    model = ["4", 0]
+    if _bool_payload(payload, "skip_layer_guidance", True):
+        prompt["5"] = {"class_type": "SkipLayerGuidanceDiTSimple", "inputs": {
+            "model": model, "double_layers": "", "single_layers": "22", "start_percent": 0.0, "end_percent": 1.0,
+        }}
+        model = ["5", 0]
+    megapixels = _float_payload(payload, "megapixels", 1.0, 0.25, 4.0)
+    references = {}
+    for index, path in enumerate(paths):
+        if index:
+            # The copies in ComfyUI's input folder are named by the millisecond, so two made together would share a name.
+            time.sleep(0.002)
+        prompt[str(20 + index)] = {"class_type": "LoadImage", "inputs": {"image": _prepare_load_image_name(path)}}
+        prompt[str(30 + index)] = {"class_type": "ImageScaleToTotalPixels", "inputs": {
+            "image": [str(20 + index), 0], "upscale_method": "lanczos", "megapixels": megapixels, "resolution_steps": 16,
+        }}
+        references[f"images.image_{index}"] = [str(30 + index), 0]
+    prompt["40"] = {"class_type": "GetImageSize", "inputs": {"image": ["30", 0]}}
+    prompt["9"] = {"class_type": "EmptyFlux2LatentImage", "inputs": {"width": ["40", 0], "height": ["40", 1], "batch_size": 1}}
+    for node_id, text in (("7", prompt_text), ("8", negative)):
+        prompt[node_id] = {"class_type": "TextEncodeMOSSImageEdit", "inputs": {
+            "clip": ["2", 0], "prompt": text, "edit_format": edit_format, **references, "image_strength": 1.0, "vae": ["3", 0],
+        }}
+    prompt.update({
+        "10": {"class_type": "KSampler", "inputs": {
+            "model": model, "positive": ["7", 0], "negative": ["8", 0], "latent_image": ["9", 0],
+            "seed": seed, "steps": _int_payload(payload, "steps", 30, 1, 200), "cfg": _float_payload(payload, "cfg", 4.0, 1.0, 20.0),
+            "sampler_name": "euler", "scheduler": "normal", "denoise": 1.0,
+        }},
+        "11": {"class_type": "VAEDecode", "inputs": {"samples": ["10", 0], "vae": ["3", 0]}},
+        "12": {"class_type": "PreviewImage", "inputs": {"images": ["11", 0]}},
+    })
+    return {"workflow_path": "", "prompt": prompt, "used_seed": seed}
+
+
 def _build_moss_image_api_prompt(payload):
-    """Build a MOSS-Image graph from ComfyUI's native MOSS-Image support: text to image, or image to image.
+    """Build a MOSS-Image graph from ComfyUI's native MOSS-Image support: text to image, image to image, or instruction edit.
 
     A model-only LoRA (the 8-step DMD turbo LoRA) is optional. The native model already
     samples with shift 5 and a timestep multiplier of 1, so there is no ModelSamplingSD3
@@ -666,8 +749,11 @@ def _build_moss_image_api_prompt(payload):
 
     Image to image (``use_image_to_image`` with ``image_to_image_path`` or ``image_to_image_data``) restyles a picture: it is scaled
     to ``width`` x ``height`` (cropped from the center), encoded with the VAE and sampled from at ``denoise`` (0.05 to 1, 0.65 by
-    default; lower keeps more of the picture). MOSS-Image has no instruction edit, so the prompt describes the finished picture.
+    default; lower keeps more of the picture). That only recolors the picture: it does not follow instructions or draw new text.
+    For that use ``use_edit`` (see ``_build_moss_image_edit_api_prompt``): the edit LoRA and ComfyUI's MOSS-Image Edit encoder.
     """
+    if _bool_payload(payload, "use_edit", False):
+        return _build_moss_image_edit_api_prompt(payload)
     prompt_text = str(payload.get("prompt", "") or "").strip()
     if not prompt_text:
         raise ValueError("Prompt text is empty.")

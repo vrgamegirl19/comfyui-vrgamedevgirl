@@ -2,13 +2,16 @@
 // workflow (the models, LoRAs and sizes the user already set for it) and gets back the build route and its payload. No browser
 // code in here, so tests/thumbnail_engines.cjs can run it.
 //
-// "edit" workflows (NanoBanana, Flux/Klein) take the frame as a reference picture. "restyle" workflows (Krea 2, Z-Image, Ernie,
-// MOSS-Image) use it as an image-to-image source, and how far they may move away from it is the `change` setting (0 to 1).
+// "edit" workflows (NanoBanana, Flux/Klein, MOSS-Image Edit) take the frame as a reference picture and follow an instruction.
+// "restyle" workflows (Krea 2, Z-Image, Ernie, MOSS-Image) use it as an image-to-image source, and how far they may move away from it
+// is the `change` setting (0 to 1). A restyle keeps the frame's composition and mostly ignores what the prompt asks to add, so only
+// an edit workflow can be relied on to draw the title text.
 
 // The build route of each workflow, written out in full so a search for a route finds this module.
 const ENGINE_ROUTES = {
   nano_banana: "/vrgdg/workflow_runner/build_nb_image_prompt",
   flux_klein: "/vrgdg/workflow_runner/build_flux_klein_prompt",
+  moss_image_edit: "/vrgdg/workflow_runner/build_moss_image_prompt",
   krea2_2pass: "/vrgdg/workflow_runner/build_krea2_2pass_prompt",
   zimage: "/vrgdg/workflow_runner/build_zimage_prompt",
   ernie_image: "/vrgdg/workflow_runner/build_ernie_image_prompt",
@@ -18,6 +21,7 @@ const ENGINE_ROUTES = {
 export const THUMBNAIL_ENGINE_LABELS = {
   nano_banana: "NanoBanana (API, edit)",
   flux_klein: "Flux/Klein (local, edit)",
+  moss_image_edit: "MOSS-Image Edit (local, edit)",
   krea2_2pass: "Krea 2 (local, restyle)",
   zimage: "Z-Image (local, restyle)",
   ernie_image: "Ernie (local, restyle)",
@@ -129,6 +133,14 @@ export function thumbnailEngineRequest({ engine, prompt, sourcePath, change, set
       seed, seed_mode: "fixed", batch_size: 1, use_custom_loras: count > 0, lora_count: count,
       use_image_to_image: true, image_to_image_start_at_step: startStepFor(change), image_to_image_path: path,
       ...loraFields(s, count, 4, false),
+    };
+  } else if (engine === "moss_image_edit") {
+    // The edit LoRA's own sampler (30 steps, CFG 4, skip layer guidance) and negative line are the builder's defaults, so the saved
+    // Turbo steps, CFG and LoRA are not sent: they are for text to image and would spoil an edit.
+    payload = {
+      prompt: text, image_ingredients: sourceFrame, use_edit: true,
+      unet_name: s.unet_name, clip_name: s.clip_name, vae_name: s.vae_name, edit_lora_name: s.edit_lora_name || "",
+      seed, seed_mode: "fixed",
     };
   } else {
     payload = {
