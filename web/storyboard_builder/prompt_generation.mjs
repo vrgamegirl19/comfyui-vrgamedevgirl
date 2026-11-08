@@ -437,27 +437,30 @@ export function createPromptGeneration({
     return text;
   }
 
-  async function createSceneVideoPromptWithGemma(scene, { quiet = false, unloadAfter = true, progress = null, progressPercent = 35, progressLabel = "" } = {}) {
+  async function createSceneVideoPromptWithGemma(scene, { skipAutoTiming = false, quiet = false, unloadAfter = true, progress = null, progressPercent = 35, progressLabel = "" } = {}) {
     const normalized = normalizeScene(scene, 0);
     const runnerName = promptRunnerName();
     const genericName = promptRunnerGenericName();
     try {
       progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: sending scene card to ${runnerName}...\nThis can take a minute depending on runner/model speed.`, progressPercent);
-      const callbackPayload = storyboardGptPayload(state, [scene]);
+      let callbackPayload = storyboardGptPayload(state, [scene]);
       if (state.onBeforeCreateVideoPrompt) {
         await state.onBeforeCreateVideoPrompt(scene, {
+          skipAutoTiming,
           storyboardPayload: callbackPayload,
           progress,
           progressPercent,
           progressLabel,
         });
       }
+      callbackPayload = storyboardGptPayload(state, [scene]);
       if (state.projectVideoEngine === "minimax_h3" && !state.onCreateVideoPrompt) {
         throw new Error("Open Storyboard Builder from the Video Builder so MiniMax can use the scene's H3 mode, ordered references, exact timing, and LLM instructions.");
       }
       const data = state.onCreateVideoPrompt
         ? await state.onCreateVideoPrompt(scene, {
           unloadAfter,
+          skipAutoTiming,
           storyboardPayload: callbackPayload,
           progress,
           progressPercent,
@@ -589,16 +592,19 @@ export function createPromptGeneration({
     let created = 0;
     const failures = [];
     try {
-      const keepLoaded = Boolean(keepGemmaLoadedInput.checked);
+      const keepLoaded = Boolean(keepGemmaLoadedInput.checked || (videoMode && state.gemmaSettings?.text_runner === "llm_api"));
       progress.set(`${failedIds.size ? "Retrying failed Storyboard scenes" : `Starting Storyboard ${runnerName} All`}...\nMode: ${videoMode ? "Video Prep" : "Image Prep"}\nScope: ${failedIds.size ? `failed only (${scenes.length})` : onlyMissing ? `only missing (${scenes.length} of ${visibleScenes.length})` : `redo all (${scenes.length})`}\nKeep local LLM loaded: ${keepLoaded ? "yes" : "no"}`, 5);
+      const timingPrepared = videoMode && typeof state.onBeforeCreateVideoPrompts === "function";
+      const timingErrors = timingPrepared ? await state.onBeforeCreateVideoPrompts(scenes, { progress }) : new Map();
       for (let index = 0; index < scenes.length; index += 1) {
         gemmaAllButton.textContent = `${runnerName} ${index + 1}/${scenes.length}`;
-        const unloadAfter = keepLoaded ? index === scenes.length - 1 : true;
+        const unloadAfter = videoMode && state.gemmaSettings?.text_runner === "llm_api" ? false : keepLoaded ? index === scenes.length - 1 : true;
         const base = 8 + Math.round((index / Math.max(1, scenes.length)) * 84);
         const label = `${runnerName} All ${index + 1}/${scenes.length}: ${scenes[index].label || `Scene ${scenes[index].scene_number || index + 1}`}`;
         try {
           progress.set(`${label}\nCreating storyboard ${promptKind} prompt...`, base);
-          await createScenePromptForActiveMode(scenes[index], { quiet: true, unloadAfter, progress, progressPercent: base, progressLabel: label });
+          if (timingErrors?.has(scenes[index])) throw timingErrors.get(scenes[index]);
+          await createScenePromptForActiveMode(scenes[index], { skipAutoTiming: timingPrepared, quiet: true, unloadAfter, progress, progressPercent: base, progressLabel: label });
           created += 1;
         } catch (error) {
           if (!isRecoverableStoryboardBatchError(error)) throw error;
@@ -624,6 +630,7 @@ export function createPromptGeneration({
       progress.set(`${runnerName} All stopped after ${created}/${scenes.length} scenes:\n${String(error?.message || error)}`, 100);
       createToast(`${runnerName} All stopped after ${created}/${scenes.length} scenes:\n${String(error?.message || error)}`, true);
     } finally {
+      if (videoMode && state.onBeforeCreateVideoPrompts) await postJson("/vrgdg/music_builder/clear_memory_direct", {}, 120000).catch(error => console.warn("[VRGDG] Prompt batch memory cleanup failed:", error));
       gemmaAllButton.disabled = false;
       gemmaAllButton.textContent = previousText;
       renderTable();
@@ -652,19 +659,22 @@ export function createPromptGeneration({
       const progress = createStoryboardProgressWindow(`Storyboard ${runnerName}`);
       let created = 0;
       const failures = [];
-      const keepLoaded = Boolean(keepGemmaLoadedInput.checked);
+      const keepLoaded = Boolean(keepGemmaLoadedInput.checked || (videoMode && state.gemmaSettings?.text_runner === "llm_api"));
       const previousText = gemmaAllButton.textContent;
       gemmaAllButton.disabled = true;
       try {
         progress.set(`Starting Storyboard ${runnerName} for ${selectedScenes.length} selected scene${selectedScenes.length === 1 ? "" : "s"}...\nMode: ${videoMode ? "Video Prep" : "Image Prep"}\nKeep local LLM loaded: ${keepLoaded ? "yes" : "no"}`, 5);
+        const timingPrepared = videoMode && typeof state.onBeforeCreateVideoPrompts === "function";
+        const timingErrors = timingPrepared ? await state.onBeforeCreateVideoPrompts(selectedScenes, { progress }) : new Map();
         for (let index = 0; index < selectedScenes.length; index += 1) {
           gemmaAllButton.textContent = `${runnerName} ${index + 1}/${selectedScenes.length}`;
-          const unloadAfter = keepLoaded ? index === selectedScenes.length - 1 : true;
+          const unloadAfter = videoMode && state.gemmaSettings?.text_runner === "llm_api" ? false : keepLoaded ? index === selectedScenes.length - 1 : true;
           const base = 8 + Math.round((index / Math.max(1, selectedScenes.length)) * 84);
           const label = `${runnerName} ${index + 1}/${selectedScenes.length}: ${selectedScenes[index].label || `Scene ${selectedScenes[index].scene_number || index + 1}`}`;
           try {
             progress.set(`${label}\nCreating storyboard ${promptKind} prompt...`, base);
-            await createScenePromptForActiveMode(selectedScenes[index], { quiet: true, unloadAfter, progress, progressPercent: base, progressLabel: label });
+            if (timingErrors?.has(selectedScenes[index])) throw timingErrors.get(selectedScenes[index]);
+            await createScenePromptForActiveMode(selectedScenes[index], { skipAutoTiming: timingPrepared, quiet: true, unloadAfter, progress, progressPercent: base, progressLabel: label });
             created += 1;
           } catch (error) {
             if (!isRecoverableStoryboardBatchError(error)) throw error;
@@ -685,6 +695,7 @@ export function createPromptGeneration({
         progress.set(`${runnerName} stopped after ${created}/${selectedScenes.length} scenes:\n${String(error?.message || error)}`, 100);
         createToast(`${runnerName} stopped after ${created}/${selectedScenes.length} scenes:\n${String(error?.message || error)}`, true);
       } finally {
+        if (videoMode && state.onBeforeCreateVideoPrompts) await postJson("/vrgdg/music_builder/clear_memory_direct", {}, 120000).catch(error => console.warn("[VRGDG] Prompt batch memory cleanup failed:", error));
         gemmaAllButton.disabled = false;
         gemmaAllButton.textContent = previousText;
         renderTable();

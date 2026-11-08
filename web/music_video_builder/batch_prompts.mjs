@@ -1,3 +1,4 @@
+import { prepareBatchSingerTiming } from "./batch_singer_timing.mjs";
 import { storyboardFxContract, storyboardTemporalWorldEffectForScene } from "../storyboard_builder/video_style.mjs";
 import { emotionExpressionInput, hasEmotionExpressionInput } from "./emotion_expression.mjs";
 import { lyricFreePerformanceEnabled } from "./lyric_free_performance.mjs";
@@ -94,7 +95,7 @@ export function createBatchPrompts({
   }
 
   async function runMiniMaxH3PromptGeneration(segment, mode, options = {}) {
-    await ensureAutoTimedSingerCuesBeforePrompt(segment);
+    if (!options.skipAutoTiming) await ensureAutoTimedSingerCuesBeforePrompt(segment);
     const fxPromptGuidance = sceneDefaultsFxPromptContext(segment);
     const referenceSignature = miniMaxPromptReferenceSignature(segment, mode);
     const visionImages = Array.isArray(options.visionImages)
@@ -409,6 +410,7 @@ export function createBatchPrompts({
       state.batchCancelled = false;
       progress = createProgressWindow("Convert LTX Video Prompts to MiniMax H3");
 
+      const timingErrors = await prepareBatchSingerTiming(targets.map(item => item.segment), ensureAutoTimedSingerCuesBeforePrompt, { progress, assertNotStopped: assertBatchNotStopped });
       for (let index = 0; index < targets.length; index += 1) {
         assertBatchNotStopped();
         const { segment, ltxPrompt } = targets[index];
@@ -420,9 +422,11 @@ export function createBatchPrompts({
         progress.set(`${failedIds.size ? "Retrying failed" : "Converting"} ${label}: existing LTX prompt to detailed MiniMax H3 ${modeLabel} format...\n${gemmaRunnerLine()}`, percent);
 
         try {
+          if (timingErrors.has(segment)) throw timingErrors.get(segment);
           const data = await runMiniMaxH3PromptGeneration(segment, mode, {
           projectFolder,
-          unloadAfter: index === targets.length - 1,
+          skipAutoTiming: true,
+          unloadAfter: false,
           audioMode: "input_audio",
           performanceMode: effectiveVideoPerformanceModeForSegment(segment),
           contextOptions: {
@@ -479,6 +483,7 @@ export function createBatchPrompts({
       progress?.set(`Conversion stopped after ${converted}/${targets.length} prompts:\n${String(error?.message || error)}`, 100);
       toast(`LTX to MiniMax H3 conversion stopped after ${converted}/${targets.length} prompts:\n${String(error?.message || error)}`, true);
     } finally {
+      await postJson("/vrgdg/music_builder/clear_memory_direct", {}, 120000).catch(error => console.warn("[VRGDG] Prompt batch memory cleanup failed:", error));
       convertLtxPromptsToMiniMaxButton.disabled = false;
       convertLtxPromptsToMiniMaxButton.textContent = "Convert LTX Video Prompts to MiniMax H3";
     }
@@ -634,7 +639,7 @@ export function createBatchPrompts({
   }
 
   async function generateI2VPromptForSegment(segment, progress = null, percent = 50, label = "Gemma I2V", options = {}) {
-    await ensureAutoTimedSingerCuesBeforePrompt(segment);
+    if (!options.skipAutoTiming) await ensureAutoTimedSingerCuesBeforePrompt(segment);
     const request = buildI2VPromptRequestForSegment(segment, options);
     progress?.set(request.useImageReference
       ? `${label}: creating ${request.modeLabel} prompt from reference image, concept, and motion notes...\n${gemmaRunnerLine({ vision: true })}`
@@ -816,6 +821,7 @@ export function createBatchPrompts({
         toast(`All scenes already have ${modeLabel} prompts. ${runnerName} ${modeLabel} skipped.`);
         return;
       }
+      const timingErrors = await prepareBatchSingerTiming(scenes, ensureAutoTimedSingerCuesBeforePrompt, { progress, assertNotStopped: assertBatchNotStopped });
       for (let index = 0; index < scenes.length; index += 1) {
         assertBatchNotStopped();
         const segment = scenes[index];
@@ -833,7 +839,9 @@ export function createBatchPrompts({
           ? generateI2VPromptForSegmentWithFLFRetry
           : generateI2VPromptForSegment;
         try {
+          if (timingErrors.has(segment)) throw timingErrors.get(segment);
           await generatePrompt(segment, progress, Math.min(deferEnhancement ? 70 : 98, base + 30), `${runnerName} ${modeLabel} All ${index + 1}/${scenes.length}`, {
+            skipAutoTiming: true,
             unloadAfter: false,
             forceTextOnly: forceTextOnly || forceTextForContinuity,
             forceVision,
@@ -866,6 +874,7 @@ export function createBatchPrompts({
     } catch (error) {
       const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: `${runnerName} ${modeLabel} All` });
       progress.set(`Stopped/Error:\n${String(error?.message || error)}${debugPath ? `\n\nRaw Gemma output saved to:\n${debugPath}` : ""}`, 100);
+      await runClearMemoryWorkflowQuiet(progress, `${runnerName} ${modeLabel} prompt error`, 100);
       if (options.throwOnError) throw error;
       toast(String(error?.message || error), true);
     } finally {
