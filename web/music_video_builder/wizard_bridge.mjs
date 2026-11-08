@@ -1,3 +1,4 @@
+import { prepareBatchSingerTiming } from "./batch_singer_timing.mjs";
 import { organizeWizardVideoModels } from "./wizard_models_layout.mjs";
 import { storyboardGptPayload } from "../storyboard_builder/gpt_payload.mjs";
 
@@ -363,21 +364,7 @@ export function createWizardBridge({
       progress.set(`${options.failedIds?.length ? "Retrying failed Storyboard scenes" : `Starting Storyboard ${runnerName} All`}...\nScenes: ${targetScenes.length}\nUsing the same prompt writer as Storyboard Builder.`, 5);
       const sceneSegments = targetScenes.map((scene, index) => segmentById.get(String(scene.id || ""))
         || segments.find((item) => String(item.id || "") === String(scene.id || "")) || segments[index]);
-      // Time every singing scene first so Whisper loads once, then free it before the LLM writes the prompts.
-      const timingErrors = new Map();
-      const singing = miniMaxProject
-        ? sceneSegments.filter((segment) => segment && !segment.no_character_present
-          && normalizeVideoType(segment.performance_mode || state.videoType) === "singing")
-        : [];
-      for (let index = 0; index < singing.length; index += 1) {
-        progress.set(`Timing the sung lines: scene ${index + 1}/${singing.length}...`, 5);
-        try {
-          await ensureAutoTimedSingerCuesBeforePrompt(singing[index], { unloadAfter: false });
-        } catch (error) {
-          timingErrors.set(singing[index], error);
-        }
-      }
-      if (singing.length) await postJson("/vrgdg/music_builder/clear_memory_direct", {}, 120000);
+      const timingErrors = await prepareBatchSingerTiming(miniMaxProject ? sceneSegments.filter(Boolean) : [], ensureAutoTimedSingerCuesBeforePrompt, { progress });
       for (let index = 0; index < targetScenes.length; index += 1) {
         stoppedAt = index;
         const scene = targetScenes[index];
@@ -424,7 +411,8 @@ export function createWizardBridge({
           const promptStoryboardPayload = storyboardGptPayload(storyboardState, [sceneForPrompt]);
           const data = miniMaxProject
             ? await storyboardPromptPipeline()(sceneForPrompt, {
-              unloadAfter: index === targetScenes.length - 1,
+              skipAutoTiming: true,
+              unloadAfter: false,
               storyboardPayload: promptStoryboardPayload,
               progress,
               progressPercent: base,
@@ -502,6 +490,8 @@ export function createWizardBridge({
       showGemmaBatchFailures([...skipped, ...unfinishedSceneFailures(targetScenes.slice(stoppedAt), error)], {
         retryHandler: (items) => runWizardStoryboardGemmaAll({ failedIds: items.map((item) => item.segmentId) }),
       });
+    } finally {
+      await postJson("/vrgdg/music_builder/clear_memory_direct", {}, 120000).catch(error => console.warn("[VRGDG] Prompt batch memory cleanup failed:", error));
     }
   };
 

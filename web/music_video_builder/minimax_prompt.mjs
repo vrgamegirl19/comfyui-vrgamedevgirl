@@ -2783,6 +2783,7 @@ export function createMiniMaxPrompt({
   async function ensureAutoTimedSingerCuesBeforePrompt(segment, options = {}) {
     if (!segment || segment.no_character_present) return;
     const multiShot = miniMaxH3OfficialShotPlan(miniMaxH3CutPlanForSegment(segment)).length > 1;
+    if (options.multiShotOnly && !multiShot) return;
     if (!state.autoTimeSingerCuesBeforePrompt && !options.force && !multiShot) return;
     if (normalizeVideoType(segment.performance_mode || state.videoType) !== "singing") return;
     if (!isMiniMaxSingerAssignmentMode(segment) || segment.lyric_no_lip_sync) return;
@@ -2820,6 +2821,7 @@ export function createMiniMaxPrompt({
         end: null,
       }];
     }
+    options.onTimingStart?.();
     const timed = await autoTimeMiniMaxSingerCuesForSegment(segment, { unloadAfter: options.unloadAfter });
     if (!timed) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Whisper timing did not complete; prompt generation was stopped.`);
     return true;

@@ -1,3 +1,4 @@
+import { prepareBatchSingerTiming } from "./batch_singer_timing.mjs";
 import { GEMMA_VIDEO_PROMPT_TIMEOUT_MS, postJson } from "./comfy_api.mjs";
 import { normalizeProjectVideoEngine, normalizeVideoType, toast } from "./controls.mjs";
 import {
@@ -592,6 +593,7 @@ export function createStoryboardBridge({
     const storyboardSceneCloneForI2V = (segment, scene = {}) => {
       const clone = {
         ...segment,
+        scene_defaults: { ...segment.scene_defaults, ...scene.scene_defaults },
         timeline_note: String(scene.timeline_note ?? segment.timeline_note ?? ""),
         notes: String(scene.notes ?? segment.notes ?? ""),
         i2v_notes: String(scene.motion_summary ?? segment.i2v_notes ?? ""),
@@ -664,10 +666,29 @@ export function createStoryboardBridge({
       }
       return clone;
     };
+    const prepareStoryboardSingerTiming = async (scenes, { progress } = {}) => {
+      const entries = scenes.map(scene => {
+        const segment = findStoryboardSegment(scene);
+        return { scene, segment, working: segment ? storyboardSceneCloneForI2V(segment, scene) : null };
+      });
+      const timingErrors = await prepareBatchSingerTiming(entries.map(entry => entry.working).filter(Boolean), ensureAutoTimedSingerCuesBeforePrompt, { progress });
+      const errors = new Map();
+      for (const { scene, segment, working } of entries) {
+        if (!working) { errors.set(scene, new Error("Matching Video Builder scene was not found.")); continue; }
+        if (timingErrors.has(working)) { errors.set(scene, timingErrors.get(working)); continue; }
+        for (const key of ["lyric_cue_map", "lyric_performance_mode", "lyric_shot_word_timing_enabled"]) {
+          if (working[key] !== undefined) { segment[key] = working[key]; scene[key] = working[key]; }
+        }
+      }
+      syncInspector();
+      render();
+      await autoSaveSessionQuiet("Storyboard batch lyric timing");
+      return errors;
+    };
     const createStoryboardVideoPromptViaBuilder = async (scene = {}, options = {}) => {
       const segment = findStoryboardSegment(scene);
       if (!segment) throw new Error(`Scene ${scene.scene_number || ""}: matching Video Builder scene was not found.`);
-      await ensureAutoTimedSingerCuesBeforePrompt(segment);
+      if (!options.skipAutoTiming) await ensureAutoTimedSingerCuesBeforePrompt(segment);
       const workingSegment = storyboardSceneCloneForI2V(segment, scene);
       const extraUserNotes = storyboardVideoExtraNotes(scene, options.storyboardPayload || {}, workingSegment);
       if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
@@ -723,6 +744,7 @@ export function createStoryboardBridge({
           Math.min(92, Number(options.progressPercent || 35) + 18),
         );
         const data = await runMiniMaxH3PromptGeneration(workingSegment, mode, {
+          skipAutoTiming: Boolean(options.skipAutoTiming),
           projectFolder: activeProjectFolderForSave(),
           sceneId: segment.id || "",
           builderInstructionKey: storyboardInstructionKey,
@@ -1134,9 +1156,10 @@ export function createStoryboardBridge({
       onPrepareStoryContext: typeof options.onPrepareStoryContext === "function" ? options.onPrepareStoryContext : null,
       onPromptsExported: applyStoryboardPrompts,
       onCreateVideoPrompt: createStoryboardVideoPromptViaBuilder,
-      onBeforeCreateVideoPrompt: async (scene) => {
+      onBeforeCreateVideoPrompts: prepareStoryboardSingerTiming,
+      onBeforeCreateVideoPrompt: async (scene, options = {}) => {
         const segment = findStoryboardSegment(scene);
-        if (segment) await ensureAutoTimedSingerCuesBeforePrompt(segment);
+        if (segment && !options.skipAutoTiming) await ensureAutoTimedSingerCuesBeforePrompt(segment);
       },
       onApplyIdLoraDialoguePlan: applyIdLoraDialoguePlanFromStoryboard,
       onApplyMiniMaxDialoguePlan: applyMiniMaxDialoguePlanFromStoryboard,

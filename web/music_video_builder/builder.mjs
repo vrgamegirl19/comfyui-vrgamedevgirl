@@ -2640,7 +2640,7 @@ export function openBuilder(node, options = {}) {
   const { openAutoBuildModal } = createAutoBuild({
     allEditableSegments, applyBulkSegmentTimings, assertBatchNotStopped,
     assertMiniMaxH3ReferenceDescriptionsReady, audio, audioInput, autoSaveSessionQuiet,
-    chooseProjectAudioFile, createProgressWindow, describeReferenceImageWithGemma, gemmaRunnerLabel,
+    chooseProjectAudioFile, createProgressWindow, describeReferenceImageWithGemma, ensureAutoTimedSingerCuesBeforePrompt, gemmaRunnerLabel,
     gemmaRunnerLine, gemmaVideoAllTextOnly, llmApiVisionModelSelected, miniMaxH3PromptVisionImagesForRunner,
     miniMaxOrderedImageReferenceItemsForSegment, newProject, openGemmaRunnerModal,
     openStoryboardBuilderFromProject, projectInput, pushHistory, render, runMiniMaxH3PromptGeneration,

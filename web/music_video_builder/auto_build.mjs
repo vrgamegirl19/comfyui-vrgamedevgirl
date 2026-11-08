@@ -1,3 +1,5 @@
+import { postJson } from "./comfy_api.mjs";
+import { prepareBatchSingerTiming } from "./batch_singer_timing.mjs";
 import { autoBuildDraftForProject, encodeAutoBuildFile, restoreAutoBuildFile } from "./auto_build_draft.mjs";
 import { prepareLlmRequest } from "./llm_setup.mjs";
 import { storyboardCameraFlowEntry } from "../storyboard_builder/shot_presets.mjs";
@@ -24,7 +26,7 @@ import { normalizeFluxReferenceBuilder, normalizeLyricMapper } from "./reference
 
 export function createAutoBuild({
   allEditableSegments, applyBulkSegmentTimings, assertBatchNotStopped,
-  assertMiniMaxH3ReferenceDescriptionsReady, audio, audioInput, autoSaveSessionQuiet, chooseProjectAudioFile,
+  ensureAutoTimedSingerCuesBeforePrompt, assertMiniMaxH3ReferenceDescriptionsReady, audio, audioInput, autoSaveSessionQuiet, chooseProjectAudioFile,
   createProgressWindow, describeReferenceImageWithGemma, gemmaRunnerLabel, gemmaRunnerLine,
   gemmaVideoAllTextOnly, llmApiVisionModelSelected, miniMaxH3PromptVisionImagesForRunner,
   miniMaxOrderedImageReferenceItemsForSegment, newProject, openGemmaRunnerModal,
@@ -495,6 +497,7 @@ export function createAutoBuild({
       let historySaved = false;
       try {
         state.batchCancelled = false;
+        const timingErrors = await prepareBatchSingerTiming(scenes, ensureAutoTimedSingerCuesBeforePrompt, { progress, assertNotStopped: assertBatchNotStopped });
         for (let index = 0; index < scenes.length; index += 1) {
           assertBatchNotStopped();
           const segment = scenes[index];
@@ -508,10 +511,12 @@ export function createAutoBuild({
           try {
             // Scene Defaults (camera flow, speeds, style, temporal / world effect, FX) reach Auto Build prompts too.
             const sceneDefaults = sceneDefaultsPromptOptions?.(segment) || {};
+            if (timingErrors.has(segment)) throw timingErrors.get(segment);
             const data = await runMiniMaxH3PromptGeneration(segment, mode, {
+              skipAutoTiming: true,
               projectFolder,
               sceneId: segment.id || "",
-              unloadAfter: index === scenes.length - 1,
+              unloadAfter: false,
               promptOnlySceneInspiration: false,
               performanceMode: "singing",
               audioMode: "input_audio",
@@ -545,6 +550,8 @@ export function createAutoBuild({
         progress.set(`Auto Build MiniMax prompts stopped after ${created}/${scenes.length}:\n${String(error?.message || error)}`, 100);
         progress.close(5000);
         throw error;
+      } finally {
+        await postJson("/vrgdg/music_builder/clear_memory_direct", {}, 120000).catch(error => console.warn("[VRGDG] Prompt batch memory cleanup failed:", error));
       }
     };
 

@@ -120,6 +120,7 @@ export function openStoryboardBuilder(payload = {}) {
     onApplyIdLoraDialoguePlan: typeof payload.onApplyIdLoraDialoguePlan === "function" ? payload.onApplyIdLoraDialoguePlan : null,
     onApplyMiniMaxDialoguePlan: typeof payload.onApplyMiniMaxDialoguePlan === "function" ? payload.onApplyMiniMaxDialoguePlan : null,
     onCreateVideoPrompt: typeof payload.onCreateVideoPrompt === "function" ? payload.onCreateVideoPrompt : null,
+    onBeforeCreateVideoPrompts: typeof payload.onBeforeCreateVideoPrompts === "function" ? payload.onBeforeCreateVideoPrompts : null,
     onBeforeCreateVideoPrompt: typeof payload.onBeforeCreateVideoPrompt === "function" ? payload.onBeforeCreateVideoPrompt : null,
     onSceneChanged: typeof payload.onSceneChanged === "function" ? payload.onSceneChanged : null,
     query: "",
