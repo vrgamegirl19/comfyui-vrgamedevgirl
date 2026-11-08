@@ -152,7 +152,9 @@ export function createBaseProgressWindow(title, options = {}) {
   status.textContent = "Starting...";
   const sceneDetails = document.createElement("div");
   sceneDetails.style.cssText = "display:none;margin-top:12px;padding-top:12px;border-top:1px solid #164e63;";
-  body.append(status, sceneDetails);
+  const actions = document.createElement("div");
+  actions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;";
+  body.append(status, actions, sceneDetails);
   const barOuter = document.createElement("div");
   barOuter.style.cssText = "height:8px;background:#164e63;border-radius:999px;margin:0 12px 12px;overflow:hidden;";
   const barInner = document.createElement("div");
@@ -196,15 +198,34 @@ export function createBaseProgressWindow(title, options = {}) {
   lastProgressWindow = registration;
   return {
     set(message, percent = null) {
+      actions.replaceChildren();
       status.textContent = message;
       if (percent !== null) barInner.style.width = `${Math.max(5, Math.min(100, percent))}%`;
       const firstLine = String(message || title).split(/\r?\n/)[0] || title;
       restore.textContent = `${title}: ${firstLine}`;
     },
     setHtml(html, percent = null) {
+      actions.replaceChildren();
       status.innerHTML = html;
       if (percent !== null) barInner.style.width = `${Math.max(5, Math.min(100, percent))}%`;
       restore.textContent = title;
+    },
+    setActions(items) {
+      actions.replaceChildren();
+      for (const item of items) {
+        const button = makeButton(item.label, "primary");
+        button.addEventListener("click", async () => {
+          button.disabled = true;
+          try {
+            await item.onClick();
+          } catch (error) {
+            toast(String(error?.message || error), true);
+          } finally {
+            button.disabled = false;
+          }
+        });
+        actions.append(button);
+      }
     },
     setSceneDetails(details = {}) {
       const images = Array.isArray(details.images) ? details.images : [];
@@ -488,6 +509,25 @@ export function showModelDownloadModal({ modelSelections = [], select = "" } = {
           button.addEventListener("click", (event) => {
             event.preventDefault();
             event.stopPropagation();
+            if (item.choices?.length) {
+              const choices = document.createElement("div");
+              choices.style.cssText = "display:flex;flex-direction:column;gap:12px;";
+              for (const choice of item.choices) {
+                const open = makeButton(choice.label, "primary");
+                open.addEventListener("click", () => window.open(choice.url, "_blank", "noopener,noreferrer"));
+                choices.append(open);
+              }
+              showInfoModal({
+                title: "MiniMax H3 Diffusion Models",
+                lines: [
+                  "Choose a collection, then download the model variant you want from its Hugging Face page.",
+                  choices,
+                  "Place downloaded checkpoints in your ComfyUI diffusion_models folder, then refresh the model list. Select a checkpoint that matches your render mode.",
+                ],
+                confirmLabel: "Close",
+              });
+              return;
+            }
             window.open(item.url, "_blank", "noopener,noreferrer");
           });
         }

@@ -36,7 +36,7 @@ BUILDER_SESSION_DATA_KEYS = (
     "i2v_video_settings", "prompt_tools_hint_prefs", "builder_agent_messages", "builder_agent_auto_apply",
     "builder_agent_purpose", "builder_agent_reference_images", "builder_story_source_path",
     "builder_story_reference_images", "builder_story_reference_notes", "builder_story_layer",
-    "builder_storyboard_defaults", "auto_build_preparation", "wizard_beta_draft", "render_logs",
+    "builder_storyboard_defaults", "auto_build_preparation", "auto_build_draft", "wizard_beta_draft", "render_logs",
     "active_render_log_id",
 )
 

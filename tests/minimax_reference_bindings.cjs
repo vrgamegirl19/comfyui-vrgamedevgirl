@@ -13,6 +13,7 @@ const referenceHelpers = [
   'miniMaxRenderReferenceImagePaths',
   'miniMaxBatchReferenceProblems',
   'rememberMiniMaxPromptReferences',
+  'bypassMiniMaxPromptReferences',
 ].map((name) => functionSource(source, name)).join('\n');
 
 function fixture() {
@@ -32,6 +33,10 @@ function fixture() {
     miniMaxH3FrameContinuityPromptEnabled: () => false,
     sceneDisplayName: (item, index) => item.label || `Scene ${index + 1}`,
     allEditableSegments: () => [segment],
+    pushHistory: () => {},
+    syncInspector: () => {},
+    autoSaveSessionQuiet: async () => {},
+    toast: () => {},
   };
   vm.createContext(context);
   vm.runInContext(referenceHelpers, context);
@@ -78,6 +83,33 @@ test('saved signature detects a reference image change', () => {
   c.rememberMiniMaxPromptReferences(c.segment, currentPrompt, c.miniMaxPromptReferenceSignature(c.segment));
   c.items[0].image.path = 'replacement.png';
   assert.match(c.miniMaxPromptReferenceMismatch(c.segment, currentPrompt, 'reference_to_video'), /reference order or images changed/);
+});
+
+test('bypassing an upscaled sheet keeps the prompt and survives saving', async () => {
+  const c = fixture();
+  c.segment.minimax_h3_prompt = currentPrompt;
+  c.rememberMiniMaxPromptReferences(c.segment, currentPrompt, c.miniMaxPromptReferenceSignature(c.segment));
+  c.items[0].image.path = 'lead_upscaled.png';
+  await c.bypassMiniMaxPromptReferences([c.segment]);
+  const loaded = JSON.parse(JSON.stringify(c.segment));
+  assert.equal(loaded.minimax_h3_prompt, currentPrompt);
+  assert.equal(c.miniMaxPromptReferenceMismatch(loaded, currentPrompt, 'reference_to_video'), '');
+  c.items[0].image.path = 'another_replacement.png';
+  assert.match(c.miniMaxPromptReferenceMismatch(loaded, currentPrompt, 'reference_to_video'), /reference order or images changed/);
+});
+
+test('batch bypass accepts legacy mismatches but future reordering still blocks', async () => {
+  const c = fixture();
+  c.segment.minimax_h3_prompt = oldPrompt;
+  const second = { id: 'second', minimax_h3_prompt: currentPrompt };
+  c.rememberMiniMaxPromptReferences(second, currentPrompt, c.miniMaxPromptReferenceSignature(second));
+  c.items[0].image.path = 'lead_upscaled.png';
+  await c.bypassMiniMaxPromptReferences([c.segment, second]);
+  for (const segment of [c.segment, second]) {
+    assert.equal(c.miniMaxPromptReferenceMismatch(segment, segment.minimax_h3_prompt, 'reference_to_video'), '');
+  }
+  c.items.reverse();
+  assert.match(c.miniMaxPromptReferenceMismatch(c.segment, oldPrompt, 'reference_to_video'), /reference order or images changed/);
 });
 
 test('signature stays compact when an image is stored in memory', () => {
@@ -128,6 +160,39 @@ test('batch preflight reports every stale target before rendering', () => {
   assert.equal(problems.length, 2);
   assert.match(problems[0], /Scene 2/);
   assert.match(problems[1], /Scene 3/);
+});
+
+test('Render All error dialog offers bypass and retries the same scope', async () => {
+  const c = fixture();
+  c.segment.minimax_h3_prompt = oldPrompt;
+  const existing = { id: 'existing', minimax_h3_prompt: oldPrompt, video_path: 'existing.mp4' };
+  const draft = { id: 'draft', minimax_h3_prompt: oldPrompt, minimax_h3_draft: { id: 'take' } };
+  let actions = [];
+  let retried;
+  let closed = false;
+  Object.assign(c, {
+    state: { projectVideoEngine: 'minimax_h3' },
+    normalizeProjectVideoEngine: (value) => value,
+    normalizeBatchScope: (value) => value || 'all',
+    batchTargetItems: () => [c.segment, existing, draft].map((segment, index) => ({ segment, index })),
+    selectedSegmentVideoPath: (item) => item.video_path || '',
+    renderMissingListHtml: (missing) => missing.join('\n'),
+    renderAllScenes: async (options) => { retried = options; },
+  });
+  vm.runInContext(functionSource(source, 'showRenderAllMissing'), c);
+  const progress = { setHtml: () => {}, setActions: (items) => { actions = items; }, close: () => { closed = true; } };
+  const options = { sceneScope: 'selected', renderPhase: 'draft' };
+  c.showRenderAllMissing(progress, ['References changed'], options);
+  assert.match(actions[0].label, /Bypass reference warnings/);
+  await actions[0].onClick();
+  assert.equal(c.miniMaxPromptReferenceMismatch(c.segment, oldPrompt, 'reference_to_video'), '');
+  assert.equal(existing.minimax_h3_prompt_reference_binding, undefined);
+  assert.equal(draft.minimax_h3_prompt_reference_binding, undefined);
+  assert.equal(closed, true);
+  assert.equal(retried, options);
+  actions = [];
+  c.showRenderAllMissing(progress, ['Missing audio'], options);
+  assert.equal(actions.length, 0);
 });
 
 test('Render All preflight checks only scenes that will be rendered', () => {

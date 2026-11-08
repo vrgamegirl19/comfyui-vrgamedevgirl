@@ -900,6 +900,7 @@ export function createSession({
       builder_story_layer: normalizeBuilderStoryLayer(state.builderStoryLayer),
       builder_storyboard_defaults: normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults),
       auto_build_preparation: normalizeAutoBuildPreparation(state.autoBuildPreparation),
+      auto_build_draft: state.autoBuildDraft || null,
       wizard_beta_draft: state.wizardBetaDraft,
       render_logs: normalizeRenderLogs(state.renderLogs),
       active_render_log_id: state.activeRenderLogId || "",
@@ -1147,6 +1148,7 @@ export function createSession({
         state.builderStoryLayer = normalizeBuilderStoryLayer(data.session.builder_story_layer || {});
         state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults(data.session.builder_storyboard_defaults || data.session.builderStoryboardDefaults || {});
         state.autoBuildPreparation = normalizeAutoBuildPreparation(data.session.auto_build_preparation || data.session.autoBuildPreparation || {});
+        state.autoBuildDraft = data.session.auto_build_draft || null;
         state.wizardBetaDraft = data.session.wizard_beta_draft || null;
         state.renderLogs = normalizeRenderLogs(data.session.render_logs || state.renderLogs);
         state.activeRenderLogId = data.session.active_render_log_id || state.renderLogs[state.renderLogs.length - 1]?.id || "";
@@ -1437,6 +1439,7 @@ export function createSession({
       state.builderStoryLayer = normalizeBuilderStoryLayer(session.builder_story_layer || {});
       state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults(session.builder_storyboard_defaults || session.builderStoryboardDefaults || {});
       state.autoBuildPreparation = normalizeAutoBuildPreparation(session.auto_build_preparation || session.autoBuildPreparation || {});
+      state.autoBuildDraft = session.auto_build_draft || null;
       state.wizardBetaDraft = session.wizard_beta_draft || null;
       resetBuilderETA();
       state.renderLogs = normalizeRenderLogs(session.render_logs);

@@ -1129,6 +1129,7 @@ export function openBuilder(node, options = {}) {
     builderStoryLayer: normalizeBuilderStoryLayer({}),
     builderStoryboardDefaults: normalizeBuilderStoryboardDefaults({}),
     autoBuildPreparation: normalizeAutoBuildPreparation({}),
+    autoBuildDraft: null,
     wizardBetaDraft: null,
     postProcessTab: "luts",
     adjustLivePreview: false,
@@ -1412,6 +1413,7 @@ export function openBuilder(node, options = {}) {
   });
 
   const {
+    bypassMiniMaxPromptReferences,
     clearMiniMaxImageReferenceStartFrameOnModeSwitch, ensureMiniMaxSpeakerAssignments,
     isMiniMaxBuiltInSpeakerAssignmentMode, isMiniMaxSingerAssignmentMode, miniMaxH3ContinuityModeForSegment,
     miniMaxH3ContinuityReferenceReserved, miniMaxH3ModeForSegment, miniMaxH3SceneImageIsPromptInspiration,
@@ -1471,6 +1473,7 @@ export function openBuilder(node, options = {}) {
     prepareSceneAudioClipForTimestamping: (...args) => prepareSceneAudioClipForTimestamping(...args),
     miniMaxH3PromptCharacterBudget: (...args) => miniMaxH3PromptCharacterBudget(...args),
     miniMaxPromptReferenceMismatch: (...args) => miniMaxPromptReferenceMismatch(...args),
+    miniMaxPromptReferenceSignature: (...args) => miniMaxPromptReferenceSignature(...args),
     render: (...args) => render(...args),
     activateGlobalTimelineAudioPlayback: (...args) => activateGlobalTimelineAudioPlayback(...args),
     activeSegment: (...args) => activeSegment(...args),
@@ -2600,7 +2603,7 @@ export function openBuilder(node, options = {}) {
     hasFirstLastFrameEndImage, i2vAllScenes, i2vAutoChainEnabled, i2vTextGemmaModelSelect,
     imageAllSegmentsForMode, imageModeDisplayLabel, imageModeImg2ImgContinuityLabel,
     imageModeSupportsImg2ImgContinuity, img2imgContinuityEnabled, krea2TwoPassCreateButtons,
-    krea2TwoPassCreateT2IButton, miniMaxBatchReferenceProblems, miniMaxH3ModeForSegment, miniMaxH3SettingsForSegment,
+    krea2TwoPassCreateT2IButton, bypassMiniMaxPromptReferences, miniMaxBatchReferenceProblems, miniMaxH3ModeForSegment, miniMaxH3SettingsForSegment,
     miniMaxSceneVideoButtons, nbCreateButtons, persistRenderLog, prepareAutoChainedNextScene,
     prepareAutoImg2ImgContinuityForScene, prepareFLFRenderedFrameNextScene, prepareSceneAudioMix,
     previousAutoChainSourceSegment, previousSceneStartImageIngredient, projectInput, pushHistory,
@@ -2664,7 +2667,7 @@ export function openBuilder(node, options = {}) {
     openStoryboardBuilderFromProject, projectInput, pushHistory, render, runMiniMaxH3PromptGeneration,
     saveGemmaJunkDebug, saveSession, sceneDisplayName, sceneReferenceMapArray, state,
     syncI2VVideoSettingsPanel, syncInspector, syncProjectVideoEngineUI, syncVideoModePanel,
-    syncVideoTypeControl, transcribeExistingScenesWithOptions,
+    syncVideoTypeControl, textGemmaRunnerPayload, transcribeExistingScenesWithOptions,
     sceneDefaultsPromptOptions: (...args) => sceneDefaultsPromptOptions(...args),
   });
 
