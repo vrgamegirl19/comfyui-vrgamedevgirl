@@ -13,6 +13,7 @@ const referenceHelpers = [
   'miniMaxRenderReferenceImagePaths',
   'miniMaxBatchReferenceProblems',
   'rememberMiniMaxPromptReferences',
+  'bypassMiniMaxPromptReferences',
 ].map((name) => functionSource(source, name)).join('\n');
 
 function fixture() {
@@ -32,6 +33,10 @@ function fixture() {
     miniMaxH3FrameContinuityPromptEnabled: () => false,
     sceneDisplayName: (item, index) => item.label || `Scene ${index + 1}`,
     allEditableSegments: () => [segment],
+    pushHistory: () => {},
+    syncInspector: () => {},
+    autoSaveSessionQuiet: async () => {},
+    toast: () => {},
   };
   vm.createContext(context);
   vm.runInContext(referenceHelpers, context);
@@ -78,6 +83,33 @@ test('saved signature detects a reference image change', () => {
   c.rememberMiniMaxPromptReferences(c.segment, currentPrompt, c.miniMaxPromptReferenceSignature(c.segment));
   c.items[0].image.path = 'replacement.png';
   assert.match(c.miniMaxPromptReferenceMismatch(c.segment, currentPrompt, 'reference_to_video'), /reference order or images changed/);
+});
+
+test('bypassing an upscaled sheet keeps the prompt and survives saving', async () => {
+  const c = fixture();
+  c.segment.minimax_h3_prompt = currentPrompt;
+  c.rememberMiniMaxPromptReferences(c.segment, currentPrompt, c.miniMaxPromptReferenceSignature(c.segment));
+  c.items[0].image.path = 'lead_upscaled.png';
+  await c.bypassMiniMaxPromptReferences([c.segment]);
+  const loaded = JSON.parse(JSON.stringify(c.segment));
+  assert.equal(loaded.minimax_h3_prompt, currentPrompt);
+  assert.equal(c.miniMaxPromptReferenceMismatch(loaded, currentPrompt, 'reference_to_video'), '');
+  c.items[0].image.path = 'another_replacement.png';
+  assert.match(c.miniMaxPromptReferenceMismatch(loaded, currentPrompt, 'reference_to_video'), /reference order or images changed/);
+});
+
+test('batch bypass accepts legacy mismatches but future reordering still blocks', async () => {
+  const c = fixture();
+  c.segment.minimax_h3_prompt = oldPrompt;
+  const second = { id: 'second', minimax_h3_prompt: currentPrompt };
+  c.rememberMiniMaxPromptReferences(second, currentPrompt, c.miniMaxPromptReferenceSignature(second));
+  c.items[0].image.path = 'lead_upscaled.png';
+  await c.bypassMiniMaxPromptReferences([c.segment, second]);
+  for (const segment of [c.segment, second]) {
+    assert.equal(c.miniMaxPromptReferenceMismatch(segment, segment.minimax_h3_prompt, 'reference_to_video'), '');
+  }
+  c.items.reverse();
+  assert.match(c.miniMaxPromptReferenceMismatch(c.segment, oldPrompt, 'reference_to_video'), /reference order or images changed/);
 });
 
 test('signature stays compact when an image is stored in memory', () => {

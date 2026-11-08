@@ -1464,6 +1464,7 @@ export function openBuilder(node, options = {}) {
     prepareSceneAudioClipForTimestamping: (...args) => prepareSceneAudioClipForTimestamping(...args),
     miniMaxH3PromptCharacterBudget: (...args) => miniMaxH3PromptCharacterBudget(...args),
     miniMaxPromptReferenceMismatch: (...args) => miniMaxPromptReferenceMismatch(...args),
+    miniMaxPromptReferenceSignature: (...args) => miniMaxPromptReferenceSignature(...args),
     render: (...args) => render(...args),
     activateGlobalTimelineAudioPlayback: (...args) => activateGlobalTimelineAudioPlayback(...args),
     activeSegment: (...args) => activeSegment(...args),

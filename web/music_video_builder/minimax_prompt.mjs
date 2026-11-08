@@ -2990,6 +2990,7 @@ export function createMiniMaxPrompt({
     const signature = miniMaxPromptReferenceSignature(segment, mode);
     if (!signature || !String(prompt || "").trim()) return "";
     const saved = segment?.minimax_h3_prompt_reference_binding;
+    if (saved?.bypass && saved.prompt === String(prompt).trim() && saved.signature === signature) return "";
     if (saved?.prompt === String(prompt).trim() && saved.signature !== signature) {
       return "The scene's reference order or images changed after this prompt was generated.";
     }
