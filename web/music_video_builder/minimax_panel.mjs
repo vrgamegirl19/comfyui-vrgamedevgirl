@@ -1,6 +1,6 @@
 import { miniMaxPickerLoraName, syncInstalledMiniMaxLoraPicker } from "./minimax_lora_validation.mjs";
 import { postJson } from "./comfy_api.mjs";
-import { applyCompactButtonLabel, makeButton, normalizeProjectVideoEngine, toast } from "./controls.mjs";
+import { applyCompactButtonLabel, normalizeProjectVideoEngine, toast } from "./controls.mjs";
 import {
   cloneMiniMaxH3Settings,
   DEFAULT_MINIMAX_H3_SETTINGS,
@@ -94,16 +94,6 @@ export function createMiniMaxPanel({
     syncInspector, updatePlayPauseButton,
   });
 
-  const bypassSceneReferencesButton = makeButton("Bypass for this scene");
-  const bypassAllReferencesButton = makeButton("Bypass for all affected scenes");
-  const referenceBypassControls = document.createElement("div");
-  referenceBypassControls.style.cssText = "display:none;gap:6px;flex-wrap:wrap;";
-  referenceBypassControls.title = "Keep existing prompts and accept the current reference images and order, including replacement or upscaled sheets.";
-  referenceBypassControls.append(bypassSceneReferencesButton, bypassAllReferencesButton);
-  miniMaxPromptCharacterStatus.after(referenceBypassControls);
-  bypassSceneReferencesButton.addEventListener("click", () => bypassMiniMaxPromptReferences([activeSegment()]));
-  bypassAllReferencesButton.addEventListener("click", () => bypassMiniMaxPromptReferences(allEditableSegments()));
-
   async function bypassMiniMaxPromptReferences(segments) {
     const affected = segments.filter((segment) => segment && miniMaxPromptReferenceMismatch(
       segment, segment.minimax_h3_prompt || segment.i2v_prompt || "", miniMaxH3ModeForSegment(segment),
@@ -140,14 +130,9 @@ export function createMiniMaxPanel({
     }
     const referenceMismatch = segment ? miniMaxPromptReferenceMismatch(segment, miniMaxPrompt.value, mode) : "";
     if (referenceMismatch) {
-      miniMaxPromptCharacterStatus.textContent += ` ${referenceMismatch} Regenerate the prompt or bypass below to keep it.`;
+      miniMaxPromptCharacterStatus.textContent += ` ${referenceMismatch} Regenerate the prompt or use the bypass in the Render All error window to keep it.`;
       miniMaxPromptCharacterStatus.style.color = "#fde68a";
     }
-    const anyMismatch = Boolean(referenceMismatch) || allEditableSegments().some((item) => miniMaxPromptReferenceMismatch(
-      item, item.minimax_h3_prompt || item.i2v_prompt || "", miniMaxH3ModeForSegment(item),
-    ));
-    referenceBypassControls.style.display = anyMismatch ? "flex" : "none";
-    bypassSceneReferencesButton.disabled = !referenceMismatch;
   }
 
   async function toggleProjectVideoEngineFromBadge() {
