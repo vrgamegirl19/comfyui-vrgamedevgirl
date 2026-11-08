@@ -993,6 +993,7 @@ export function createMiniMaxPanel({
   }
 
   return {
+    bypassMiniMaxPromptReferences,
     clearMiniMaxImageReferenceStartFrameOnModeSwitch, ensureMiniMaxSpeakerAssignments,
     isMiniMaxBuiltInSpeakerAssignmentMode, isMiniMaxSingerAssignmentMode, miniMaxH3ContinuityModeForSegment,
     miniMaxH3ContinuityReferenceReserved, miniMaxH3ModeForSegment, miniMaxH3SceneImageIsPromptInspiration,

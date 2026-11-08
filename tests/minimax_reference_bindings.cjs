@@ -162,6 +162,39 @@ test('batch preflight reports every stale target before rendering', () => {
   assert.match(problems[1], /Scene 3/);
 });
 
+test('Render All error dialog offers bypass and retries the same scope', async () => {
+  const c = fixture();
+  c.segment.minimax_h3_prompt = oldPrompt;
+  const existing = { id: 'existing', minimax_h3_prompt: oldPrompt, video_path: 'existing.mp4' };
+  const draft = { id: 'draft', minimax_h3_prompt: oldPrompt, minimax_h3_draft: { id: 'take' } };
+  let actions = [];
+  let retried;
+  let closed = false;
+  Object.assign(c, {
+    state: { projectVideoEngine: 'minimax_h3' },
+    normalizeProjectVideoEngine: (value) => value,
+    normalizeBatchScope: (value) => value || 'all',
+    batchTargetItems: () => [c.segment, existing, draft].map((segment, index) => ({ segment, index })),
+    selectedSegmentVideoPath: (item) => item.video_path || '',
+    renderMissingListHtml: (missing) => missing.join('\n'),
+    renderAllScenes: async (options) => { retried = options; },
+  });
+  vm.runInContext(functionSource(source, 'showRenderAllMissing'), c);
+  const progress = { setHtml: () => {}, setActions: (items) => { actions = items; }, close: () => { closed = true; } };
+  const options = { sceneScope: 'selected', renderPhase: 'draft' };
+  c.showRenderAllMissing(progress, ['References changed'], options);
+  assert.match(actions[0].label, /Bypass reference warnings/);
+  await actions[0].onClick();
+  assert.equal(c.miniMaxPromptReferenceMismatch(c.segment, oldPrompt, 'reference_to_video'), '');
+  assert.equal(existing.minimax_h3_prompt_reference_binding, undefined);
+  assert.equal(draft.minimax_h3_prompt_reference_binding, undefined);
+  assert.equal(closed, true);
+  assert.equal(retried, options);
+  actions = [];
+  c.showRenderAllMissing(progress, ['Missing audio'], options);
+  assert.equal(actions.length, 0);
+});
+
 test('Render All preflight checks only scenes that will be rendered', () => {
   const c = fixture();
   const scenes = [
