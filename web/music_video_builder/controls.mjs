@@ -43,6 +43,7 @@ export const COMPACT_TOOLBAR_ICONS = {
   auto: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m7 5 2 4 2-4 2 4 2-4 2 4 2-4"/><path d="M8 13h4"/><path d="M10 11v4"/><path d="M17 12v4"/><path d="M15 14h4"/>',
   story: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16"/><path d="M16 4v16"/><path d="M3 9h5"/><path d="M16 15h5"/>',
   reference: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m5 18 4-4 3 3 2-2 5 3"/>',
+  thumbnail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3Z"/><path d="M3 16h4"/>',
   mapping: '<circle cx="5" cy="12" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="12" cy="19" r="2"/><path d="m6.5 10.5 4-4"/><path d="m13.5 6.5 4 4"/><path d="m17.5 13.5-4 4"/><path d="m10.5 17.5-4-4"/>',
   brain: '<path d="M9.5 4A3.5 3.5 0 0 0 6 7.5v.2A3.5 3.5 0 0 0 4 11v2a3.5 3.5 0 0 0 2 3.2v.3A3.5 3.5 0 0 0 9.5 20H11V4Z"/><path d="M14.5 4A3.5 3.5 0 0 1 18 7.5v.2a3.5 3.5 0 0 1 2 3.3v2a3.5 3.5 0 0 1-2 3.2v.3a3.5 3.5 0 0 1-3.5 3.5H13V4Z"/><path d="M8 9h3"/><path d="M13 14h3"/>',
   prompt: '<path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/><path d="M8 9h8"/><path d="M8 13h5"/>',

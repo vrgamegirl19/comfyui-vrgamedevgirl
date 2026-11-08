@@ -562,26 +562,41 @@ export async function queueWorkflowPrompt(prompt, options = {}) {
     body: JSON.stringify({ prompt: queuedPrompt, client_id: clientId, ...(extraData ? { extra_data: extraData } : {}) }),
   });
   const data = await response.json().catch(() => ({}));
+  const nodeErrorDetails = formatNodeErrors(data?.node_errors);
+  // A workflow ComfyUI refuses at queue time is a 400 whose `error` only says "Prompt outputs failed validation". The reason (which node,
+  // which input, which value) is in `node_errors`, so it goes in the message.
+  if (nodeErrorDetails) {
+    const error = new Error(`Workflow validation failed:\n${nodeErrorDetails}`);
+    reportProjectError(error, { source: "ComfyUI", component: "Workflow Validation", details: nodeErrorDetails }, logContext);
+    throw error;
+  }
   if (!response.ok || data?.error) {
     const error = new Error(data?.error?.message || data?.error || `Queue failed (${response.status})`);
     reportProjectError(error, { source: "ComfyUI", component: "Prompt Queue" }, logContext);
     throw error;
   }
-  if (data?.node_errors && Object.keys(data.node_errors).length) {
-    const details = Object.entries(data.node_errors).map(([nodeId, error]) => {
-      const messages = [error?.class_type, error?.exception_message, error?.message]
-        .filter(Boolean)
-        .map((value) => String(value));
-      const inputErrors = Array.isArray(error?.errors)
-        ? error.errors.map((item) => item?.message || item).filter(Boolean).map((value) => String(value))
-        : [];
-      return `Node ${nodeId}: ${[...messages, ...inputErrors].join(" | ") || JSON.stringify(error)}`;
-    }).join("\n");
-    const error = new Error(`Workflow validation failed:\n${details}`);
-    reportProjectError(error, { source: "ComfyUI", component: "Workflow Validation", details }, logContext);
-    throw error;
-  }
   return data;
+}
+
+// One line per node ComfyUI found a problem with: its class, what is wrong, and for an input the name and the value it got
+// (`unet_name: Value not in list (got "flux\\x.safetensors")`). Empty when there are no node errors.
+export function formatNodeErrors(nodeErrors) {
+  if (!nodeErrors || typeof nodeErrors !== "object") return "";
+  return Object.entries(nodeErrors).map(([nodeId, error]) => {
+    const messages = [error?.class_type, error?.exception_message, error?.message]
+      .filter(Boolean)
+      .map((value) => String(value));
+    const inputErrors = Array.isArray(error?.errors)
+      ? error.errors.map((item) => {
+        if (!item || typeof item !== "object") return String(item || "");
+        const extra = item.extra_info && typeof item.extra_info === "object" ? item.extra_info : {};
+        const name = extra.input_name ? `${extra.input_name}: ` : "";
+        const got = extra.received_value !== undefined && extra.received_value !== null ? ` (got ${JSON.stringify(extra.received_value)})` : "";
+        return `${name}${item.message || ""}${got}`.trim();
+      }).filter(Boolean)
+      : [];
+    return `Node ${nodeId}: ${[...messages, ...inputErrors].join(" | ") || JSON.stringify(error)}`;
+  }).join("\n");
 }
 
 export function audioUrl(path) {

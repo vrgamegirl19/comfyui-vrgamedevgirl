@@ -14,7 +14,7 @@ import {
 } from "./model_settings.mjs";
 import { normalizeGemmaContextLimit } from "./prompt_text.mjs";
 
-function fluxKleinLoraPayload(settings = {}) {
+export function fluxKleinLoraPayload(settings = {}) {
   const count = Math.max(0, Math.min(4, Number(settings.lora_count || 0)));
   const useLoras = Boolean(settings.use_loras && count > 0);
   const payload = {

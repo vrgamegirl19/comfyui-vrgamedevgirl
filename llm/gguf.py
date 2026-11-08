@@ -932,6 +932,7 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
         **kwargs,
     ) -> Tuple[str, str, str]:
         self._gpu_device = normalize_gpu_device(kwargs.pop("gpu_device", None), self._gpu_device)
+        keep_all_text = bool(kwargs.pop("keep_all_text", False))
         model_id = self._resolve_model_id(model_preset, custom_model_id)
         instruction_text = self._build_instruction_text(
             task_preset, user_input, trigger_word, custom_instructions
@@ -984,7 +985,10 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
                         max_new_tokens,
                     )
                 text = str(text or "").strip()
-                text = self._enforce_preset_output(task_preset, text)
+                # A preset answers with one paragraph, so the rest is cut. A caller that wants a whole story or a list of
+                # sections (the H3 Studio app) asks for the reply as it is.
+                if not keep_all_text:
+                    text = self._enforce_preset_output(task_preset, text)
                 if not text:
                     raise Exception("Empty model response.")
                 used_model = model_path
@@ -1499,6 +1503,13 @@ class VRGDG_SuperGemmaGGUFChat(VRGDG_GeneralGGUF):
                     "max": 63,
                     "step": 1,
                     "tooltip": "Which GPU holds the model. -1 lets llama.cpp spread it over every GPU ComfyUI can see. A number puts the whole model on that GPU, numbered as ComfyUI sees them (the LLM Runner of the Video Builder lists them with names).",
+                },
+            ),
+            "keep_all_text": (
+                "BOOLEAN",
+                {
+                    "default": False,
+                    "tooltip": "Return the whole reply. Off keeps one paragraph, which suits a single prompt. Turn it on for a story or a list of sections.",
                 },
             ),
         })

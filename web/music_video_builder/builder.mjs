@@ -36,7 +36,8 @@ import {
   setWidgetValue,
   toast,
 } from "./controls.mjs";
-import { pickProjectSessionFile, showInfoModal, showLastProgressWindow, showLoadProjectModal, showTextInputModal } from "./dialogs.mjs";
+import { pickProjectSessionFile, showInfoModal, showLastProgressWindow, showLoadProjectModal, showModelDownloadModal, showTextInputModal } from "./dialogs.mjs";
+import { addMossImageOption, createMossImagePanel, MOSS_PANEL_LABEL } from "./moss_image_panel.mjs";
 import { cloneMiniMaxH3Settings } from "./minimax_h3.mjs";
 import { DEFAULT_KREA2_REFERENCE_SETTINGS } from "./models.mjs";
 import { defaultNotificationSettings } from "./notifications.mjs";
@@ -128,6 +129,8 @@ import { createWizardBridge } from "./wizard_bridge.mjs";
 import { createStoryboardBridge } from "./storyboard_bridge.mjs";
 import { wirePanelButtons, wireReferenceControls, wireSceneInputs } from "./inspector_events.mjs";
 import { buildProjectControls, buildTopbar, createFullscreen, wireToolbar } from "./toolbar.mjs";
+import { wireThumbnail } from "./thumbnail.mjs";
+import { normalizeThumbnailIntro } from "./thumbnail_state.mjs";
 import { wireTimelineControls } from "./timeline_events.mjs";
 import { wireKeyboardShortcuts } from "./keyboard_shortcuts.mjs";
 import { buildUpdateBanner, createWhatsNewModal } from "./update_banner.mjs";
@@ -247,8 +250,8 @@ export function openBuilder(node, options = {}) {
     lyricMapperButton, menuDropdown, pollBuilderResources, positionBuilderETA, positionBuilderResourceMonitor,
     projectBatchButton, projectVideoEngineBadge, promptCreatorButton, promptOptionsButton, renderAllButton,
     renderLogButton, sendToPromptCreatorButton, slideshowPreviewButton, stitchPreviewButton,
-    syncWorkflowActionOrder, stopWorkflowButton, storyboardBuilderButton, updateV10Button, updateV10HintButton,
-    wizardButton, zEnhanceAllButton, zEnhanceAllToolButton, zImageAllButton,
+    syncWorkflowActionOrder, stopWorkflowButton, storyboardBuilderButton, thumbnailButton, updateV10Button,
+    updateV10HintButton, wizardButton, zEnhanceAllButton, zEnhanceAllToolButton, zImageAllButton,
   } = buildTopbar({
     autoSaveControl, branchProjectButton, builderETAState, builderLifecycle, closeBuilderNow, closeButton,
     exportProjectButton, fullscreenButton, importProjectButton, loadLastProjectButton, loadSessionButton,
@@ -969,6 +972,11 @@ export function openBuilder(node, options = {}) {
     overlayLayerTrack: normalizeOverlayLayerTrack(),
     overlayLayers: [],
     overlayAvailable: false,
+    thumbnailIntro: normalizeThumbnailIntro(),
+    thumbnailAvailable: false,
+    thumbnailFrameAvailable: false,
+    thumbnailOverlayAvailable: false,
+    thumbnailApiImage: null,
     activeOverlayId: "",
     overlayLaneOpen: false,
     sceneTransitions: [],
@@ -2548,15 +2556,28 @@ export function openBuilder(node, options = {}) {
     autoSaveSessionQuiet, createProgressWindow, saveSession, state, syncBuilderLlmModelSelectsFromRunner,
     mmprojSelect, t2iTextGemmaModelSelect, textGemmaRunnerPayload, updatePromptRunnerButtonLabels,
   });
+  const currentLlmRunnerPayload = () => ({
+    ...textGemmaRunnerPayload(),
+    model_file: state.textGemmaRunner === "qwen_local" ? state.qwenModelFile || ""
+      : state.gemmaModelFile || t2iTextGemmaModelSelect.value || referenceDescriptionVisionModel(),
+    mmproj_file: state.textGemmaRunner === "qwen_local" ? state.qwenMmprojFile || "" : referenceDescriptionMmproj(),
+  });
   builderLifecycle.disposeLlmSetup = registerLlmSetup(createLlmSetup({
     openRunner: openGemmaRunnerModal,
-    getRunnerPayload: () => ({
-      ...textGemmaRunnerPayload(),
-      model_file: state.textGemmaRunner === "qwen_local" ? state.qwenModelFile || ""
-        : state.gemmaModelFile || t2iTextGemmaModelSelect.value || referenceDescriptionVisionModel(),
-      mmproj_file: state.textGemmaRunner === "qwen_local" ? state.qwenMmprojFile || "" : referenceDescriptionMmproj(),
-    }),
+    getRunnerPayload: currentLlmRunnerPayload,
   }));
+  wireThumbnail({
+    button: thumbnailButton, state, projectInput, createProgressWindow,
+    runnerPayload: currentLlmRunnerPayload,
+    sceneImagePath: (segment) => selectedSegmentImagePath(segment),
+    sceneVideoPath: (segment) => selectedSegmentVideoPath(segment),
+    sceneLabel: (segment, index) => sceneDisplayName(segment, index),
+    // The settings the Builder holds for each image workflow that needs any (Qwen Image Edit picks its own models).
+    engineSettings: (engine) => ({
+      nano_banana: () => state.nbImageSettings,
+    })[engine]?.(),
+    save: () => autoSaveSessionQuiet("Thumbnail"),
+  });
 
   const {
     buildFullFLFVideoPipeline, buildFullVideoPipeline, buildIndependentFLFPairs, createEndFramesAllScenes,
@@ -3071,8 +3092,12 @@ export function openBuilder(node, options = {}) {
     useSceneMiniMaxH3Settings, useSceneNBImageSettings, useSceneZImageSettings, useT2VVisionReference,
     useVisionReference,
   });
+  // MOSS-Image has its models and settings in Models > Select models. The Image tab's model list opens that dialog on its tab.
+  const mossImagePanel = createMossImagePanel();
+  const modelSelections = [videoSubTabs.modelSelection, miniMaxSubTabs.modelSelection, ...imageModelSelections, mossImagePanel.modelSelection];
+  addMossImageOption(imageModelSelect, () => showModelDownloadModal({ modelSelections, select: MOSS_PANEL_LABEL }));
   wireToolbar({
-    modelSelections: [videoSubTabs.modelSelection, miniMaxSubTabs.modelSelection, ...imageModelSelections],
+    modelSelections,
     render,
     activeSegment, addOverlaySegment, addOverlaySegmentButton, addSegment, addSegmentButton,
     addTimelineMarkerButton, addTimelineMarkerFromSelection, applyBuilderFullscreen, autoBuildButton,
@@ -3174,10 +3199,11 @@ export function openBuilder(node, options = {}) {
     segmentTrack, snapSceneEdgeToNearestBeat, undo,
   });
 
-  // The Models dialog's Dmad Models tab finished installing a file: reload the LoRA lists so the pickers and the DMAD
-  // "not found" note see it.
+  // The Models dialog (the Dmad Models tab, the MOSS-Image Edit LoRA button) finished installing a file: reload the LoRA lists so the
+  // pickers, the DMAD "not found" note and the MOSS-Image tab see it.
   builderLifecycle.modelsChangedHandler = () => {
     refreshLoraChoices().then(() => syncMiniMaxH3Panel()).catch(() => null);
+    mossImagePanel.refresh();
   };
   window.addEventListener("vrgdg-models-changed", builderLifecycle.modelsChangedHandler);
 

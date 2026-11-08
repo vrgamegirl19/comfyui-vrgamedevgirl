@@ -11,6 +11,9 @@ import {
   cloneZImageSettings,
 } from "./model_settings.mjs";
 import { cloneKrea2ReferenceSettings, DEFAULT_KREA2_REFERENCE_SETTINGS } from "./models.mjs";
+import {
+  DEFAULT_MOSS_REFERENCE_SETTINGS, loadMossReferenceSettings, MOSS_PRESETS, mossReferencePayload, saveMossReferenceSettings,
+} from "./moss_settings.mjs";
 import { loadContextTextQuiet, lyricsFromSegmentsForPromptCreator } from "./project_files.mjs";
 import { applyTriggerPhrase, isRecoverableBuildGemmaError } from "./prompt_text.mjs";
 import { normalizeFluxReferenceBuilder } from "./reference_data.mjs";
@@ -50,58 +53,8 @@ function zimageReferencePayload(prompt, settings) {
   return payload;
 }
 
-const MOSS_REFERENCE_STORAGE_KEY = "vrgdg_moss_image_reference_settings";
-const MOSS_TURBO_LORA = "moss_image_sft_8_steps_dmd_lora.safetensors";
-const MOSS_PRESETS = {
-  turbo: { lora_name: MOSS_TURBO_LORA, steps: 8, cfg: 1 },
-  quality: { lora_name: "[none]", steps: 50, cfg: 3 },
-};
-const DEFAULT_MOSS_REFERENCE_SETTINGS = {
-  unet_name: "moss_image_sft_bf16.safetensors",
-  clip_name: "qwen3.5_9b_int8_convrot.safetensors",
-  vae_name: "flux2-vae.safetensors",
-  preset: "turbo",
-  ...MOSS_PRESETS.turbo,
-  width: 1920,
-  height: 1088,
-  seed: 1,
-  seed_mode: "random",
-};
-
-function loadMossReferenceSettings() {
-  try {
-    const saved = JSON.parse(window.localStorage.getItem(MOSS_REFERENCE_STORAGE_KEY) || "{}");
-    return { ...DEFAULT_MOSS_REFERENCE_SETTINGS, ...(saved && typeof saved === "object" ? saved : {}) };
-  } catch (_error) {
-    return { ...DEFAULT_MOSS_REFERENCE_SETTINGS };
-  }
-}
-
-function saveMossReferenceSettings(settings) {
-  try {
-    window.localStorage.setItem(MOSS_REFERENCE_STORAGE_KEY, JSON.stringify(settings));
-  } catch (_error) {
-    // Per-viewer convenience only.
-  }
-}
-
-function mossReferencePayload(prompt, settings = {}) {
-  const moss = { ...DEFAULT_MOSS_REFERENCE_SETTINGS, ...settings };
-  return {
-    prompt: String(prompt || "").trim(),
-    unet_name: moss.unet_name,
-    clip_name: moss.clip_name,
-    vae_name: moss.vae_name,
-    lora_name: moss.lora_name || "[none]",
-    steps: Number(moss.steps) || 8,
-    cfg: Number(moss.cfg) || 1,
-    width: Number(moss.width) || 1920,
-    height: Number(moss.height) || 1088,
-    seed: Number(moss.seed) || 0,
-    seed_mode: moss.seed_mode || "random",
-    batch_size: 1,
-  };
-}
+// MOSS-Image's saved settings, presets and request live in moss_settings.mjs, which the MOSS-Image tab of Models > Select models and the
+// Thumbnail dialog use too.
 
 function referenceGeneratorPickerOptions(options = [], defaults = []) {
   const merged = [...(Array.isArray(defaults) ? defaults : [defaults]), ...(options || [])];
@@ -275,7 +228,8 @@ export function createReferenceGeneration({
         seed: Math.max(0, Math.floor(Number(mossSeed.value) || 0)),
         seed_mode: mossSeedMode.value || "random",
       };
-      saveMossReferenceSettings(settings);
+      // Merged into what is saved, so a setting this dialog does not show (the Edit LoRA of the MOSS-Image tab) is kept.
+      saveMossReferenceSettings({ ...loadMossReferenceSettings(), ...settings });
       return settings;
     };
 

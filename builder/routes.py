@@ -26,6 +26,9 @@ from .video_profiles import (
     save_video_profile, set_last_video_profile,
 )
 from .export_video import _export_final_video
+from .thumbnail import _extract_thumbnail_frame, _prepend_thumbnail_intro, _save_thumbnail_image, _thumbnail_capabilities
+from .thumbnail_api_image import _make_thumbnail_api_image
+from .thumbnail_overlay import _make_thumbnail_overlay
 from .paths import _open_local_file, _open_native_picker, _resolve_existing_file
 from .elevenlabs import list_voices
 from ..general.lyrics import unload_stable_ts_models
@@ -44,6 +47,7 @@ from ..llm.builder_runner import _clear_builder_memory_direct, _gemma_choices, _
 from ..llm.video_prompt_generation import _edit_builder_video_prompt, _enhance_builder_video_prompt, _enhance_minimax_h3_prompt, _generate_builder_chained_i2v_prompt, _generate_builder_i2v_prompt, _generate_builder_motion_notes, _generate_builder_t2v_prompt
 from ..llm.image_prompt_generation import _analyze_builder_story_references, _edit_builder_image_prompt, _generate_builder_concept_prompts, _generate_builder_reference_description, _generate_builder_t2i_prompt, _generate_flux_klein_prompt, _generate_flux_reference_location_map, _generate_flux_reference_locations, _generate_flux_reference_subjects, _generate_flux_reference_zimage_prompt, _generate_lm_scout_locations, _generate_nb_image_prompt, _generate_wizard_locations_from_lyrics
 from ..llm.builder_agent import _generate_builder_agent_reply
+from ..llm.thumbnail_prompt import _generate_thumbnail_prompt
 from ..llm.gemma4 import _run_gemma4_prompt
 
 
@@ -826,6 +830,64 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = await asyncio.to_thread(_export_final_video, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.get("/vrgdg/music_builder/thumbnail/capabilities")
+    async def vrgdg_music_builder_thumbnail_capabilities(request):
+        return web.json_response({"ok": True, **_thumbnail_capabilities()})
+
+    @server_instance.routes.post("/vrgdg/music_builder/thumbnail/prompt")
+    async def vrgdg_music_builder_thumbnail_prompt(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_generate_thumbnail_prompt, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/thumbnail/save")
+    async def vrgdg_music_builder_thumbnail_save(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_save_thumbnail_image, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/thumbnail/frame")
+    async def vrgdg_music_builder_thumbnail_frame(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_extract_thumbnail_frame, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/thumbnail/overlay")
+    async def vrgdg_music_builder_thumbnail_overlay(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_make_thumbnail_overlay, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/thumbnail/api_image")
+    async def vrgdg_music_builder_thumbnail_api_image(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_make_thumbnail_api_image, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/thumbnail/prepend")
+    async def vrgdg_music_builder_thumbnail_prepend(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_prepend_thumbnail_intro, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

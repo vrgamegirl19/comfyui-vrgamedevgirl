@@ -503,6 +503,7 @@ export function buildTopbar({
   const refModsViewerButton = makeButton("RefMods Viewer");
   refModsViewerButton.onclick = () => openRefModsViewer({ onOpenStudio: () => openRefModsStudio({ runnerPayload: () => currentRunnerPayload?.() }) });
   const lyricMapperButton = makeButton("Line Mapping");
+  const thumbnailButton = makeButton("Thumbnail");
   const sendToPromptCreatorButton = makeButton("Send To Prompt Creator");
   const promptOptionsButton = makeButton("Prompt Options");
   const gemmaRunnerButton = makeButton("LLM Runner");
@@ -597,6 +598,14 @@ export function buildTopbar({
     width: 56,
     title: "Transcribe lyrics or dialogue and map performers to scenes.",
   });
+  styleCompactToolbarButton(thumbnailButton, {
+    lines: ["Thumb", "nail"],
+    icon: "thumbnail",
+    width: 54,
+    title: "Make a YouTube-style thumbnail from a scene image and show it at the start of the final video.",
+  });
+  // Hidden until the build answers that it can make thumbnails (wireThumbnail shows it).
+  thumbnailButton.style.display = "none";
   styleCompactToolbarButton(gemmaRunnerButton, {
     lines: ["LLM", "Runner"],
     icon: "brain",
@@ -677,9 +686,10 @@ export function buildTopbar({
   function syncWorkflowActionOrder(videoType) {
     const order = normalizeProjectVideoType(videoType) === "singing"
       ? [wizardButton, autoBuildButton, fluxReferenceBuilderButton, lyricMapperButton, storyboardBuilderButton,
-        refModsStudioButton, refModsViewerButton, gemmaRunnerButton, promptOptionsButton]
+        refModsStudioButton, refModsViewerButton, gemmaRunnerButton, promptOptionsButton, thumbnailButton]
       : [wizardButton, autoBuildButton, storyboardBuilderButton, fluxReferenceBuilderButton,
-        refModsStudioButton, refModsViewerButton, lyricMapperButton, gemmaRunnerButton, promptOptionsButton];
+        refModsStudioButton, refModsViewerButton, lyricMapperButton, gemmaRunnerButton, promptOptionsButton,
+        thumbnailButton];
     if (order.every((button, index) => importActions.children[index] === button)) return;
     importActions.append(...order);
   }
@@ -705,7 +715,10 @@ export function buildTopbar({
     builderETA.style.gridColumn = fits ? "" : "1 / -1";
     builderETA.style.justifySelf = "center";
   };
-  const builderETAResizeObserver = new ResizeObserver(positionBuilderETA);
+  const builderETAResizeObserver = new ResizeObserver(() => {
+    positionBuilderETA();
+    scheduleEqualizeSideGroups();
+  });
   builderETAResizeObserver.observe(centerActions);
   builderETAResizeObserver.observe(importActions);
 
@@ -808,6 +821,35 @@ export function buildTopbar({
   utilityActions.append(projectVideoEngineBadge, stopWorkflowButton, downloadModelsButton, clearMemoryButton, fullscreenButton, closeButton);
   topbar.append(projectActions, centerActions, utilityActions, menuDropdown);
 
+  // The left and right groups have different widths, which pushes the middle buttons off the window's center. Giving
+  // both the width of the wider one makes the two side columns equal, so the middle column, and the buttons in it,
+  // sit on the center. When the window is too narrow for that, the groups keep their own widths as before.
+  let equalizeSideFrame = 0;
+  const equalizeSideGroups = () => {
+    equalizeSideFrame = 0;
+    if (!topbar.isConnected) return;
+    projectActions.style.minWidth = "max-content";
+    utilityActions.style.minWidth = "max-content";
+    const sideWidth = Math.ceil(Math.max(
+      projectActions.getBoundingClientRect().width,
+      utilityActions.getBoundingClientRect().width,
+    ));
+    const bar = getComputedStyle(topbar);
+    const room = topbar.clientWidth
+      - (parseFloat(bar.paddingLeft) || 0) - (parseFloat(bar.paddingRight) || 0)
+      - 2 * (parseFloat(bar.columnGap) || 0);
+    if (sideWidth > 0 && room - 2 * sideWidth >= importActions.scrollWidth) {
+      projectActions.style.minWidth = `${sideWidth}px`;
+      utilityActions.style.minWidth = `${sideWidth}px`;
+    }
+  };
+  function scheduleEqualizeSideGroups() {
+    if (!equalizeSideFrame) equalizeSideFrame = requestAnimationFrame(equalizeSideGroups);
+  }
+  builderETAResizeObserver.observe(topbar);
+  builderETAResizeObserver.observe(projectActions);
+  builderETAResizeObserver.observe(utilityActions);
+
   return {
     autoBuildButton, autoLoadAllButton, builderAgentButton, builderETA, builderETAResizeObserver,
     builderFullETA, builderSceneETA, centerActions, clearMemoryButton, convertLtxPromptsToMiniMaxButton,
@@ -816,8 +858,8 @@ export function buildTopbar({
     lyricMapperButton, menuDropdown, pollBuilderResources, positionBuilderETA, positionBuilderResourceMonitor,
     projectBatchButton, projectVideoEngineBadge, promptCreatorButton, promptOptionsButton, renderAllButton,
     renderLogButton, sendToPromptCreatorButton, slideshowPreviewButton, stitchPreviewButton,
-    syncWorkflowActionOrder, stopWorkflowButton, storyboardBuilderButton, updateV10Button, updateV10HintButton,
-    wizardButton, zEnhanceAllButton, zEnhanceAllToolButton, zImageAllButton,
+    syncWorkflowActionOrder, stopWorkflowButton, storyboardBuilderButton, thumbnailButton, updateV10Button,
+    updateV10HintButton, wizardButton, zEnhanceAllButton, zEnhanceAllToolButton, zImageAllButton,
   };
 }
 

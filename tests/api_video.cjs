@@ -52,6 +52,7 @@ test('partner queue passes current ComfyUI credentials only in extra_data and re
   });
   const source = readBuilderModule('comfy_api.mjs');
   vm.runInContext(functionSource(source, 'comfyOrgCredentials'), c);
+  vm.runInContext(functionSource(source, 'formatNodeErrors'), c);
   vm.runInContext(functionSource(source, 'queueWorkflowPrompt'), c);
   await c.queueWorkflowPrompt({ seedance: { inputs: {} } }, { partnerApi: true });
   assert.equal(calls[0].extra_data.auth_token_comfy_org, 'test-token');
@@ -81,6 +82,7 @@ test('partner queue reads the signed-in account from the frontend auth stores ou
   });
   const source = readBuilderModule('comfy_api.mjs');
   vm.runInContext(functionSource(source, 'comfyOrgCredentials'), c);
+  vm.runInContext(functionSource(source, 'formatNodeErrors'), c);
   vm.runInContext(functionSource(source, 'queueWorkflowPrompt'), c);
   await c.queueWorkflowPrompt({}, { partnerApi: true });
   assert.equal(calls[0].extra_data.auth_token_comfy_org, 'store-token');
