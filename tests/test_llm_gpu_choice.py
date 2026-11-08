@@ -156,7 +156,8 @@ class LoaderTests(unittest.TestCase):
         for node in (gguf.VRGDG_SuperGemmaGGUFChat, gguf.VRGDG_QwenGGUF, gguf.VRGDG_GeneralGGUF):
             inputs = node.INPUT_TYPES()
             self.assertNotIn("gpu_device", inputs["required"], node.__name__)
-            self.assertEqual(list(inputs["optional"])[-1], "gpu_device", node.__name__)
+            # keep_all_text (SuperGemma only) was added after it, so it is the one widget that may follow.
+            self.assertEqual([name for name in inputs["optional"] if name != "keep_all_text"][-1], "gpu_device", node.__name__)
             self.assertEqual(inputs["optional"]["gpu_device"][1]["default"], -1)
 
     def test_the_builder_runner_hands_the_choice_to_the_model(self):

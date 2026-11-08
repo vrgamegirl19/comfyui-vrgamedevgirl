@@ -136,6 +136,7 @@ function refreshAdvancedWidgets(node) {
     "n_ctx",
     "n_gpu_layers",
     "gpu_device",
+    "keep_all_text",
     "n_threads",
     "chat_format",
     "temperature",
