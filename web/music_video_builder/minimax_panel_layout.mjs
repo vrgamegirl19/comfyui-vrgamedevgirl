@@ -525,14 +525,16 @@ export function buildMiniMaxPanel({
   const miniMaxAdvancedDependencyNote = document.createElement("div");
   miniMaxAdvancedDependencyNote.textContent = "Requires the latest Comfyui-MMH3-UltimateUpscale. Pass 2 uses temporal chunks and spatial tiles, planned automatically from the output resolution and your VRAM preset, and becomes the final timeline clip.";
   miniMaxAdvancedDependencyNote.style.cssText = "font-size:11px;color:#facc15;line-height:1.45;";
+  const miniMaxAdvancedTilingSummary = document.createElement("div");
+  miniMaxAdvancedTilingSummary.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.45;";
   const syncMiniMaxResolution = () => {
     const resolved = miniMaxH3PresetMegapixels(miniMaxResolutionPreset.value, miniMaxAspectRatio.value);
     miniMaxMegapixels.disabled = resolved !== null;
     if (resolved !== null) miniMaxMegapixels.value = String(resolved);
     const size = miniMaxH3FrameSize(miniMaxMegapixels.value, miniMaxAspectRatio.value);
     const plan = miniMaxH3TilePlan(miniMaxAdvancedVramPreset.value, miniMaxMegapixels.value, miniMaxAspectRatio.value);
-    miniMaxResolutionSummary.textContent = `Output size: ${size.width}×${size.height}px. `
-      + `2 Pass Advanced tiling (${miniMaxAdvancedVramPreset.value.replace("gb", " GB")}): ${plan.rows}×${plan.cols} tiles, ${plan.chunk}-frame chunks.`;
+    miniMaxResolutionSummary.textContent = `Output size: ${size.width}×${size.height}px.`;
+    miniMaxAdvancedTilingSummary.textContent = `2 Pass Advanced tiling (${miniMaxAdvancedVramPreset.value.replace("gb", " GB")}): ${plan.rows}×${plan.cols} tiles, ${plan.chunk}-frame chunks.`;
   };
   // The panel calls this after loading saved settings into the controls.
   miniMaxResolutionPreset.syncResolution = syncMiniMaxResolution;
@@ -543,6 +545,7 @@ export function buildMiniMaxPanel({
   syncMiniMaxResolution();
   const miniMaxThreePassSettings = makeSettingsSection("2 Pass Advanced — MMH3 Ultimate Upscale", [
     miniMaxAdvancedDependencyNote,
+    miniMaxAdvancedTilingSummary,
     makeField("VRAM preset", miniMaxAdvancedVramPreset, "Sizes an equal tile grid for the output resolution and sets chunk length and overlap. 2 Pass Advanced is for cards up to 24 GB; larger cards should use 2 Pass."),
     makeField("Reference image sizing", miniMaxThreePassRefImageSize, "Controls the MiniMax H3 reference-conditioning image-size mode. Default: max."),
     makeField("Latent upscaler model", miniMaxAdvancedLatentUpscalerPicker.wrapper),
