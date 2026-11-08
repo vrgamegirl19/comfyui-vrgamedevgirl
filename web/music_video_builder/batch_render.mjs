@@ -32,7 +32,7 @@ export function createBatchRender({
   generateT2IPromptForSegment, hasFirstLastFrameEndImage, i2vAllScenes, i2vAutoChainEnabled,
   i2vTextGemmaModelSelect, imageAllSegmentsForMode, imageModeDisplayLabel, imageModeImg2ImgContinuityLabel,
   imageModeSupportsImg2ImgContinuity, img2imgContinuityEnabled, krea2TwoPassCreateButtons,
-  krea2TwoPassCreateT2IButton, loadSessionFromProject, miniMaxBatchReferenceProblems, miniMaxH3ModeForSegment,
+  krea2TwoPassCreateT2IButton, loadSessionFromProject, bypassMiniMaxPromptReferences, miniMaxBatchReferenceProblems, miniMaxH3ModeForSegment,
   miniMaxH3SettingsForSegment,
   miniMaxSceneVideoButtons, nbCreateButtons, persistRenderLog, prepareAutoChainedNextScene,
   prepareAutoImg2ImgContinuityForScene, prepareFLFRenderedFrameNextScene, prepareSceneAudioMix,
@@ -50,6 +50,23 @@ export function createBatchRender({
   videoModeDisplayLabel, wizardStoryboardState, zCreateButtons, zEnhanceAllButton, zEnhanceAllToolButton,
   zEnhanceButton, zImageAllButton,
 }) {
+  function showRenderAllMissing(progress, missing, options = {}) {
+    progress.setHtml(renderMissingListHtml(missing), 100);
+    const targets = batchTargetItems(normalizeBatchScope(options.sceneScope))
+      .filter(({ segment }) => options.forceVideos || (!segment.minimax_h3_draft?.id && !String(selectedSegmentVideoPath(segment) || "").trim()));
+    if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3"
+      && options.renderPhase !== "finalize" && miniMaxBatchReferenceProblems(targets).length) {
+      progress.setActions([{
+        label: "Bypass reference warnings and retry rendering",
+        onClick: async () => {
+          await bypassMiniMaxPromptReferences(targets.map(({ segment }) => segment));
+          progress.close();
+          await renderAllScenes(options);
+        },
+      }]);
+    }
+  }
+
   async function renderAllScenes(options = {}) {
     updateActiveFromInputs();
     saveI2VVideoSettingsFromPanel();
@@ -93,7 +110,7 @@ export function createBatchRender({
     const missing = validateRenderAllReady({ forceVideos, sceneScope, renderPhase });
     const progress = createProgressWindow(draftRender ? "Render Drafts" : finalizeDrafts ? "Finalize Drafts" : sceneScope === "selected" ? "Render Selected Scenes" : sceneScope === "from_selected" ? "Render From Selected Scene" : "Render All Scenes");
     if (missing.length) {
-      progress.setHtml(renderMissingListHtml(missing), 100);
+      showRenderAllMissing(progress, missing, options);
       toast("Render All needs a few things fixed first.", true);
       return;
     }

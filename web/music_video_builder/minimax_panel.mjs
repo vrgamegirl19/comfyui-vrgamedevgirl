@@ -56,7 +56,7 @@ export function createMiniMaxPanel({
   miniMaxModeSelect, miniMaxModePanels, miniMaxModelLoaderSettings,
   miniMaxOrderedImageReferenceItemsForSegment, miniMaxPass2Prompt, miniMaxPass2PromptField,
   miniMaxPassButtons, miniMaxPassChooser, miniMaxPrompt, miniMaxPromptCharacterStatus,
-  miniMaxPromptReferenceMismatch, miniMaxPromptRunnerNote, miniMaxRefImageSize, miniMaxReferenceButtons,
+  miniMaxPromptReferenceMismatch, miniMaxPromptReferenceSignature, miniMaxPromptRunnerNote, miniMaxRefImageSize, miniMaxReferenceButtons,
   miniMaxReferenceConditioningSettings, miniMaxSageAttention, miniMaxSamplerName, miniMaxSamplerSettings,
   miniMaxSceneImageUse, miniMaxSceneImageUseField, miniMaxSceneVideoButton, miniMaxScheduler, miniMaxSeed,
   miniMaxSeedField, miniMaxSettingsScopeNote, miniMaxSpeakerAssignmentList, miniMaxSpeakerAssignmentNote,
@@ -94,6 +94,24 @@ export function createMiniMaxPanel({
     syncInspector, updatePlayPauseButton,
   });
 
+  async function bypassMiniMaxPromptReferences(segments) {
+    const affected = segments.filter((segment) => segment && miniMaxPromptReferenceMismatch(
+      segment, segment.minimax_h3_prompt || segment.i2v_prompt || "", miniMaxH3ModeForSegment(segment),
+    ));
+    if (!affected.length) return;
+    pushHistory();
+    for (const segment of affected) {
+      segment.minimax_h3_prompt_reference_binding = {
+        prompt: String(segment.minimax_h3_prompt || segment.i2v_prompt || "").trim(),
+        signature: miniMaxPromptReferenceSignature(segment),
+        bypass: true,
+      };
+    }
+    syncInspector();
+    await autoSaveSessionQuiet("accept MiniMax reference changes");
+    toast(`Accepted current references for ${affected.length} scene${affected.length === 1 ? "" : "s"}. Existing prompts kept.`);
+  }
+
   function updateMiniMaxPromptCharacterStatus(segment = activeSegment()) {
     const length = String(miniMaxPrompt.value || "").length;
     const mode = segment ? miniMaxH3ModeForSegment(segment) : "text_to_video";
@@ -112,7 +130,7 @@ export function createMiniMaxPanel({
     }
     const referenceMismatch = segment ? miniMaxPromptReferenceMismatch(segment, miniMaxPrompt.value, mode) : "";
     if (referenceMismatch) {
-      miniMaxPromptCharacterStatus.textContent += ` ${referenceMismatch} Regenerate this scene's MiniMax prompt before rendering.`;
+      miniMaxPromptCharacterStatus.textContent += ` ${referenceMismatch} Regenerate the prompt or use the bypass in the Render All error window to keep it.`;
       miniMaxPromptCharacterStatus.style.color = "#fde68a";
     }
   }
@@ -960,6 +978,7 @@ export function createMiniMaxPanel({
   }
 
   return {
+    bypassMiniMaxPromptReferences,
     clearMiniMaxImageReferenceStartFrameOnModeSwitch, ensureMiniMaxSpeakerAssignments,
     isMiniMaxBuiltInSpeakerAssignmentMode, isMiniMaxSingerAssignmentMode, miniMaxH3ContinuityModeForSegment,
     miniMaxH3ContinuityReferenceReserved, miniMaxH3ModeForSegment, miniMaxH3SceneImageIsPromptInspiration,

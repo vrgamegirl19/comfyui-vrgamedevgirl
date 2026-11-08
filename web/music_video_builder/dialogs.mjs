@@ -151,7 +151,9 @@ export function createBaseProgressWindow(title, options = {}) {
   status.textContent = "Starting...";
   const sceneDetails = document.createElement("div");
   sceneDetails.style.cssText = "display:none;margin-top:12px;padding-top:12px;border-top:1px solid #164e63;";
-  body.append(status, sceneDetails);
+  const actions = document.createElement("div");
+  actions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;";
+  body.append(status, actions, sceneDetails);
   const barOuter = document.createElement("div");
   barOuter.style.cssText = "height:8px;background:#164e63;border-radius:999px;margin:0 12px 12px;overflow:hidden;";
   const barInner = document.createElement("div");
@@ -195,15 +197,34 @@ export function createBaseProgressWindow(title, options = {}) {
   lastProgressWindow = registration;
   return {
     set(message, percent = null) {
+      actions.replaceChildren();
       status.textContent = message;
       if (percent !== null) barInner.style.width = `${Math.max(5, Math.min(100, percent))}%`;
       const firstLine = String(message || title).split(/\r?\n/)[0] || title;
       restore.textContent = `${title}: ${firstLine}`;
     },
     setHtml(html, percent = null) {
+      actions.replaceChildren();
       status.innerHTML = html;
       if (percent !== null) barInner.style.width = `${Math.max(5, Math.min(100, percent))}%`;
       restore.textContent = title;
+    },
+    setActions(items) {
+      actions.replaceChildren();
+      for (const item of items) {
+        const button = makeButton(item.label, "primary");
+        button.addEventListener("click", async () => {
+          button.disabled = true;
+          try {
+            await item.onClick();
+          } catch (error) {
+            toast(String(error?.message || error), true);
+          } finally {
+            button.disabled = false;
+          }
+        });
+        actions.append(button);
+      }
     },
     setSceneDetails(details = {}) {
       const images = Array.isArray(details.images) ? details.images : [];
