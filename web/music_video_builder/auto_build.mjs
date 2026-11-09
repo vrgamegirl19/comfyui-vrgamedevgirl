@@ -2,7 +2,8 @@ import { postJson } from "./comfy_api.mjs";
 import { prepareBatchSingerTiming } from "./batch_singer_timing.mjs";
 import { autoBuildDraftForProject, encodeAutoBuildFile, restoreAutoBuildFile } from "./auto_build_draft.mjs";
 import { prepareLlmRequest } from "./llm_setup.mjs";
-import { storyboardCameraFlowEntry } from "../storyboard_builder/shot_presets.mjs";
+import { applyAutoBuildPresets, fillAutoBuildSceneFraming } from "./auto_build_presets.mjs";
+import { SPEED_DEFAULT_PRESETS, MUSIC_DEFAULT_PRESETS } from "../storyboard_builder/defaults_presets.mjs";
 import {
   COMPACT_TOOLBAR_ICONS,
   escapeHtml,
@@ -16,9 +17,7 @@ import { readFileAsDataUrl } from "./media_import.mjs";
 import { cloneMiniMaxH3Settings, normalizeMiniMaxH3Voice, normalizeMiniMaxSpeakerAssignments } from "./minimax_h3.mjs";
 import {
   autoBuildFingerprint,
-  builderMotionSpeedGuidance,
   normalizeAutoBuildPreparation,
-  normalizeBuilderStoryboardDefaults,
   normalizeBuilderStoryLayer,
 } from "./model_settings.mjs";
 import { isInstrumentalLyricText, isRecoverableBuildGemmaError } from "./prompt_text.mjs";
@@ -259,6 +258,53 @@ export function createAutoBuild({
     const useCurrentBuilderSettings = makeCheckbox("Use current Scene Defaults and story settings", false);
     useCurrentBuilderSettings.wrapper.style.cssText += "grid-column:1 / -1;border:1px solid #334155;border-radius:7px;background:#111827;padding:8px;";
     useCurrentBuilderSettings.wrapper.title = "Preserve the current Scene Defaults, story layer, story beats, and per-scene performance settings instead of applying Auto Build recommendations.";
+    const presetRow = document.createElement("div");
+    presetRow.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
+    const presetSelect = (caption, placeholder, presets, selected) => {
+      const label = document.createElement("label");
+      label.style.cssText = "display:flex;flex-direction:column;gap:5px;color:#cffafe;font-size:12px;";
+      const text = document.createElement("span");
+      text.textContent = caption;
+      const select = document.createElement("select");
+      select.setAttribute("aria-label", caption);
+      select.style.cssText = "width:100%;border:1px solid #475569;border-radius:7px;background:#18181b;color:#f8fafc;padding:8px;";
+      for (const value of ["", ...Object.keys(presets)]) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value ? value[0].toUpperCase() + value.slice(1) : placeholder;
+        select.append(option);
+      }
+      select.value = presets[selected] ? selected : "";
+      label.append(text, select);
+      presetRow.append(label);
+      return select;
+    };
+    const speedPreset = presetSelect("Speed", "Custom / choose speed", SPEED_DEFAULT_PRESETS, state.builderStoryboardDefaults?.defaults_speed_preset);
+    const musicPreset = presetSelect("Music style", "Choose music style", MUSIC_DEFAULT_PRESETS, state.builderStoryboardDefaults?.defaults_music_preset);
+    const syncPresetSelectors = () => {
+      speedPreset.value = state.builderStoryboardDefaults?.defaults_speed_preset || "";
+      musicPreset.value = state.builderStoryboardDefaults?.defaults_music_preset || "";
+    };
+    const prepareSceneDefaults = () => {
+      if (!useCurrentBuilderSettings.input.checked) {
+        applyAutoBuildPresets(state, { recommended: true, speed: speedPreset.value, music: musicPreset.value });
+        // Story Board edits made after this point must survive Build.
+        useCurrentBuilderSettings.input.checked = true;
+      }
+      fillAutoBuildSceneFraming(state);
+    };
+    const changePreset = async (kind, value) => {
+      if (!useCurrentBuilderSettings.input.checked) prepareSceneDefaults();
+      else applyAutoBuildPresets(state, { [kind]: value });
+      syncInspector();
+      render();
+      await autoSaveSessionQuiet("Auto Build scene presets");
+    };
+    speedPreset.onchange = () => changePreset("speed", speedPreset.value).catch(error => toast(String(error?.message || error), true));
+    musicPreset.onchange = () => changePreset("music", musicPreset.value).catch(error => toast(String(error?.message || error), true));
+    const presetHelp = document.createElement("div");
+    presetHelp.textContent = "Speed and music style combine and update all scenes and Story Board. Default framing is Medium shots; music styles use their own camera preset. Presets use Default video aesthetic with world FX and shot FX Off.";
+    presetHelp.style.cssText = "font-size:11px;color:#94a3b8;line-height:1.4;";
     const storyBoardRow = document.createElement("div");
     storyBoardRow.style.cssText = "grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #164e63;border-radius:7px;background:#082f49;padding:9px 10px;";
     const storyBoardCopy = document.createElement("div");
@@ -334,7 +380,11 @@ export function createAutoBuild({
     };
     openStoryBoard.onclick = () => {
       try {
+        prepareSceneDefaults();
+        syncInspector();
+        render();
         openStoryboardBuilderFromProject({
+          onClose: syncPresetSelectors,
           sourceLyrics: lyricsInput.value,
           onPrepareStoryContext: prepareAutoBuildStoryContext,
         });
@@ -383,7 +433,7 @@ export function createAutoBuild({
     projectWarning.append(projectWarningText, createProjectNow);
     const status = document.createElement("div");
     status.style.cssText = "display:none;border:1px solid #0891b2;border-radius:9px;background:#083344;padding:11px 12px;color:#cffafe;font-size:12px;font-weight:800;white-space:pre-wrap;line-height:1.45;";
-    body.append(engineCard, runnerCard, songRow.card, lyricsCard, singerRow.card, locationRow.card, advanced, note, projectWarning, status);
+    body.append(engineCard, runnerCard, songRow.card, lyricsCard, singerRow.card, locationRow.card, presetRow, presetHelp, advanced, note, projectWarning, status);
 
     const footer = document.createElement("div");
     footer.style.cssText = "display:grid;grid-template-columns:1fr minmax(210px,auto);gap:10px;padding:13px 18px;border-top:1px solid #164e63;background:#0f172a;";
@@ -431,7 +481,7 @@ export function createAutoBuild({
       closing = true;
       const controls = [close, cancel, build, createProjectNow, ltxEngine, miniMaxEngine, openRunner,
         songRow.choose, singerRow.choose, locationRow.choose, songInput, singerInput, locationInput,
-        lyricsInput, durationSelect, customDuration, useCurrentBuilderSettings.input, skipPromptCreation.input];
+        lyricsInput, durationSelect, customDuration, useCurrentBuilderSettings.input, skipPromptCreation.input, speedPreset, musicPreset, openStoryBoard];
       const disabled = controls.map((control) => control.disabled);
       controls.forEach((control) => { control.disabled = true; });
       try {
@@ -637,7 +687,7 @@ export function createAutoBuild({
       cancel.disabled = true;
       close.disabled = true;
       createProjectNow.disabled = true;
-      for (const control of [ltxEngine, miniMaxEngine, openRunner, songRow.choose, singerRow.choose, locationRow.choose, lyricsInput, durationSelect, customDuration, useCurrentBuilderSettings.input, skipPromptCreation.input]) control.disabled = true;
+      for (const control of [ltxEngine, miniMaxEngine, openRunner, songRow.choose, singerRow.choose, locationRow.choose, lyricsInput, durationSelect, customDuration, useCurrentBuilderSettings.input, skipPromptCreation.input, speedPreset, musicPreset, openStoryBoard]) control.disabled = true;
       status.style.display = "block";
       const setStatus = (message) => {
         status.textContent = message;
@@ -789,35 +839,10 @@ export function createAutoBuild({
             image_world_style: "natural",
             image_custom_style_direction: "",
           });
-          state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults({
-            ...state.builderStoryboardDefaults,
-            video_style: "Cinematic realism",
-            video_style_custom: "",
-            temporal_world_effect: "",
-            temporal_world_effect_custom: "",
-            global_consistency_phrase: "",
-            camera_flow: "intimate_closeups",
-            camera_motion_speed: 6,
-            minimax_h3_cut_frequency: 3,
-            performance_style: "",
-            character_motion_speed: 4,
-            camera_guidance: builderMotionSpeedGuidance(6, "camera"),
-            character_guidance: builderMotionSpeedGuidance(4, "character"),
-          });
-          state.defaultFacialPerformance = "";
-          state.defaultFacialPerformanceCustom = "";
-          let previousMotion = "";
-          state.segments.forEach((segment, index) => {
-            const camera = storyboardCameraFlowEntry("intimate_closeups", index, previousMotion);
-            if (camera?.shot) segment.shot_type = camera.shot;
-            if (camera?.camera) segment.camera_motion = camera.camera;
-            previousMotion = String(segment.camera_motion || previousMotion);
-            segment.performance_style = "";
-            segment.facial_performance = "";
-            segment.facial_performance_custom = "";
-            segment.character_motion = builderMotionSpeedGuidance(4, "character");
-          });
+          applyAutoBuildPresets(state, { recommended: true, speed: speedPreset.value, music: musicPreset.value });
         }
+
+        fillAutoBuildSceneFraming(state);
 
         const needsLyricTranscription = state.segments.some((segment) => !String(segment.lyric_text || "").trim());
         setStatus(needsLyricTranscription
@@ -881,7 +906,7 @@ export function createAutoBuild({
         cancel.disabled = false;
         close.disabled = false;
         createProjectNow.disabled = false;
-        for (const control of [ltxEngine, miniMaxEngine, openRunner, songRow.choose, singerRow.choose, locationRow.choose, lyricsInput, durationSelect, customDuration, useCurrentBuilderSettings.input, skipPromptCreation.input]) control.disabled = false;
+        for (const control of [ltxEngine, miniMaxEngine, openRunner, songRow.choose, singerRow.choose, locationRow.choose, lyricsInput, durationSelect, customDuration, useCurrentBuilderSettings.input, skipPromptCreation.input, speedPreset, musicPreset, openStoryBoard]) control.disabled = false;
         toast(`Auto Build paused:\n${String(error?.message || error)}`, true);
       }
     };
