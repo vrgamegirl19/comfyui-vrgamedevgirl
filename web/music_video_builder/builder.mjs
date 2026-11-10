@@ -2572,9 +2572,11 @@ export function openBuilder(node, options = {}) {
     sceneImagePath: (segment) => selectedSegmentImagePath(segment),
     sceneVideoPath: (segment) => selectedSegmentVideoPath(segment),
     sceneLabel: (segment, index) => sceneDisplayName(segment, index),
-    // The settings the Builder holds for each image workflow that needs any (Qwen Image Edit picks its own models).
+    // The settings the Builder holds for each image workflow that needs any (Qwen Image Edit picks its own models). Browser AI uses the
+    // timeouts and the login of the Image panel, and the site of the engine chosen in the dialog.
     engineSettings: (engine) => ({
       nano_banana: () => state.nbImageSettings,
+      browser_ai: () => state.flowGptBrowserSettings,
     })[engine]?.(),
     save: () => autoSaveSessionQuiet("Thumbnail"),
   });

@@ -27,10 +27,16 @@ def _thumbnail_capabilities() -> Dict[str, Any]:
 
     ``overlay`` is the Overlay engine (``thumbnail_overlay.py``) and ``api_image`` the API image engine
     (``thumbnail_api_image.py``, with the providers and their image models): a build without one does not offer that engine.
+    ``browser_ai`` is the Image panel's Browser AI (Flow, GPT Image or Meta AI in the person's own browser, the ComfyUI nodes of
+    ``browser/nodes.py``) used as one more image workflow: a build without it does not offer that engine. ``video_intro`` is the
+    person's own intro video in front of the final video (``video_intro.py``): a build without it does not offer that choice.
     """
     from ..llm.api_image import api_image_capabilities
 
-    return {"version": THUMBNAIL_CAPABILITIES_VERSION, "frame": True, "overlay": True, "api_image": api_image_capabilities()}
+    return {
+        "version": THUMBNAIL_CAPABILITIES_VERSION, "frame": True, "overlay": True, "api_image": api_image_capabilities(),
+        "browser_ai": True, "video_intro": True,
+    }
 
 
 def _clean_path(raw: Any) -> str:
