@@ -307,6 +307,7 @@ class MakeApiImageTests(unittest.TestCase):
         capabilities = thumbnail._thumbnail_capabilities()
         self.assertEqual(set(capabilities["api_image"]["providers"]), {"gemini", "grok", "openai"})
         self.assertTrue(capabilities["overlay"])
+        self.assertTrue(capabilities["browser_ai"], "the Image panel's Browser AI is offered as an image workflow")
 
 
 if __name__ == "__main__":

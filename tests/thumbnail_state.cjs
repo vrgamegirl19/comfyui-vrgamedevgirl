@@ -20,24 +20,56 @@ test('an empty or broken value loads as the defaults', () => {
     assert.equal(intro.change, undefined, 'there is no restyle workflow, so there is nothing to change by');
     assert.equal(intro.engine, 'nano_banana');
     assert.deepEqual({ ...intro.api_image }, { model: '' });
+    assert.equal(intro.browser_ai, undefined, 'each Browser AI site is its own engine, so there is no provider setting');
     assert.deepEqual(Array.from(intro.history), []);
   }
 });
 
-test('the list has only Overlay, Qwen Image Edit, NanoBanana and the API image, each with the kind of prompt it needs', () => {
+const ALL_ENGINES = ['overlay', 'qwen_image_edit', 'nano_banana', 'api_image', 'browser_flow', 'browser_gpt', 'browser_meta'];
+
+test('the list has Overlay, Qwen Image Edit, NanoBanana, the API image and Browser AI with Flow, GPT Image and Meta AI each its own, each with the kind of prompt it needs', () => {
   const c = load();
-  assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_ENGINES', c)), ['overlay', 'qwen_image_edit', 'nano_banana', 'api_image']);
+  assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_ENGINES', c)), ALL_ENGINES);
   assert.equal(c.thumbnailEngineKind('overlay'), 'overlay', 'it is not an image workflow: no prompt, no LLM, no ComfyUI');
   assert.equal(c.thumbnailEngineKind('qwen_image_edit'), 'qwen_edit', 'Qwen Image Edit gets a prompt about the change only');
-  for (const edit of ['nano_banana', 'api_image']) assert.equal(c.thumbnailEngineKind(edit), 'edit');
+  for (const edit of ['nano_banana', 'api_image', 'browser_flow', 'browser_gpt', 'browser_meta']) assert.equal(c.thumbnailEngineKind(edit), 'edit');
   assert.equal(c.thumbnailEngineKind('unknown'), 'edit');
-  for (const engine of ['overlay', 'qwen_image_edit', 'nano_banana', 'api_image']) assert.equal(c.normalizeThumbnailIntro({ engine }).engine, engine);
+  for (const engine of ALL_ENGINES) assert.equal(c.normalizeThumbnailIntro({ engine }).engine, engine);
   assert.equal(c.normalizeThumbnailIntro({ history: [{ path: 'a.png', engine: 'api_image' }] }).history[0].engine, 'api_image');
+  assert.equal(c.normalizeThumbnailIntro({ history: [{ path: 'a.png', engine: 'browser_meta' }] }).history[0].engine, 'browser_meta');
   // A project saved with a workflow that is no longer in the list opens on the default one, and so does its history.
   for (const gone of ['flux_klein', 'moss_image_edit', 'moss_image', 'krea2_2pass', 'zimage', 'ernie_image', 'bogus']) {
     assert.equal(c.normalizeThumbnailIntro({ engine: gone }).engine, 'nano_banana', gone);
     assert.equal(c.normalizeThumbnailIntro({ history: [{ path: 'a.png', engine: gone }] }).history[0].engine, 'nano_banana', gone);
   }
+});
+
+test('each Browser AI engine is one site, by the Image panel\'s name, and no other engine is', () => {
+  const c = load();
+  assert.deepEqual({ ...vm.runInContext('THUMBNAIL_BROWSER_ENGINE_PROVIDERS', c) }, { browser_flow: 'flow_nano_banana', browser_gpt: 'gpt_image', browser_meta: 'meta_ai' });
+  assert.equal(c.thumbnailBrowserProvider('browser_flow'), 'flow_nano_banana');
+  assert.equal(c.thumbnailBrowserProvider('browser_gpt'), 'gpt_image');
+  assert.equal(c.thumbnailBrowserProvider('browser_meta'), 'meta_ai');
+  for (const other of ['overlay', 'qwen_image_edit', 'nano_banana', 'api_image', 'browser_ai', 'own', 'bogus', '', undefined, null, 'toString', 'constructor']) {
+    assert.equal(c.thumbnailBrowserProvider(other), '', String(other));
+  }
+});
+
+test('a project saved when Browser AI was one engine with a provider setting opens on the engine of that site', () => {
+  const c = load();
+  const opened = (data) => c.normalizeThumbnailIntro(data);
+  assert.equal(opened({ engine: 'browser_ai', browser_ai: { provider: 'gpt_image' } }).engine, 'browser_gpt');
+  assert.equal(opened({ engine: 'browser_ai', browser_ai: { provider: 'meta_ai' } }).engine, 'browser_meta');
+  assert.equal(opened({ engine: 'browser_ai', browser_ai: { provider: 'flow_nano_banana' } }).engine, 'browser_flow');
+  // No site was chosen in the dialog: the first one, Flow.
+  assert.equal(opened({ engine: 'browser_ai' }).engine, 'browser_flow');
+  assert.equal(opened({ engine: 'browser_ai', browser_ai: { provider: 'bing' } }).engine, 'browser_flow');
+  assert.equal(opened({ engine: 'browser_ai', browser_ai: 'junk' }).engine, 'browser_flow');
+  // Its history keeps the site it was made with.
+  const history = opened({ browser_ai: { provider: 'gpt_image' }, history: [{ path: 'a.png', engine: 'browser_ai' }, { path: 'b.png', engine: 'nano_banana' }] }).history;
+  assert.deepEqual(Array.from(history, (item) => item.engine), ['browser_gpt', 'nano_banana']);
+  // The old setting is not kept: the engine says it.
+  assert.equal(opened({ engine: 'browser_ai', browser_ai: { provider: 'gpt_image' } }).browser_ai, undefined);
 });
 
 test('the API image model is kept as typed, trimmed and limited, and a missing one is the provider\'s first', () => {
@@ -225,4 +257,44 @@ test('the chosen source is kept only with a picture, and its kind falls back to 
   assert.equal(none.source_kind, '');
   assert.equal(none.source_path, '');
   assert.equal(none.source_seconds, 0);
+});
+
+test('the person\'s own intro video is kept in a known shape, off and empty by default', () => {
+  const c = load();
+  for (const value of [undefined, null, 'x', 5, []]) {
+    const intro = c.normalizeThumbnailIntro(value);
+    assert.equal(intro.video_intro_enabled, false);
+    assert.equal(intro.video_intro_path, '');
+  }
+  const intro = c.normalizeThumbnailIntro({ video_intro_enabled: true, video_intro_path: '  C:/my/intro.mp4 ' });
+  assert.equal(intro.video_intro_enabled, true);
+  assert.equal(intro.video_intro_path, 'C:/my/intro.mp4', 'the path is trimmed');
+  assert.equal(c.normalizeThumbnailIntro({ video_intro_enabled: 'yes' }).video_intro_enabled, false, 'only a real true switches it on');
+  assert.equal(c.normalizeThumbnailIntro({ video_intro_path: 'x'.repeat(5000) }).video_intro_path.length, 2000);
+  // A project saved before the intro video existed loads with it off and keeps its thumbnail.
+  const old = c.normalizeThumbnailIntro({ enabled: true, image_path: 'C:/p/thumbnail/thumbnail_0001.png' });
+  assert.equal(old.enabled, true);
+  assert.equal(old.video_intro_enabled, false);
+});
+
+test('a picture the person chose is kept in the history under its own name, and an unknown name is still the default engine', () => {
+  const c = load();
+  assert.equal(c.normalizeThumbnailIntro({ history: [{ path: 'a.png', engine: 'own' }] }).history[0].engine, 'own');
+  assert.equal(c.normalizeThumbnailIntro({ history: [{ path: 'a.png', engine: 'bogus' }] }).history[0].engine, 'nano_banana');
+  assert.equal(c.normalizeThumbnailIntro({ engine: 'own' }).engine, 'nano_banana', 'it is not an engine to generate with');
+  assert.deepEqual(Array.from(vm.runInContext('THUMBNAIL_ENGINES', c)), ALL_ENGINES);
+});
+
+test('the stitch joins the intro video only when this build can, it is on and a file is chosen', () => {
+  const c = load();
+  const chosen = { video_intro_enabled: true, video_intro_path: 'C:/my/intro.mp4' };
+  assert.deepEqual({ ...c.videoIntroForStitch({ videoIntroAvailable: true, thumbnailIntro: chosen }) }, { intro_path: 'C:/my/intro.mp4' });
+  assert.equal(c.videoIntroForStitch({ videoIntroAvailable: false, thumbnailIntro: chosen }), null, 'a build without the route');
+  assert.equal(c.videoIntroForStitch({ videoIntroAvailable: true, thumbnailIntro: { ...chosen, video_intro_enabled: false } }), null, 'switched off');
+  assert.equal(c.videoIntroForStitch({ videoIntroAvailable: true, thumbnailIntro: { video_intro_enabled: true } }), null, 'no file');
+  assert.equal(c.videoIntroForStitch({ videoIntroAvailable: true }), null);
+  assert.equal(c.videoIntroForStitch(undefined), null);
+  // It does not depend on the thumbnail picture, and the picture does not depend on it.
+  assert.equal(c.thumbnailIntroForStitch({ thumbnailAvailable: true, thumbnailIntro: chosen }), null);
+  assert.deepEqual({ ...c.thumbnailIntroForStitch({ thumbnailAvailable: true, thumbnailIntro: { enabled: true, image_path: 'C:/t.png' } }) }, { image_path: 'C:/t.png' });
 });

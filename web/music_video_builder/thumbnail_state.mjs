@@ -6,15 +6,42 @@
 // instruction, but one about the change only: the title lettering, then what to keep. The LLM writes a different kind of prompt for
 // each kind. "overlay" is not an image workflow at all: it keeps every pixel of the frame and puts the grade and the title on top
 // (no prompt, no LLM, no ComfyUI), the only way to be sure the person and the scene do not change. "api_image" sends the frame to
-// the image API of the LLM Runner's provider (Gemini, Grok or OpenAI) with that provider's key. The order is the order of the list.
+// the image API of the LLM Runner's provider (Gemini, Grok or OpenAI) with that provider's key. "browser_flow", "browser_gpt" and
+// "browser_meta" are the Image panel's Browser AI, one engine for each site in the person's own browser (Flow, GPT Image, Meta AI): each
+// takes the frame as a reference and follows an instruction, so each is an "edit" too. The order is the order of the list.
 export const THUMBNAIL_ENGINE_KINDS = {
   overlay: "overlay",
   qwen_image_edit: "qwen_edit",
   nano_banana: "edit",
   api_image: "edit",
+  browser_flow: "edit",
+  browser_gpt: "edit",
+  browser_meta: "edit",
 };
 export const THUMBNAIL_ENGINES = Object.keys(THUMBNAIL_ENGINE_KINDS);
+// The site each Browser AI engine uses, by the Image panel's names (`BROWSER_IMAGE_PROVIDERS`), listed here because this file has no browser
+// code. Each site has its own Chrome window and sign-in, and an engine never falls back to another one.
+export const THUMBNAIL_BROWSER_ENGINE_PROVIDERS = {
+  browser_flow: "flow_nano_banana",
+  browser_gpt: "gpt_image",
+  browser_meta: "meta_ai",
+};
+
+// The Image panel's provider name of a Browser AI engine, or "" for any other engine.
+export function thumbnailBrowserProvider(engine) {
+  return Object.prototype.hasOwnProperty.call(THUMBNAIL_BROWSER_ENGINE_PROVIDERS, engine) ? THUMBNAIL_BROWSER_ENGINE_PROVIDERS[engine] : "";
+}
+
+// A project saved before each site had its own engine has "browser_ai" and the site chosen in the dialog (`browser_ai.provider`, Flow when
+// none was). It opens on the engine of that site.
+function thumbnailEngineName(engine, legacyProvider = "") {
+  if (engine !== "browser_ai") return engine;
+  return Object.keys(THUMBNAIL_BROWSER_ENGINE_PROVIDERS).find((key) => THUMBNAIL_BROWSER_ENGINE_PROVIDERS[key] === legacyProvider) || "browser_flow";
+}
 export const THUMBNAIL_DEFAULT_ENGINE = "nano_banana";
+// A picture the person chose from their own files is kept in the history like a generated one, under this name instead of an engine.
+export const THUMBNAIL_OWN_PICTURE = "own";
+const THUMBNAIL_HISTORY_ENGINES = [...THUMBNAIL_ENGINES, THUMBNAIL_OWN_PICTURE];
 // The frame rate of the timeline: scene lengths are whole frames of it, and the frame picker steps by it.
 export const THUMBNAIL_FPS = 24;
 const THUMBNAIL_HISTORY_LIMIT = 12;
@@ -94,15 +121,20 @@ export function normalizeThumbnailApiImage(value) {
 // The saved settings in a known shape. Anything missing or wrong falls back to its default, so an old or hand-edited session loads.
 export function normalizeThumbnailIntro(value) {
   const data = value && typeof value === "object" ? value : {};
+  const legacyProvider = data.browser_ai && typeof data.browser_ai === "object" ? data.browser_ai.provider : "";
   const history = (Array.isArray(data.history) ? data.history : [])
     .filter((item) => item && typeof item === "object" && String(item.path || "").trim())
-    .map((item) => ({
-      path: String(item.path).trim(),
-      prompt: thumbnailText(item.prompt, 4000),
-      engine: THUMBNAIL_ENGINES.includes(item.engine) ? item.engine : THUMBNAIL_DEFAULT_ENGINE,
-      scene_id: thumbnailText(item.scene_id, 200),
-    }))
+    .map((item) => {
+      const engine = thumbnailEngineName(item.engine, legacyProvider);
+      return {
+        path: String(item.path).trim(),
+        prompt: thumbnailText(item.prompt, 4000),
+        engine: THUMBNAIL_HISTORY_ENGINES.includes(engine) ? engine : THUMBNAIL_DEFAULT_ENGINE,
+        scene_id: thumbnailText(item.scene_id, 200),
+      };
+    })
     .slice(-THUMBNAIL_HISTORY_LIMIT);
+  const engine = thumbnailEngineName(data.engine, legacyProvider);
   // The picture the thumbnail is made from: one exact frame of a scene video ("frame") or a scene's image ("image"). The frame
   // number and seconds are where on the timeline it was taken, so the picker opens on the same moment next time.
   const sourcePath = thumbnailText(data.source_path, 2000).trim();
@@ -111,12 +143,15 @@ export function normalizeThumbnailIntro(value) {
   return {
     enabled: data.enabled === true,
     image_path: thumbnailText(data.image_path, 2000).trim(),
+    // The person's own intro video, put in front of the final video (and behind the thumbnail's one frame).
+    video_intro_enabled: data.video_intro_enabled === true,
+    video_intro_path: thumbnailText(data.video_intro_path, 2000).trim(),
     source_path: sourcePath,
     source_kind: sourcePath && THUMBNAIL_SOURCE_KINDS.includes(data.source_kind) ? data.source_kind : (sourcePath ? "image" : ""),
     source_frame: Number.isFinite(frame) && frame > 0 ? Math.floor(frame) : 0,
     source_seconds: Number.isFinite(sourceSeconds) && sourceSeconds > 0 ? sourceSeconds : 0,
     scene_id: thumbnailText(data.scene_id, 200),
-    engine: THUMBNAIL_ENGINES.includes(data.engine) ? data.engine : THUMBNAIL_DEFAULT_ENGINE,
+    engine: THUMBNAIL_ENGINES.includes(engine) ? engine : THUMBNAIL_DEFAULT_ENGINE,
     overlay: normalizeThumbnailOverlay(data.overlay),
     api_image: normalizeThumbnailApiImage(data.api_image),
     title: thumbnailText(data.title, 120),
@@ -133,6 +168,15 @@ export function thumbnailIntroForStitch(state) {
   const intro = normalizeThumbnailIntro(state.thumbnailIntro);
   if (!intro.enabled || !intro.image_path) return null;
   return { image_path: intro.image_path };
+}
+
+// The person's own intro video the stitch puts in front of the video, or null when it should not: this build cannot, it is switched off
+// or no file is chosen. It joins before the thumbnail does, so with both the picture is the first frame and the intro follows it.
+export function videoIntroForStitch(state) {
+  if (!state?.videoIntroAvailable) return null;
+  const intro = normalizeThumbnailIntro(state.thumbnailIntro);
+  if (!intro.video_intro_enabled || !intro.video_intro_path) return null;
+  return { intro_path: intro.video_intro_path };
 }
 
 // Only the full video gets the picture. A preview of a few scenes, or of a slice of the song, is left as it is.

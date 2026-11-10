@@ -1,27 +1,40 @@
-// Thumbnail intro. The Thumbnail button opens a dialog: scrub the video to the exact moment you want and take that frame, let the
-// Builder's LLM look at it and write a YouTube-style edit prompt, make the thumbnail from the frame (Overlay, Qwen Image Edit,
-// NanoBanana or the image API of the LLM Runner's provider), keep the result.
-// When the intro is on, the final stitch puts the picture in front of the video for a few seconds
-// (`POST /vrgdg/music_builder/thumbnail/prepend`). The scenes, the timeline and the audio sync are never touched. The pure parts
+// Thumbnail intro. The Thumbnail button opens a dialog with three things, each optional:
+//  - the person's own thumbnail picture (any image file; it is copied into the project),
+//  - the person's own intro video (any video file),
+//  - a thumbnail made here: scrub the video to the exact moment you want and take that frame, let the Builder's LLM look at it and
+//    write a YouTube-style edit prompt, make the thumbnail from the frame (Overlay, Qwen Image Edit, NanoBanana, the image API of
+//    the LLM Runner's provider, or Browser AI with Flow, GPT Image or Meta AI, each its own choice in the list), keep the result.
+// When they are on, the final stitch puts them in front of the video: the intro video first (`POST /vrgdg/music_builder/video_intro/prepend`),
+// then the thumbnail picture as one frame in front of that (`POST /vrgdg/music_builder/thumbnail/prepend`), so the picture is the first
+// frame of the finished video and the intro follows it. The scenes, the timeline and the audio sync are never touched. The pure parts
 // (the saved settings, the timeline of frames) are in thumbnail_state.mjs.
 
 import { api } from "../../../scripts/api.js";
+import { runBrowserImageWithFallback } from "./browser_image_fallback.mjs";
 import { makeEditorImageUrl, makeEditorVideoUrl, postJson, queueWorkflowPrompt, waitForImages } from "./comfy_api.mjs";
 import { BUILDER_FONT_STACK, DEFAULT_NB_IMAGE_MODEL } from "./constants.mjs";
 import { makeButton, makeCheckbox, makeField, makeInput, makeSelect, toast } from "./controls.mjs";
+import { browserImageProviderLabel, browserImageProviderTimeout } from "./model_settings.mjs";
 import {
-  THUMBNAIL_ENGINE_LABELS, thumbnailApiImageProvider, thumbnailApiImageRequest, thumbnailEngineRequest, thumbnailOverlayRequest,
+  THUMBNAIL_ENGINE_LABELS, thumbnailApiImageProvider, thumbnailApiImageRequest, thumbnailBrowserAiDirectRequest, thumbnailBrowserAiOpenRequest, thumbnailEngineRequest,
+  thumbnailOverlayRequest,
 } from "./thumbnail_engines.mjs";
 import {
-  ensureThumbnailTitle, formatThumbnailTime, normalizeThumbnailApiImage, normalizeThumbnailIntro, normalizeThumbnailOverlay, thumbnailEngineKind,
-  thumbnailFrameRange, thumbnailHistoryWith, thumbnailIntroForStitch, thumbnailItemAt, thumbnailLocalSeconds, thumbnailTimelineItems,
-  THUMBNAIL_DEFAULT_ENGINE, THUMBNAIL_ENGINES, THUMBNAIL_FPS,
+  ensureThumbnailTitle, formatThumbnailTime, normalizeThumbnailApiImage, normalizeThumbnailIntro, normalizeThumbnailOverlay,
+  thumbnailBrowserProvider, thumbnailEngineKind, thumbnailFrameRange, thumbnailHistoryWith, thumbnailIntroForStitch, thumbnailItemAt, thumbnailLocalSeconds,
+  thumbnailTimelineItems, THUMBNAIL_DEFAULT_ENGINE, THUMBNAIL_ENGINES, THUMBNAIL_FPS, THUMBNAIL_OWN_PICTURE, videoIntroForStitch,
 } from "./thumbnail_state.mjs";
 
 const THUMBNAIL_PREPEND_TIMEOUT_MS = 30 * 60 * 1000;
+const VIDEO_INTRO_PREPEND_TIMEOUT_MS = 30 * 60 * 1000;
+const PICK_PATH_TIMEOUT_MS = 6 * 60 * 1000;
+const THUMBNAIL_SAVE_TIMEOUT_MS = 2 * 60 * 1000;
 const THUMBNAIL_PROMPT_TIMEOUT_MS = 10 * 60 * 1000;
 const THUMBNAIL_FRAME_TIMEOUT_MS = 2 * 60 * 1000;
 const THUMBNAIL_API_IMAGE_TIMEOUT_MS = 10 * 60 * 1000;
+// A site can take many minutes for one picture, and the Image panel lets a try wait up to 40.
+const THUMBNAIL_BROWSER_AI_TIMEOUT_MS = 45 * 60 * 1000;
+const THUMBNAIL_BROWSER_AI_OPEN_TIMEOUT_MS = 2 * 60 * 1000;
 // Where inside a frame's time slot the player is parked, so it shows that frame and not the one before it.
 const FRAME_SEEK_OFFSET = 0.25;
 const ENGINE_OPTIONS = THUMBNAIL_ENGINES.map((value) => ({ value, label: THUMBNAIL_ENGINE_LABELS[value] }));
@@ -38,10 +51,15 @@ const OVERLAY_POSITION_OPTIONS = [
   { value: "auto", label: "Automatic (the calmest part of the frame)" }, { value: "top", label: "Top" }, { value: "bottom", label: "Bottom" },
   { value: "left", label: "Left" }, { value: "right", label: "Right" },
 ];
+// What the person is told about a Browser AI engine. Each engine is one site (Flow, GPT Image or Meta AI) with its own Chrome window and
+// sign-in, and none of them tries another site when it fails. `direct` is a build that drives Chrome itself.
+const browserAiHint = (label, direct) => (direct
+  ? `${label} opens in Chrome, uploads your frame as a reference, types the prompt and brings the picture back. Nothing needs installing: click Open Chrome and sign in once, sign in to the site in that window, and leave it open. Each Browser AI engine has its own Chrome window and sign-in, so do this once for each one you use. It can take several minutes. If it fails, no other site is tried.`
+  : `${label} opens in your own browser, uploads your frame as a reference, types the prompt and brings the picture back. Sign in there first with the Image panel's login button, set to ${label}. It can take several minutes. If it fails, no other site is tried.`) + REDRAW_WARNING;
 const API_IMAGE_HINT = "The pack sends your frame and the prompt to the image API of the provider set in the LLM Runner (Gemini, Grok or OpenAI) with that provider's key, and keeps the picture. The provider and the key are changed in the LLM Runner. The image model is below: leave it empty for the provider's first one, or type any image model the provider has." + REDRAW_WARNING;
 
-// Asks whether this build can make thumbnails, whether it can take one exact frame of a video, make an overlay and use an image API
-// (`api_image` has the providers and their image models). A build without the routes answers 404, which is an answer here and not an
+// Asks whether this build can make thumbnails, whether it can take one exact frame of a video, make an overlay, use an image API
+// (`api_image` has the providers and their image models) and use the Image panel's Browser AI (`browser_ai`, for all three sites). A build without the routes answers 404, which is an answer here and not an
 // error for the project's error log, so the button stays hidden and nothing else changes.
 export async function loadThumbnailCapabilities(state) {
   try {
@@ -51,13 +69,48 @@ export async function loadThumbnailCapabilities(state) {
     state.thumbnailFrameAvailable = Boolean(state.thumbnailAvailable && data.frame);
     state.thumbnailOverlayAvailable = Boolean(state.thumbnailAvailable && data.overlay);
     state.thumbnailApiImage = state.thumbnailAvailable && data.api_image?.providers ? data.api_image : null;
+    state.thumbnailBrowserAi = Boolean(state.thumbnailAvailable && data.browser_ai);
+    // The build drives Chrome itself (no ComfyUI workflow): the dialog calls the build's Browser AI route and offers the sign-in button.
+    state.thumbnailBrowserAiDirect = Boolean(state.thumbnailBrowserAi && data.browser_ai_direct);
+    state.videoIntroAvailable = Boolean(state.thumbnailAvailable && data.video_intro);
   } catch {
     state.thumbnailAvailable = false;
     state.thumbnailFrameAvailable = false;
     state.thumbnailOverlayAvailable = false;
     state.thumbnailApiImage = null;
+    state.thumbnailBrowserAi = false;
+    state.thumbnailBrowserAiDirect = false;
+    state.videoIntroAvailable = false;
   }
   return state.thumbnailAvailable;
+}
+
+// The native file dialog of this computer (`kind` is "image" or "video"). Returns the chosen path, or "" when it was cancelled.
+async function pickPath(kind) {
+  const picked = await postJson("/vrgdg/music_builder/pick_path", { kind }, PICK_PATH_TIMEOUT_MS);
+  return String(picked?.path || "").trim();
+}
+
+// `stitched` is what the stitch (and the overlay pass) returned. The person's own intro video, when it is on, is joined in front of the
+// finished video in place: its whole length, its own sound, fitted to the video's size and frame rate. When it cannot be added the
+// plain stitched video stays and the reason is shown. This runs before the thumbnail's one frame, so that frame stays the first one.
+export async function applyVideoIntroAfterStitch(state, stitched, { progress = null, projectFolder = "" } = {}) {
+  const intro = videoIntroForStitch(state);
+  const path = String(stitched?.final_video_path || "");
+  if (!intro || !path) return stitched;
+  progress?.set("Putting your intro video in front of the video...", 97);
+  try {
+    const reply = await postJson("/vrgdg/music_builder/video_intro/prepend", {
+      input_path: path,
+      intro_path: intro.intro_path,
+      replace_source: true,
+      project_folder: projectFolder,
+    }, VIDEO_INTRO_PREPEND_TIMEOUT_MS);
+    return { ...stitched, video_intro: reply };
+  } catch (error) {
+    toast(`The intro video could not be added, so the video starts with the first scene. ${String(error?.message || error)}`, true);
+    return stitched;
+  }
 }
 
 // `stitched` is what the stitch route returned. It comes back unchanged apart from `thumbnail_intro`, and `final_video_path` now
@@ -82,9 +135,45 @@ export async function applyThumbnailIntroAfterStitch(state, stitched, { progress
   }
 }
 
+// ComfyUI does not run a workflow again when nothing in it changed, and the Browser AI nodes have no seed. Each try therefore nudges the
+// timeout by one second (back and forth), as the Image panel does, so a second try with the same prompt really asks the provider again.
+let browserAiTries = 0;
+
 // Sends the chosen frame through the chosen image workflow and returns the ComfyUI view descriptor of the result. `settings` is the
-// Builder's own settings for that workflow, so it runs with the models, LoRAs and size the user already chose for it.
-async function generateThumbnailImage({ engine, prompt, sourcePath, settings, onStatus }) {
+// Builder's own settings for that workflow, so it runs with the models, LoRAs and size the user already chose for it. A Browser AI engine runs
+// its own site and no other (`settings.failure_mode` is never "try_other_provider" here).
+async function generateThumbnailImage(request) {
+  if (!thumbnailBrowserProvider(request.engine)) return runThumbnailWorkflow(request);
+  browserAiTries += 1;
+  const { images } = await runBrowserImageWithFallback(request.settings || {}, async (providerSettings) => {
+    const configured = Math.max(60, Math.min(2400, Number(browserImageProviderTimeout(providerSettings) || 600)));
+    const timeout = configured >= 2400 ? configured - (browserAiTries % 2) : configured + (browserAiTries % 2);
+    return [await runThumbnailWorkflow({ ...request, settings: { ...providerSettings, timeout_seconds: timeout } })];
+  }, {
+    providerLabel: browserImageProviderLabel,
+    onFallback: (failed, next, error) => request.onStatus(`${browserImageProviderLabel(failed)} failed. Trying ${browserImageProviderLabel(next)}...\n${String(error?.message || error)}`),
+  });
+  return images[images.length - 1];
+}
+
+// A Browser AI engine on a build that drives Chrome itself: one route makes the picture with the engine's site and keeps it in the project.
+// Returns what the route returned (`image_path`).
+async function generateThumbnailBrowserAiDirect({ engine, prompt, sourcePath, projectFolder, settings, onStatus }) {
+  const { images } = await runBrowserImageWithFallback(settings || {}, async (providerSettings) => {
+    const { url, payload } = thumbnailBrowserAiDirectRequest({
+      engine, prompt, sourcePath, projectFolder, settings: { ...providerSettings, timeout_seconds: browserImageProviderTimeout(providerSettings) },
+    });
+    onStatus(`Asking ${browserImageProviderLabel(providerSettings.provider)} in Chrome (this can take a few minutes)...`);
+    return [await postJson(url, payload, THUMBNAIL_BROWSER_AI_TIMEOUT_MS)];
+  }, {
+    providerLabel: browserImageProviderLabel,
+    onFallback: (failed, next, error) => onStatus(`${browserImageProviderLabel(failed)} failed. Trying ${browserImageProviderLabel(next)}...\n${String(error?.message || error)}`),
+  });
+  return images[images.length - 1];
+}
+
+// One run of one workflow: build it, queue it, wait for the picture.
+async function runThumbnailWorkflow({ engine, prompt, sourcePath, settings, onStatus }) {
   const { url, payload, label } = thumbnailEngineRequest({
     engine, prompt, sourcePath, settings,
     seed: Math.floor(Math.random() * 2 ** 31),
@@ -92,7 +181,7 @@ async function generateThumbnailImage({ engine, prompt, sourcePath, settings, on
   });
   onStatus(`Building the ${label} workflow...`);
   const built = await postJson(url, payload);
-  onStatus("Queueing the image workflow...");
+  onStatus(built.provider_label ? `Asking ${built.provider_label} in your browser (this can take a few minutes)...` : "Queueing the image workflow...");
   const queued = await queueWorkflowPrompt(built.prompt);
   const promptId = queued?.prompt_id;
   if (!promptId) throw new Error("ComfyUI queued the thumbnail image but did not return a prompt_id.");
@@ -142,10 +231,8 @@ export function openThumbnailDialog(deps) {
     video: canFrame ? String(sceneVideoPath?.(segment) || "").trim() : "",
     image: String(sceneImagePath?.(segment) || "").trim(),
   })));
-  if (!items.length) {
-    toast("No scene has a rendered video or an image yet. Render a scene or make a scene image first, then open Thumbnail.", true);
-    return null;
-  }
+  // With no scene to take a frame from the dialog still opens: the person's own picture and intro video need no scene.
+  const hasScenes = items.length > 0;
   const { min: minFrame, max: maxFrame } = thumbnailFrameRange(items);
   const intro = normalizeThumbnailIntro(state.thumbnailIntro);
   let busy = false;
@@ -163,10 +250,13 @@ export function openThumbnailDialog(deps) {
   title.textContent = "Thumbnail Intro";
   title.style.cssText = "font-size:17px;font-weight:600;color:#cffafe;";
   const note = document.createElement("div");
-  note.textContent = canFrame
+  note.textContent = "Use a thumbnail picture and an intro video you already have, or make a thumbnail from a frame of your video. When they are on, the final video starts with the thumbnail as its first frame, then your intro video, then the video.";
+  note.style.cssText = "font-size:12px;line-height:1.45;color:#cbd5e1;";
+  const makeNote = document.createElement("div");
+  makeNote.textContent = canFrame
     ? "1. Scrub the video to the exact moment you want and click Use this frame. 2. Choose Overlay to keep that frame exactly and put a grade and the title on top, or an image workflow (the LLM looks at the frame and writes its prompt) to redraw it. 3. Make the thumbnail. When it is on, the final video starts with the thumbnail."
     : "This build cannot take a frame of a video, so pick the scene whose image you want to start from. Choose Overlay to keep that image exactly and put a grade and the title on top, or an image workflow (the LLM looks at it and writes its prompt) to redraw it.";
-  note.style.cssText = "font-size:12px;line-height:1.45;color:#cbd5e1;";
+  makeNote.style.cssText = "font-size:12px;line-height:1.45;color:#cbd5e1;";
 
   // Step 1: the player and the scrubber over the whole timeline.
   const video = document.createElement("video");
@@ -262,10 +352,11 @@ export function openThumbnailDialog(deps) {
   const sourceCaption = document.createElement("div");
   sourceCaption.style.cssText = "font-size:12px;color:#93c5fd;line-height:1.4;";
 
-  // Step 2 and 3: the prompt and the picture. A build without the overlay or the API image route does not offer that engine, and a
-  // project saved with it opens on the default engine instead.
+  // Step 2 and 3: the prompt and the picture. A build without the overlay, the API image route or Browser AI does not offer that engine
+  // (Browser AI is three of them: Flow, GPT Image and Meta AI), and a project saved with it opens on the default engine instead.
   const engineOptions = ENGINE_OPTIONS.filter((option) => (option.value !== "overlay" || state.thumbnailOverlayAvailable)
-    && (option.value !== "api_image" || state.thumbnailApiImage));
+    && (option.value !== "api_image" || state.thumbnailApiImage)
+    && (!thumbnailBrowserProvider(option.value) || state.thumbnailBrowserAi));
   const engineSelect = makeSelect(engineOptions, engineOptions.some((option) => option.value === intro.engine) ? intro.engine : THUMBNAIL_DEFAULT_ENGINE);
   const engineHint = document.createElement("div");
   engineHint.style.cssText = "font-size:11px;line-height:1.4;color:#94a3b8;";
@@ -294,6 +385,8 @@ export function openThumbnailDialog(deps) {
     }));
     apiModelInput.placeholder = info ? `Empty: ${info.default}` : "";
   };
+  // On a build that drives Chrome itself the sign-in is here too: it opens the chosen engine's site in the build's own Chrome window.
+  const browserOpenButton = makeButton("Open Chrome and sign in");
   // The Overlay engine's choices: the color of the title, where it goes, and how strong the grade, the glow and the vignette are.
   const overlayColor = makeSelect(OVERLAY_COLOR_OPTIONS, intro.overlay.color);
   const overlayPosition = makeSelect(OVERLAY_POSITION_OPTIONS, intro.overlay.position);
@@ -314,6 +407,9 @@ export function openThumbnailDialog(deps) {
   const overlayGroup = document.createElement("div");
   overlayGroup.style.cssText = COLUMN_CSS;
   overlayGroup.append(makeField("Title color", overlayColor), makeField("Title position", overlayPosition), overlayStrengthField);
+  // The Image panel's Browser AI settings (timeouts and so on) for the site of the chosen engine, and for that site alone: another one is
+  // never tried after it fails, whatever the panel's failure setting says.
+  const browserAiSettings = () => ({ ...settingsFor("browser_ai"), provider: thumbnailBrowserProvider(engineSelect.value), failure_mode: "last_successful_image" });
   // What an engine that follows a prompt needs and Overlay does not: the style notes, the prompt and the LLM button.
   const styleInput = textArea(intro.style_notes, 2, "Optional look: neon city, moody blue and orange, glowing eyes, comic outline ...");
   const promptInput = textArea(intro.prompt, 7, "The edit prompt. Click Write prompt with LLM, or type your own.");
@@ -325,12 +421,15 @@ export function openThumbnailDialog(deps) {
     const overlayOn = engineSelect.value === "overlay";
     overlayGroup.style.display = overlayOn ? "flex" : "none";
     apiGroup.style.display = engineSelect.value === "api_image" ? "flex" : "none";
+    const browserOn = Boolean(thumbnailBrowserProvider(engineSelect.value));
+    browserOpenButton.style.display = browserOn && state.thumbnailBrowserAiDirect ? "" : "none";
     styleField.style.display = overlayOn ? "none" : "flex";
     promptField.style.display = overlayOn ? "none" : "flex";
     writeButton.style.display = overlayOn ? "none" : "";
     if (overlayOn) engineHint.textContent = OVERLAY_HINT;
     else if (engineSelect.value === "qwen_image_edit") engineHint.textContent = QWEN_EDIT_HINT;
     else if (engineSelect.value === "api_image") engineHint.textContent = API_IMAGE_HINT;
+    else if (browserOn) engineHint.textContent = browserAiHint(browserImageProviderLabel(thumbnailBrowserProvider(engineSelect.value)), state.thumbnailBrowserAiDirect);
     else engineHint.textContent = EDIT_HINT;
     paintApiImage();
     paintOverlayStrength();
@@ -366,6 +465,60 @@ export function openThumbnailDialog(deps) {
 
   const enableBox = makeCheckbox("Make the thumbnail the first frame of the final video (one frame, no more)", intro.enabled);
 
+  // The person's own files. A thumbnail picture is copied into the project like a generated one and joins its history. An intro video is
+  // used where it is, and its path is kept with the project.
+  const pathRow = (input, ...buttons) => {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:6px;align-items:center;";
+    input.style.minWidth = "0";
+    row.append(input, ...buttons);
+    return row;
+  };
+  const smallNote = (text) => {
+    const line = document.createElement("div");
+    line.textContent = text;
+    line.style.cssText = "font-size:11px;line-height:1.4;color:#94a3b8;";
+    return line;
+  };
+  const cleanPath = (raw) => String(raw ?? "").trim().replace(/^"(.*)"$/, "$1").trim();
+  const pictureInput = makeInput("");
+  pictureInput.placeholder = "Path to your thumbnail picture (png, jpg or webp)";
+  const pictureBrowse = makeButton("Choose a picture...");
+  const pictureUse = makeButton("Use this picture", "primary");
+  const pictureNote = smallNote("Your picture is copied into the project and becomes the thumbnail. A picture that is not the shape of the video fills the frame, so its edges are cropped.");
+  const introInput = makeInput(intro.video_intro_path);
+  introInput.placeholder = "Path to your intro video (mp4, mov, mkv, webm, avi or m4v)";
+  const introBrowse = makeButton("Choose a video...");
+  const introEnable = makeCheckbox("Put this video in front of the final video", intro.video_intro_enabled);
+  const introNote = smallNote("The whole video plays before your video, with its own sound. A different size or frame rate is fitted to your video with black bars, never cropped. With a thumbnail on too, the thumbnail's one frame comes first, then this video.");
+  // Created after the scrubber's player on purpose: it is the second video element in this dialog.
+  const introPreview = document.createElement("video");
+  introPreview.controls = true;
+  introPreview.preload = "metadata";
+  introPreview.style.cssText = `${FRAME_CSS}display:none;`;
+  const introCaption = smallNote("");
+  const paintIntroVideo = () => {
+    const path = introInput.value.trim();
+    introPreview.style.display = path ? "block" : "none";
+    if (!path) {
+      introPreview.pause();
+      introPreview.dataset.path = "";
+      introCaption.textContent = "No intro video chosen.";
+      return;
+    }
+    introCaption.textContent = "";
+    if (introPreview.dataset.path !== path) {
+      introPreview.dataset.path = path;
+      introPreview.src = makeEditorVideoUrl(path);
+    }
+  };
+  introPreview.addEventListener("loadedmetadata", () => {
+    introCaption.textContent = `${formatThumbnailTime(introPreview.duration)} long, ${introPreview.videoWidth}×${introPreview.videoHeight}`;
+  });
+  introPreview.addEventListener("error", () => {
+    introCaption.textContent = "This window cannot play that file, but it is still tried when the final video is made.";
+  });
+
   const current = () => normalizeThumbnailIntro(state.thumbnailIntro);
   const commit = (changes, { persist = true } = {}) => {
     state.thumbnailIntro = normalizeThumbnailIntro({ ...current(), ...changes });
@@ -373,6 +526,8 @@ export function openThumbnailDialog(deps) {
   };
   const readInputs = () => ({
     enabled: enableBox.input.checked,
+    video_intro_enabled: introEnable.input.checked,
+    video_intro_path: introInput.value.trim(),
     engine: engineSelect.value,
     overlay: normalizeThumbnailOverlay({ color: overlayColor.value, position: overlayPosition.value, strength: Number(overlayStrength.value) }),
     api_image: normalizeThumbnailApiImage({ model: apiModelInput.value }),
@@ -421,7 +576,8 @@ export function openThumbnailDialog(deps) {
   };
   const setBusy = (value, text = "") => {
     busy = value;
-    for (const control of [useButton, writeButton, generateButton, engineSelect, apiModelInput, overlayColor, overlayPosition, overlayStrength, titleInput, styleInput, promptInput]) {
+    for (const control of [useButton, writeButton, generateButton, engineSelect, apiModelInput, overlayColor, overlayPosition, overlayStrength, titleInput, styleInput, promptInput,
+      pictureInput, pictureBrowse, pictureUse, introInput, introBrowse]) {
       control.disabled = value;
     }
     status.style.color = "#93c5fd";
@@ -439,8 +595,63 @@ export function openThumbnailDialog(deps) {
     return false;
   };
 
-  useButton.onclick = async () => {
+  // The person's own thumbnail picture: copied into the project's thumbnail folder (the route that keeps every thumbnail) and made the
+  // thumbnail, switched on. It joins the history like a generated one, so an earlier picture can be picked again.
+  const useOwnPicture = async (raw) => {
     if (busy) return;
+    const path = cleanPath(raw);
+    if (!path) {
+      toast("Choose a picture first: click Choose a picture, or type or paste its path.", true);
+      return;
+    }
+    setBusy(true, "Copying your picture into the project...");
+    try {
+      const saved = await postJson("/vrgdg/music_builder/thumbnail/save", { project_folder: projectFolder(), source_path: path }, THUMBNAIL_SAVE_TIMEOUT_MS);
+      const entry = { path: saved.image_path, prompt: "", engine: THUMBNAIL_OWN_PICTURE, scene_id: "" };
+      enableBox.input.checked = true;
+      pictureInput.value = path;
+      commit({ ...readInputs(), image_path: saved.image_path, history: thumbnailHistoryWith(current().history, entry) });
+      showImage(saved.image_path);
+      paintHistory();
+      setBusy(false, `Your picture is the thumbnail (${saved.width}×${saved.height}). It becomes the first frame of the final video.`);
+    } catch (error) {
+      fail(error);
+    }
+  };
+  pictureBrowse.onclick = async () => {
+    if (busy) return;
+    try {
+      const path = await pickPath("image");
+      if (path) await useOwnPicture(path);
+    } catch (error) {
+      fail(error);
+    }
+  };
+  pictureUse.onclick = () => useOwnPicture(pictureInput.value);
+
+  // The person's own intro video: the path is kept with the project and the video is switched on. The file itself is not copied.
+  const chooseIntroVideo = (raw) => {
+    const path = cleanPath(raw);
+    introInput.value = path;
+    introEnable.input.checked = Boolean(path);
+    commit(readInputs());
+    paintIntroVideo();
+    status.style.color = "#93c5fd";
+    status.textContent = path ? "Intro video chosen. It plays first in the final video, after the thumbnail's one frame." : "Intro video removed.";
+  };
+  introBrowse.onclick = async () => {
+    if (busy) return;
+    try {
+      const path = await pickPath("video");
+      if (path) chooseIntroVideo(path);
+    } catch (error) {
+      fail(error);
+    }
+  };
+  introInput.addEventListener("change", () => chooseIntroVideo(introInput.value));
+
+  useButton.onclick = async () => {
+    if (busy || !hasScenes) return;
     const item = sceneItemAt(frame);
     setBusy(true, item.video ? "Taking that frame of the video..." : "Using the scene image...");
     try {
@@ -550,9 +761,15 @@ export function openThumbnailDialog(deps) {
         });
         onStatus(`Asking ${thumbnailApiImageProvider(runnerPayload?.()).label} to draw the thumbnail...`);
         saved = await postJson(url, payload, THUMBNAIL_API_IMAGE_TIMEOUT_MS);
+      } else if (thumbnailBrowserProvider(engineSelect.value) && state.thumbnailBrowserAiDirect) {
+        // The build drives Chrome itself and keeps the picture in the project, so there is no ComfyUI queue and no separate save.
+        saved = await generateThumbnailBrowserAiDirect({
+          engine: engineSelect.value, prompt, sourcePath: current().source_path, projectFolder: projectFolder(), settings: browserAiSettings(), onStatus,
+        });
       } else {
         const image = await generateThumbnailImage({
-          engine: engineSelect.value, prompt, sourcePath: current().source_path, settings: settingsFor(engineSelect.value), onStatus,
+          engine: engineSelect.value, prompt, sourcePath: current().source_path,
+          settings: thumbnailBrowserProvider(engineSelect.value) ? browserAiSettings() : settingsFor(engineSelect.value), onStatus,
         });
         onStatus("Saving the thumbnail in the project...");
         saved = await postJson("/vrgdg/music_builder/thumbnail/save", { project_folder: projectFolder(), image });
@@ -570,6 +787,21 @@ export function openThumbnailDialog(deps) {
     }
   };
 
+  browserOpenButton.onclick = async () => {
+    if (busy) return;
+    browserOpenButton.disabled = true;
+    try {
+      const { url, payload } = thumbnailBrowserAiOpenRequest(browserAiSettings());
+      status.textContent = `Opening ${browserImageProviderLabel(payload.provider)} in Chrome...`;
+      const opened = await postJson(url, payload, THUMBNAIL_BROWSER_AI_OPEN_TIMEOUT_MS);
+      status.textContent = `${opened.provider_label || browserImageProviderLabel(payload.provider)} is open in Chrome. Sign in there, leave the window open, then click Generate.`;
+    } catch (error) {
+      status.textContent = String(error?.message || error);
+    } finally {
+      browserOpenButton.disabled = false;
+    }
+  };
+
   const closeButton = makeButton("Done", "primary");
   closeButton.onclick = () => {
     if (busy && !window.confirm("A thumbnail is still being made. Close this window anyway? It keeps running in the background.")) return;
@@ -579,6 +811,20 @@ export function openThumbnailDialog(deps) {
   };
 
   // Layout: the picker (player on the left, the frame in use on the right), then the prompt and the result, then the footer.
+  const ownGrid = document.createElement("div");
+  ownGrid.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start;border:1px solid #1e293b;border-radius:8px;padding:10px;";
+  const pictureColumn = document.createElement("div");
+  pictureColumn.style.cssText = COLUMN_CSS;
+  pictureColumn.append(sectionTitle("Your own thumbnail"), pathRow(pictureInput, pictureBrowse, pictureUse), pictureNote);
+  const introColumn = document.createElement("div");
+  introColumn.style.cssText = COLUMN_CSS;
+  introColumn.append(sectionTitle("Your own intro video"), pathRow(introInput, introBrowse), introEnable.wrapper, introPreview, introCaption, introNote);
+  // A build without the intro video route cannot join one, so the choice is left out instead of being offered and ignored.
+  introColumn.style.display = state.videoIntroAvailable ? "flex" : "none";
+  ownGrid.style.gridTemplateColumns = state.videoIntroAvailable ? "minmax(0,1fr) minmax(0,1fr)" : "minmax(0,1fr)";
+  ownGrid.append(pictureColumn, introColumn);
+  const makeTitle = sectionTitle("Or make a thumbnail from a frame of your video");
+
   const pickerGrid = document.createElement("div");
   pickerGrid.style.cssText = "display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:14px;align-items:start;";
   const playerColumn = document.createElement("div");
@@ -597,7 +843,7 @@ export function openThumbnailDialog(deps) {
   buttons.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;";
   buttons.append(writeButton, generateButton);
   left.append(sectionTitle("2. Choose how, 3. Make the thumbnail"), makeField("Image workflow", engineSelect), engineHint,
-    makeField("Title text", titleInput), overlayGroup, apiGroup, styleField, promptField, buttons, status);
+    makeField("Title text", titleInput), overlayGroup, apiGroup, browserOpenButton, styleField, promptField, buttons, status);
   const right = document.createElement("div");
   right.style.cssText = COLUMN_CSS;
   right.append(sectionTitle("The thumbnail"), previewEmpty, preview, historyStrip);
@@ -610,12 +856,21 @@ export function openThumbnailDialog(deps) {
   footerLeft.append(enableBox.wrapper);
   footer.append(footerLeft, closeButton);
 
-  box.append(title, note, pickerGrid, settingsGrid, footer);
+  // With no scene to take a frame from, only the person's own picture and video can be used, and the generating controls are left out.
+  if (!hasScenes) {
+    makeNote.textContent = "A thumbnail can be made from a frame of your video once a scene has a rendered video or a scene image. Until then, use your own picture and intro video above.";
+    pickerGrid.style.display = "none";
+    left.style.display = "none";
+    settingsGrid.style.gridTemplateColumns = "minmax(0,1fr)";
+  }
+
+  box.append(title, note, ownGrid, makeTitle, makeNote, pickerGrid, settingsGrid, footer);
   backdrop.append(box);
   document.body.append(backdrop);
-  showFrame(frame);
+  if (hasScenes) showFrame(frame);
   paintSource();
   paintEngine();
+  paintIntroVideo();
   showImage(intro.image_path);
   paintHistory();
   return backdrop;

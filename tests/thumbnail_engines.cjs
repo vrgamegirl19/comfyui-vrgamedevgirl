@@ -24,6 +24,55 @@ test('NanoBanana gets the frame as a reference image and needs its key', () => {
   assert.throws(() => request(c, 'nano_banana', { api_key: '  ' }), /NanoBanana API key is missing.*another image workflow/);
 });
 
+test('each Browser AI engine gets the frame as a reference, its site and the timeout of the Image panel, and opens a new project', () => {
+  const c = load();
+  // The dialog puts the site of the engine in the settings (`provider`), so the request only carries it to the route.
+  for (const [engine, provider, label] of [
+    ['browser_flow', 'flow_nano_banana', 'Flow: Nano Banana in your browser (edit)'],
+    ['browser_gpt', 'gpt_image', 'GPT Image: ChatGPT Images in your browser (edit)'],
+    ['browser_meta', 'meta_ai', 'Meta AI: meta.ai in your browser (edit)'],
+  ]) {
+    const built = request(c, engine, { provider, timeout_seconds: 601, failure_mode: 'try_other_provider', api_key: 'ignored' });
+    assert.equal(built.url, '/vrgdg/workflow_runner/build_flow_gpt_image_prompt', engine);
+    assert.deepEqual(built.payload, {
+      provider, prompt: 'A neon portrait.', aspect_ratio: '16:9', image_ingredients: [{ path: 'C:/p/thumbnail/source_0001.png' }],
+      timeout_seconds: 601, reuse_open_project: false,
+    }, engine);
+    assert.equal(built.label, label, engine);
+  }
+  // Nothing is needed from the Builder's settings: the provider is the route's default (Flow) when none was given, and there is no key.
+  const bare = request(c, 'browser_flow', {});
+  assert.equal(bare.payload.provider, undefined);
+  assert.equal(bare.payload.timeout_seconds, undefined);
+  assert.throws(() => request(c, 'browser_gpt', {}, { prompt: '  ' }), /Write the prompt first/);
+  assert.throws(() => request(c, 'browser_meta', {}, { sourcePath: '' }), /Choose the frame first/);
+  // The engine that held all three sites is gone.
+  assert.throws(() => request(c, 'browser_ai', {}), /Unknown image workflow: browser_ai/);
+});
+
+test('a Browser AI engine on a build that drives Chrome itself has its own route and keeps the picture in the project', () => {
+  const c = load();
+  const built = plain(c.thumbnailBrowserAiDirectRequest({
+    engine: 'browser_meta', prompt: ' A neon portrait. ', sourcePath: ' C:/p/thumbnail/source_0001.png ', projectFolder: 'C:/p',
+    settings: { provider: 'meta_ai', timeout_seconds: 601, failure_mode: 'x', api_key: 'ignored' },
+  }));
+  assert.equal(built.url, '/vrgdg/music_builder/thumbnail/browser_ai');
+  assert.deepEqual(built.payload, {
+    project_folder: 'C:/p', source_path: 'C:/p/thumbnail/source_0001.png', prompt: 'A neon portrait.', provider: 'meta_ai', timeout_seconds: 601, reuse_open_project: false,
+  });
+  assert.equal(built.label, 'Meta AI: meta.ai in your browser (edit)');
+  const bare = plain(c.thumbnailBrowserAiDirectRequest({ engine: 'browser_gpt', prompt: 'p', sourcePath: 'a.png', projectFolder: 'C:/p' }));
+  assert.equal(bare.payload.provider, undefined, 'the build default provider is used when none was given');
+  assert.equal(bare.label, 'GPT Image: ChatGPT Images in your browser (edit)');
+  const ask = (extra) => c.thumbnailBrowserAiDirectRequest({ engine: 'browser_flow', prompt: 'p', sourcePath: 'a.png', projectFolder: 'C:/p', ...extra });
+  assert.throws(() => ask({ prompt: '  ' }), /Write the prompt first/);
+  assert.throws(() => ask({ sourcePath: '' }), /Choose the frame first/);
+  assert.throws(() => ask({ projectFolder: ' ' }), /Create or load a project/);
+  // Signing in opens the site of the engine in the build's own Chrome window.
+  assert.deepEqual(plain(c.thumbnailBrowserAiOpenRequest({ provider: 'gpt_image', timeout_seconds: 9 })), { url: '/vrgdg/music_builder/thumbnail/browser_ai/open', payload: { provider: 'gpt_image' } });
+  assert.deepEqual(plain(c.thumbnailBrowserAiOpenRequest(null)).payload, {});
+});
+
 test('Qwen Image Edit gets the frame as a reference and nothing about models: the builder picks the newest installed one', () => {
   const c = load();
   const built = request(c, 'qwen_image_edit', { unet_name: 'ignored.safetensors', steps: 8, cfg: 1, width: 1920 });
@@ -105,12 +154,15 @@ test('every engine has a label, and the ComfyUI workflows have a route', () => {
   const c = load();
   const labels = vm.runInContext('THUMBNAIL_ENGINE_LABELS', c);
   // Overlay and API image have labels too, but no build route: they are not ComfyUI workflows (see their own request functions).
-  assert.deepEqual(Object.keys(labels), ['overlay', 'qwen_image_edit', 'nano_banana', 'api_image']);
+  assert.deepEqual(Object.keys(labels), ['overlay', 'qwen_image_edit', 'nano_banana', 'api_image', 'browser_flow', 'browser_gpt', 'browser_meta']);
+  assert.match(labels.browser_flow, /^Flow: Nano Banana in your browser/);
+  assert.match(labels.browser_gpt, /^GPT Image: ChatGPT Images in your browser/);
+  assert.match(labels.browser_meta, /^Meta AI: meta.ai in your browser/);
   assert.match(labels.overlay, /^Overlay: your frame exactly, no AI/);
   assert.match(labels.api_image, /^API image: Gemini, Grok or OpenAI of the LLM Runner/);
   assert.throws(() => request(c, 'overlay', {}), /Unknown image workflow: overlay/);
   assert.throws(() => request(c, 'api_image', {}), /Unknown image workflow: api_image/);
-  for (const engine of ['qwen_image_edit', 'nano_banana']) {
+  for (const engine of ['qwen_image_edit', 'nano_banana', 'browser_flow', 'browser_gpt', 'browser_meta']) {
     const built = request(c, engine, { api_key: 'key' });
     assert.match(built.url, /^\/vrgdg\/workflow_runner\/build_\w+_prompt$/);
     assert.equal(built.label, labels[engine]);

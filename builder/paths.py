@@ -73,6 +73,14 @@ def _open_tk_picker(kind, file_name=""):
                 title="Choose SRT file",
                 filetypes=[("SRT files", "*.srt"), ("All files", "*.*")],
             )
+        elif kind == "image":
+            path = filedialog.askopenfilename(
+                title="Choose image file",
+                filetypes=[
+                    ("Image files", "*.png *.jpg *.jpeg *.webp"),
+                    ("All files", "*.*"),
+                ],
+            )
         elif kind == "video":
             path = filedialog.askopenfilename(
                 title="Choose video file",

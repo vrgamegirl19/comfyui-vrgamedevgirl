@@ -13,7 +13,7 @@ import { DEFAULT_LTX_INGREDIENTS_HEIGHT, DEFAULT_LTX_INGREDIENTS_WIDTH } from ".
 import { makeButton, makeField, makeInput, normalizeProjectVideoEngine, toast } from "./controls.mjs";
 import { showFinalVideoReadyModal } from "./dialogs.mjs";
 import { applyOverlayAfterStitch } from "./overlay_render.mjs";
-import { applyThumbnailIntroAfterStitch } from "./thumbnail.mjs";
+import { applyThumbnailIntroAfterStitch, applyVideoIntroAfterStitch } from "./thumbnail.mjs";
 import { stitchIsFullVideo } from "./thumbnail_state.mjs";
 import { transitionsForStitch } from "./transition_actions.mjs";
 import { looksForStitch } from "./look_actions.mjs";
@@ -1424,10 +1424,11 @@ export function createVideoRender({
     state.finalVideoPath = data.final_video_path || "";
     // The overlays, when the project has any: the stitched video is rewritten with them on it, in place.
     const overlaid = await applyOverlayAfterStitch(state, data, { progress, timelineOffset: options.timelineOffset, projectFolder: projectInput.value });
-    // The thumbnail, when it is on: the picture goes in front of the finished video, in place. Only the full video gets it.
-    return stitchIsFullVideo(options)
-      ? applyThumbnailIntroAfterStitch(state, overlaid, { progress, projectFolder: projectInput.value })
-      : overlaid;
+    if (!stitchIsFullVideo(options)) return overlaid;
+    // The intro video and the thumbnail, when they are on, go in front of the finished video, in place. Only the full video gets them.
+    // The intro video is joined first and the thumbnail's one frame second, so that frame stays the first frame of the video.
+    const withIntro = await applyVideoIntroAfterStitch(state, overlaid, { progress, projectFolder: projectInput.value });
+    return applyThumbnailIntroAfterStitch(state, withIntro, { progress, projectFolder: projectInput.value });
   }
 
   async function runGemmaThenCreateSceneVideo() {
