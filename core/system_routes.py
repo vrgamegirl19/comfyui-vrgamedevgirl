@@ -21,6 +21,7 @@ from aiohttp import web
 from server import PromptServer
 
 from . import model_downloads
+from . import amd_smi
 
 
 _lock = asyncio.Lock()
@@ -55,20 +56,22 @@ def _read_resources():
             creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
         )
     except (OSError, subprocess.TimeoutExpired):
-        return result
-    if completed.returncode != 0:
-        return result
-    for row in csv.reader(io.StringIO(completed.stdout), skipinitialspace=True):
-        if len(row) != 10:
-            continue
-        index, name, *values = row
-        keys = ("load", "used", "total", "temperature", "fan", "clock", "power", "power_limit")
-        gpu = dict(zip(keys, map(_number, values)))
-        gpu.update(index=index.strip(), name=name.strip())
-        for key in ("used", "total"):
-            if gpu[key] is not None:
-                gpu[key] *= 1024 ** 2
-        result["gpus"].append(gpu)
+        completed = None
+    if completed is not None and completed.returncode == 0:
+        for row in csv.reader(io.StringIO(completed.stdout), skipinitialspace=True):
+            if len(row) != 10:
+                continue
+            index, name, *values = row
+            keys = ("load", "used", "total", "temperature", "fan", "clock", "power", "power_limit")
+            gpu = dict(zip(keys, map(_number, values)))
+            gpu.update(index=index.strip(), name=name.strip())
+            for key in ("used", "total"):
+                if gpu[key] is not None:
+                    gpu[key] *= 1024 ** 2
+            result["gpus"].append(gpu)
+    if not result["gpus"]:
+        # No working nvidia-smi: try AMD's equivalent. Same row shape, so the browser panel is unchanged.
+        result["gpus"] = amd_smi.parse_sensors(amd_smi.gpus_amd(timeout=2))
     if result["gpus"]:
         result["gpu_status"] = "available"
     return result

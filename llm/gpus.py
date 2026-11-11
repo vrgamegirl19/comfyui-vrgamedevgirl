@@ -11,6 +11,8 @@ import os
 import subprocess
 from typing import Any, Dict, List, Optional
 
+from ..core import amd_smi
+
 AUTO_GPU = -1
 MAX_GPU_NUMBER = 63
 # llama.cpp's LLAMA_SPLIT_MODE_NONE: the whole model on ``main_gpu``. Its default spreads the layers over every visible card.
@@ -152,6 +154,21 @@ def _smi_gpus() -> List[Dict[str, Any]]:
     return found
 
 
+def _amd_smi_gpus() -> List[Dict[str, Any]]:
+    """Every GPU in the computer through ``amd-smi``, for a computer with AMD cards where NVML and ``nvidia-smi`` do not exist."""
+    return [
+        {
+            "slot": card["gpu"],
+            "name": card["name"] or f"GPU {card['gpu']}",
+            "uuid": card["uuid"],
+            "total_bytes": card["total"],
+            "free_bytes": card["free"],
+            "pci_bus": card["pci_bus"],
+        }
+        for card in amd_smi.gpus_amd()
+    ]
+
+
 def _gb(size: Optional[int]) -> Optional[float]:
     return None if size is None else round(size / 1024 ** 3, 1)
 
@@ -182,6 +199,11 @@ def merge_gpus(
     gpus: List[Dict[str, Any]] = []
     for card in physical:
         match = by_uuid.get(card["uuid"]) if card.get("uuid") else None
+        if match is None and card.get("name"):
+            # ``amd-smi`` has no UUID for some cards (``asic_serial`` "N/A"), so pair by name when only one card on each side has that name.
+            same_name = [item for item in visible if item.get("name") == card["name"] and item["number"] not in used]
+            if len(same_name) == 1:
+                match = same_name[0]
         if match is None and len(physical) == len(visible) == 1:
             match = visible[0]
         entry = {
@@ -230,7 +252,7 @@ def merge_gpus(
 def list_gpus() -> Dict[str, Any]:
     """Every GPU of the computer with its CUDA number in this process (None when hidden from it), name, memory and a label to show."""
     visible = _torch_gpus()
-    physical = _nvml_gpus() or _smi_gpus()
+    physical = _nvml_gpus() or _smi_gpus() or _amd_smi_gpus()
     if not physical:
         physical = [
             {"slot": None, "name": item["name"], "uuid": item["uuid"], "total_bytes": item["total_bytes"], "free_bytes": None, "pci_bus": ""}

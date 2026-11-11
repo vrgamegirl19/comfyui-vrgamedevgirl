@@ -136,7 +136,7 @@ function render(data) {
     lastGpu = identity;
     setText("name", gpu ? `GPU ${gpu.index} · ${gpu.name}` : "GPU readings unavailable");
     panel.title = gpu ? `GPU ${gpu.index} · ${gpu.name} · Resources on the machine running ComfyUI`
-        : "RAM is available. GPU sensors require NVIDIA nvidia-smi and the selected GPU index.";
+        : "RAM is available. GPU sensors require NVIDIA nvidia-smi or AMD amd-smi and the selected GPU index.";
     setText("load", display(gpu?.load, "%"));
     setText("temperature", display(gpu?.temperature, "°C"));
     setText("fan", display(gpu?.fan, "%"));
@@ -232,7 +232,7 @@ app.registerExtension({
     settings: [
         setting("Enabled", "Show resource monitor", "boolean", false),
         setting("Details", "Show fan, clock and power", "boolean", false),
-        setting("GPU", "GPU index (nvidia-smi)", "number", 0, { attrs: { min: 0, step: 1, maxFractionDigits: 0 } }),
+        setting("GPU", "GPU index (nvidia-smi / amd-smi)", "number", 0, { attrs: { min: 0, step: 1, maxFractionDigits: 0 } }),
         setting("FloatingPosition", "Monitor position", "hidden", "", { onChange: restorePosition }),
     ],
     setup() {
