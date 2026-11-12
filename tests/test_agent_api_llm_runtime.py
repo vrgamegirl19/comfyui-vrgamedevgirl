@@ -159,6 +159,23 @@ class SessionSettingsTests(unittest.TestCase):
         qwen = rt.llm_payload_from_session({"text_gemma_runner": "qwen_local", "gemma_context_limit": 8000})
         self.assertEqual(qwen["n_ctx"], 8000)
 
+    def test_gemma_local_gets_a_model_file_like_the_builder(self):
+        gguf = importlib.import_module(f"{pkg_name}.llm.gguf")
+        cls = gguf.VRGDG_SuperGemmaGGUFChat
+        with patch.object(cls, "_list_local_gemma_gguf_choices", classmethod(lambda c: ["first-gemma.gguf", "second-gemma.gguf"])), \
+                patch.object(cls, "_list_local_mmproj_choices", classmethod(lambda c: ["mmproj-BF16.gguf"])):
+            chosen = rt.llm_payload_from_session({"text_gemma_runner": "builtin", "gemma_model_file": "second-gemma.gguf"})
+            self.assertEqual(chosen["model_file"], "second-gemma.gguf")
+            self.assertEqual(chosen["mmproj_file"], "mmproj-BF16.gguf")
+            # Nothing chosen yet: the first Gemma found, as the Builder's LLM Runner picks it.
+            self.assertEqual(rt.llm_payload_from_session({})["model_file"], "first-gemma.gguf")
+        with patch.object(cls, "_list_local_gemma_gguf_choices", classmethod(lambda c: [cls.MISSING_MODEL_OPTION])), \
+                patch.object(cls, "_list_local_mmproj_choices", classmethod(lambda c: [cls.MISSING_MMPROJ_OPTION])):
+            empty = rt.llm_payload_from_session({})
+            self.assertEqual((empty["model_file"], empty["mmproj_file"]), ("", ""))
+        qwen = rt.llm_payload_from_session({"text_gemma_runner": "qwen_local", "qwen_model_file": "q.gguf"})
+        self.assertEqual(qwen["model_file"], "q.gguf")
+
     def test_lm_studio_jobs_are_not_scheduled_as_gpu_jobs_but_local_runners_are(self):
         self.assertFalse(llm_jobs.is_llm_runner_gpu({"text_runner": "lm_studio"}))
         self.assertFalse(llm_jobs.is_llm_runner_gpu({"text_runner": "lmstudio"}))

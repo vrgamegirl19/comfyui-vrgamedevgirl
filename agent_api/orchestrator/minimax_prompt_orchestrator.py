@@ -103,6 +103,10 @@ def _scene_context(session: Dict[str, Any], segment: Dict[str, Any], card: Dict[
         "visual_only": visual_only,
         "no_character": no_character,
         "singers": [] if visual_only else list(card.get("lyric_singers") or []),
+        # Speaking scenes talk instead of sing, like the Builder (scene performance first, then the project's video type).
+        "speaking": not visual_only and str(segment.get("performance_mode") or session.get("video_type") or "singing") == "speaking",
+        "dialogue": list(segment.get("minimax_speaker_assignments") or segment.get("speaker_assignments")
+                         or card.get("speaker_assignments") or []),
         "subject_text": "\n".join(f"{r['name']}: {r['description']}" if r["description"] else r["name"] for r in card.get("subject_refs") or []),
         "location_text": "\n".join(filter(None, [
             _text((card.get("location_ref") or {}).get("name")), _text((card.get("location_ref") or {}).get("description"))])),
@@ -186,6 +190,8 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
                 motion_request=_text(segment.get("i2v_notes")), audio_direction=_text(segment.get("audio_direction")),
                 continuity=_text(segment.get("continuity")),
                 cues=cues or None,
+                performance_mode="speaking" if ctx["speaking"] else "singing",
+                dialogue=ctx["dialogue"] if ctx["speaking"] else None,
                 storyboard_context=storyboard_video_context(card, ctx["defaults"]) + (
                     "\n\nThe builder adds this exact video style look to the opening line. Write shots that fit it; do not copy it into the shots:\n"
                     + style_text if style_text else "") + (
@@ -204,7 +210,7 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
                 "subject_context": "",
                 "location_context": "",
                 "no_character_present": ctx["no_character"],
-                "performance_mode": "no_lip_sync" if ctx["visual_only"] else "singing",
+                "performance_mode": "no_lip_sync" if ctx["visual_only"] else ("speaking" if ctx["speaking"] else "singing"),
                 "lyric_text": ctx["lyric"],
                 **emotion_expression_input(segment, session),
                 "omit_lyrics_from_video_prompts": omit_lyrics,
@@ -239,6 +245,8 @@ def generate_scene_prompt(session: Dict[str, Any], folder: str, segment: Dict[st
             descriptions = lfp.apply_shots(descriptions, segment, plan, performer, performer_labels, session)
         elif cues:
             descriptions = [sp.enforce_cue_shot(text, cue) for text, cue in zip(descriptions, cues)]
+        elif ctx["speaking"]:
+            descriptions = [sp.speaking_wording(text, ctx["audio_mode"] == "built_in_audio") for text in descriptions]
         elif ctx["lyric"] and ctx["audio_mode"] != "built_in_audio" and labels:
             # The prompt must say what the character sings: the lyric goes in the shot as <d>[English] words.</d>.
             cast = [l for l in labels if l["kind"] == "subject"] or labels

@@ -135,6 +135,23 @@ class TestAgentApiImageJobs(unittest.TestCase):
             self.assertIn("prompt", graph_res, f"No 'prompt' graph returned for {m}")
             self.assertGreater(len(graph_res["prompt"]), 0, f"Empty prompt graph for {m}")
 
+    def test_01b_krea2_without_enhance_leaves_out_the_zimage_branch(self):
+        # The graph only, whatever models this machine has installed.
+        workflows = importlib.import_module(f"{pkg_name}.runner.image_workflows")
+        stub = patch.object(workflows, "_require_model_choice", lambda *args, **kwargs: None)
+        stub.start()
+        self.addCleanup(stub.stop)
+        graph = build_image_graph_for_mode("krea2", {"prompt": "A cat", "use_zimage_enhance": False})["prompt"]
+        self.assertFalse([key for key in graph if key.startswith("193:") or key == "201"],
+                         "ComfyUI validates every node, so the unused enhancer must not be sent")
+        self.assertEqual(graph["199"]["inputs"]["images"], ["30:8", 0])
+        for node_id, node in graph.items():
+            for value in node.get("inputs", {}).values():
+                if isinstance(value, list) and len(value) == 2 and isinstance(value[0], str):
+                    self.assertIn(value[0], graph, f"{node_id} links to a missing node")
+        enhanced = build_image_graph_for_mode("krea2", {"prompt": "A cat"})["prompt"]
+        self.assertIn("193:82", enhanced)
+
     @patch.object(media_mod, "_resolve_comfy_image_path")
     def test_02_generate_scene_image_job_success(self, mock_resolve_image):
         mock_resolve_image.return_value = self.dummy_image_path
