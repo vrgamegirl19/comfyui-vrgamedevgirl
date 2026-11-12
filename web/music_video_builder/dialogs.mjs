@@ -1,5 +1,6 @@
 import { getJson, makeEditorImageUrl, postJson } from "./comfy_api.mjs";
 import { makeButton, makeField, makeInput, makeMiniButton, toast } from "./controls.mjs";
+import { MANAGER_MISSING_TEXT, builtInLine, installButtonState, managerNoteText, missingNodeIds, nodeBadge } from "./custom_nodes_status.mjs";
 import { renderDmadModelsTab } from "./dmad_models_tab.mjs";
 import { wireInstallButton } from "./model_install_button.mjs";
 import {
@@ -557,14 +558,23 @@ export function showModelDownloadModal({ modelSelections = [], select = "" } = {
     restartNote.textContent = "Installs run through ComfyUI-Manager (cm_cli): packs in the Comfy Registry install by registry id, the rest from GitHub. Fully close and restart ComfyUI, then refresh your browser, before using newly installed nodes.";
     restartNote.style.cssText = "padding:10px 12px;border:1px solid #854d0e;border-radius:7px;background:#422006;color:#fde68a;font-size:12px;line-height:1.4;";
     const managerMissing = document.createElement("div");
-    managerMissing.textContent = "ComfyUI-Manager is not installed in ComfyUI’s Python, so nodes cannot be installed from here. Start ComfyUI with --enable-manager, or run pip install -r manager_requirements.txt from the ComfyUI folder, then restart ComfyUI.";
+    managerMissing.textContent = MANAGER_MISSING_TEXT;
     managerMissing.style.cssText = "display:none;padding:10px 12px;border:1px solid #b91c1c;border-radius:7px;background:#450a0a;color:#fecaca;font-size:12px;line-height:1.4;";
     const list = document.createElement("div");
     list.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;";
     body.append(intro, actions, restartNote, managerMissing, list);
     let managerAvailable = true;
+    let managerNote = {};
+    let comfyuiVersion = "";
+    // Every answer of the status route says whether nodes can be installed, why not, and which ComfyUI this is.
+    const readStatus = (result) => {
+      managerAvailable = result.manager_available !== false;
+      managerNote = result;
+      comfyuiVersion = String(result.comfyui_version || "");
+    };
 
     const draw = (statuses = []) => {
+      managerMissing.textContent = managerNoteText(managerNote);
       managerMissing.style.display = managerAvailable ? "none" : "";
       installAll.disabled = !managerAvailable;
       const byId = new Map(statuses.map((item) => [item.id, item]));
@@ -579,24 +589,26 @@ export function showModelDownloadModal({ modelSelections = [], select = "" } = {
         name.textContent = item.label;
         name.style.cssText = "font-size:17px;font-weight:900;color:#f8fafc;";
         const badge = document.createElement("span");
-        const installed = item.current || status?.installed;
-        badge.textContent = installed ? "Installed" : "Missing";
+        const shown = nodeBadge(item, status);
+        const installed = shown.kind === "ok";
+        badge.textContent = shown.text;
         badge.style.cssText = `font-size:11px;font-weight:900;padding:4px 7px;border-radius:999px;background:${installed ? "#14532d" : "#7f1d1d"};color:${installed ? "#bbf7d0" : "#fecaca"};`;
         heading.append(name, badge);
         const note = document.createElement("div");
         note.textContent = item.note;
         note.style.cssText = "font-size:13px;line-height:1.4;color:#cbd5e1;min-height:36px;";
         const source = document.createElement("div");
-        source.textContent = status?.source === "registry"
+        source.textContent = builtInLine(status, comfyuiVersion) || (status?.source === "registry"
           ? `Source: Comfy Registry (${status.install})`
-          : status?.source === "github" ? "Source: GitHub (not in the Comfy Registry)" : "";
+          : status?.source === "github" ? "Source: GitHub (not in the Comfy Registry)" : "");
         source.style.cssText = "font-size:12px;color:#94a3b8;";
         const buttons = document.createElement("div");
         buttons.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;margin-top:auto;";
         const repo = makeMiniButton("Open Repository");
         repo.addEventListener("click", () => window.open(item.url, "_blank", "noopener,noreferrer"));
-        const install = makeMiniButton(item.current ? "Included" : (status?.installed ? "Reinstall Requirements" : "Install"));
-        install.disabled = Boolean(item.current) || !managerAvailable;
+        const button = installButtonState(item, status, managerAvailable);
+        const install = makeMiniButton(button.text);
+        install.disabled = button.disabled;
         install.style.background = installed ? "#334155" : "#1d4ed8";
         install.style.borderColor = installed ? "#64748b" : "#60a5fa";
         if (item.current) install.title = "This is the currently installed Video Builder pack.";
@@ -607,7 +619,7 @@ export function showModelDownloadModal({ modelSelections = [], select = "" } = {
             const result = await postJson("/vrgdg/video_builder/custom_nodes/install", { ids: [item.id] }, 1200000);
             toast(`${item.label} installed. Restart ComfyUI before using it.`);
             const refreshed = await getJson("/vrgdg/video_builder/custom_nodes/status");
-            managerAvailable = refreshed.manager_available !== false;
+            readStatus(refreshed);
             draw(refreshed.nodes || []);
           } catch (error) {
             toast(String(error?.message || error), true);
@@ -628,7 +640,7 @@ export function showModelDownloadModal({ modelSelections = [], select = "" } = {
         if (result.custom_nodes_dir) {
           intro.textContent = `Checking ComfyUI custom nodes folder: ${result.custom_nodes_dir}`;
         }
-        managerAvailable = result.manager_available !== false;
+        readStatus(result);
         draw(result.nodes || []);
       } catch (error) {
         draw([]);
@@ -643,7 +655,7 @@ export function showModelDownloadModal({ modelSelections = [], select = "" } = {
       installAll.textContent = "Installing Missing...";
       try {
         const current = await getJson("/vrgdg/video_builder/custom_nodes/status");
-        const missing = (current.nodes || []).filter((item) => !item.installed).map((item) => item.id);
+        const missing = missingNodeIds(current.nodes);
         if (!missing.length) {
           toast("All Video Builder custom nodes are already installed.");
         } else {

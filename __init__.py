@@ -1,7 +1,7 @@
 import importlib
 
-__version__ = "v10.0.5"
-__updated__ = "2026-11-10"
+__version__ = "v10.0.6"
+__updated__ = "2026-11-12"
 
 _VRGDG_SUBMODULES = (
     ".general.lyrics",
