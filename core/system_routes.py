@@ -21,6 +21,7 @@ from aiohttp import web
 from server import PromptServer
 
 from . import model_downloads
+from .comfy_features import MINIMAX_H3_LATENT_UPSCALER_SINCE, comfyui_version, has_built_in, version_text
 
 
 _lock = asyncio.Lock()
@@ -431,7 +432,9 @@ VIDEO_BUILDER_CUSTOM_NODES = {
     "te_speed_minimax_h3": {"install": "https://github.com/HELPMEEADICE/TE-Speed-MiniMaxH3-OSS.git", "folders": ("TE-Speed-MiniMaxH3-OSS",)},
     "mmh3_ultimate_upscale": {"install": "Comfyui-MMH3-UltimateUpscale", "folders": ("Comfyui-MMH3-UltimateUpscale",)},
     "minimax_h3_audio_t8": {"install": "https://github.com/T8mars/comfyui-minimax-h3-audio-T8.git", "folders": ("comfyui-minimax-h3-audio-T8",)},
-    "minimax_h3_latent_upscaler": {"install": "https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler.git", "folders": ("Comfyui_Minimax_h3_latent_Upscaler",)},
+    # ComfyUI 0.44.0 and newer has this upscaler built in, so the pack is only needed on older ComfyUI ("built_in_since").
+    "minimax_h3_latent_upscaler": {"install": "https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler.git", "folders": ("Comfyui_Minimax_h3_latent_Upscaler",),
+                                   "built_in_since": MINIMAX_H3_LATENT_UPSCALER_SINCE},
 }
 
 
@@ -439,9 +442,14 @@ def _installed_node_path(item):
     return next((_CUSTOM_NODES_DIR / name for name in item["folders"] if (_CUSTOM_NODES_DIR / name).is_dir()), None)
 
 
+def _built_in(item):
+    """True when the running ComfyUI already has what this custom node pack provides."""
+    return bool(item.get("built_in_since")) and has_built_in(item["built_in_since"])
+
+
 def _node_status(item_id, item):
     path = _installed_node_path(item)
-    return {
+    status = {
         "id": item_id,
         "folder": path.name if path else item["folders"][0],
         "installed": path is not None,
@@ -449,6 +457,10 @@ def _node_status(item_id, item):
         "source": "github" if item["install"].startswith("https://") else "registry",
         "install": item["install"],
     }
+    if item.get("built_in_since"):
+        status["built_in"] = _built_in(item)
+        status["built_in_since"] = version_text(item["built_in_since"])
+    return status
 
 
 def _manager_available():
@@ -478,6 +490,9 @@ def _install(ids):
         raise RuntimeError("No recognized Video Builder custom nodes were selected.")
     results = []
     for item_id, item in requested:
+        if _built_in(item):
+            results.append({"id": item_id, "folder": item["folders"][0], "action": "built into ComfyUI", "output": ""})
+            continue
         path = _installed_node_path(item)
         if path:
             output = _run_cm_cli("post-install", str(path))
@@ -495,6 +510,7 @@ def _collect_custom_nodes_status():
         "ok": True,
         "custom_nodes_dir": str(_CUSTOM_NODES_DIR),
         "manager_available": _manager_available(),
+        "comfyui_version": version_text(comfyui_version()),
         "nodes": [_node_status(item_id, item) for item_id, item in VIDEO_BUILDER_CUSTOM_NODES.items()],
     }
 

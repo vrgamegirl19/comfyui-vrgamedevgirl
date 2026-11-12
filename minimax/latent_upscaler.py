@@ -2,6 +2,10 @@
 
 Uses ComfyUI's registered ``latent_upscale_models`` paths, matching the model
 dropdown behavior of ComfyUI's native latent-upscale loaders.
+
+ComfyUI 0.44.0 and newer has this upscaler built in (``LatentUpscaleModelLoader`` and
+``MiniMaxH3LatentUpscaleWithModel``), and these nodes use it. Older ComfyUI needs the
+Comfyui_Minimax_h3_latent_Upscaler pack, whose backend is loaded from its folder.
 """
 
 import importlib.util
@@ -14,6 +18,7 @@ import torch
 import folder_paths
 import comfy.nested_tensor
 
+from ..core.comfy_features import native_minimax_h3_upscaler
 from .tile_plan import DEFAULT_VRAM_PRESET, PLAN_OUTPUT_NAMES, VRAM_PRESETS, describe_plan, plan_spatial_tiles
 
 
@@ -47,8 +52,9 @@ def _load_backend():
     path = _backend_path()
     if not os.path.isfile(path):
         raise RuntimeError(
-            "The LBH MiniMax H3 latent-upscaler backend is not installed. "
-            f"Expected: {path}"
+            "This ComfyUI is older than 0.44.0, so it has no built-in MiniMax H3 latent upscaler, and the "
+            "Comfyui_Minimax_h3_latent_Upscaler custom node pack is not installed. Update ComfyUI to 0.44.0 or "
+            f"newer, or install that pack and restart ComfyUI. Expected: {path}"
         )
     spec = importlib.util.spec_from_file_location(_BACKEND_MODULE_NAME, path)
     if spec is None or spec.loader is None:
@@ -150,6 +156,34 @@ def _load_model(model_name, device_name, precision):
     return loaded
 
 
+def _load_native_model(model_name):
+    """The upscaler through ComfyUI's own loader (0.44.0 and newer). ComfyUI picks the device and precision."""
+    from comfy_extras.nodes_hunyuan import LatentUpscaleModelLoader
+
+    path = _resolve_registered_model_path(model_name)
+    patcher = LatentUpscaleModelLoader.execute(model_name)[0]
+    print(f"[VRGDG MiniMax H3 Upscaler] Loaded with ComfyUI's built-in loader: {path}")
+    return {"native": True, "patcher": patcher, "model_name": model_name, "path": path}
+
+
+def _native_upscale(latent, patcher, scale):
+    """Resize the video latent ``latent`` (4D or 5D, 24 channels) by ``scale`` with ComfyUI's built-in upscale node."""
+    from comfy_extras.nodes_minimax_h3 import MiniMaxH3LatentUpscaleWithModel
+
+    samples = latent["samples"]
+    was_4d = samples.ndim == 4
+    work = samples.unsqueeze(2) if was_4d else samples
+    height, width = work.shape[3:]
+    # The node takes the size in pixels and divides by the H3 VAE's 16, so latent sizes times 16 land exactly.
+    target_width = int(round(width * scale)) * 16
+    target_height = int(round(height * scale)) * 16
+    upscaled = MiniMaxH3LatentUpscaleWithModel.execute(patcher, {**latent, "samples": work}, target_width, target_height)[0]
+    result = dict(upscaled)
+    if was_4d:
+        result["samples"] = result["samples"].squeeze(2)
+    return result
+
+
 class VRGDG_MiniMaxH3LatentUpscaleModelLoader:
     @classmethod
     def INPUT_TYPES(cls):
@@ -168,12 +202,19 @@ class VRGDG_MiniMaxH3LatentUpscaleModelLoader:
     RETURN_NAMES = ("upscale_model",)
     FUNCTION = "load"
     CATEGORY = "VRGDG/Video/MiniMax H3"
+    DESCRIPTION = (
+        "ComfyUI 0.44.0 and newer loads the upscaler with its built-in loader and chooses the device and precision "
+        "itself, so those two settings are ignored. Older ComfyUI needs the Comfyui_Minimax_h3_latent_Upscaler "
+        "custom node pack and uses these two settings."
+    )
 
     def load(self, model_name, device, precision):
         if model_name.startswith("["):
             raise FileNotFoundError(
                 "No models were found in ComfyUI's registered latent_upscale_models folders."
             )
+        if native_minimax_h3_upscaler():
+            return (_load_native_model(model_name),)
         return (_load_model(model_name, device, precision),)
 
 
@@ -260,6 +301,9 @@ class VRGDG_MiniMaxH3LearnedLatentUpscale:
             raise ValueError(
                 f"Expected a 24-channel MiniMax H3 video latent, got {samples.shape[1]} channels."
             )
+
+        if upscale_model.get("native"):
+            return (_native_upscale(latent, upscale_model["patcher"], scale),)
 
         model = upscale_model["model"]
         device = upscale_model["device"]
