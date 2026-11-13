@@ -1,6 +1,6 @@
 import { normalizeOwnServerTimeoutMinutes, postJson } from "./comfy_api.mjs";
 import { DEFAULT_NB_IMAGE_MODEL } from "./constants.mjs";
-import { toast } from "./controls.mjs";
+import { refreshLlmText, setLlmTextTransform, toast } from "./controls.mjs";
 import { createBaseProgressWindow } from "./dialogs.mjs";
 import { gemmaVisionModelFile } from "./llm_global_keys.mjs";
 import {
@@ -108,15 +108,24 @@ export function createLlmRunner({
     return "Gemma Local";
   }
 
-  function runnerAwareLlmText(value) {
+  // Text written for Gemma, with the selected runner's name in its place. A model name such as "Gemma 4" stays as it is, and so
+  // does "Gemma4" when `keepGemma4` is set (the Gemma4 drafts only ever run on the built-in model).
+  function runnerAwareLlmText(value, { keepGemma4 = false } = {}) {
     return String(value || "")
       .replace(/\b(?:Vision Gemma|Gemma Vision|Gemma vision)\b/gi, gemmaRunnerLabel({ vision: true }))
       .replace(/\bGemma Local\b/gi, promptRunnerActionName())
-      .replace(/\bGemma4?\b/g, promptRunnerActionName())
-      .replace(/\bGemma\b/g, promptRunnerActionName())
+      .replace(/\bGemma4\b/g, keepGemma4 ? "Gemma4" : promptRunnerActionName())
+      .replace(/\bGemma\b(?![ -]?\d)/g, promptRunnerActionName())
       .replace(/\bAPI LLM\b/g, "LLM API")
       .replace(/\bOwn server\b/gi, "Custom Server");
   }
+
+  // What toasts, buttons and tooltips show (controls.mjs llmText): Gemma Local reads as it was written, every other runner by its name.
+  function llmDisplayText(value) {
+    const text = String(value ?? "");
+    return (state.textGemmaRunner || "builtin") === "builtin" ? text : runnerAwareLlmText(text, { keepGemma4: true });
+  }
+  setLlmTextTransform(llmDisplayText);
 
   function createProgressWindow(title, options = {}) {
     const runnerAware = options.runnerAware !== false;
@@ -135,6 +144,7 @@ export function createLlmRunner({
   }
 
   function updatePromptRunnerButtonLabels() {
+    refreshLlmText();
     const runner = promptRunnerActionName();
     gemmaT2IAllButton.textContent = `${runner} T2I All`;
     gemmaVideoAllButton.textContent = `${runner} Video All`;

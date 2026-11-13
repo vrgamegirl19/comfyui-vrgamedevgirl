@@ -2,6 +2,8 @@ import { normalizeElevenLabsDesignDraft } from "./elevenlabs_voice_design.mjs";
 import { normalizeElevenLabsVoice, isElevenLabsSpeaking } from "./elevenlabs.mjs";
 import { postJson, makeEditorThumbnailUrl } from "./comfy_api.mjs";
 import {
+  bindLlmText,
+  llmText,
   makeButton,
   makeCheckbox,
   makeField,
@@ -47,7 +49,7 @@ export function createReferenceBuilder({
     const miniMaxTargetMode = normalizeMiniMaxH3Mode(options?.miniMaxTargetMode || miniMaxH3ModeForSegment(activeSegment()));
     const refmodPipeline = miniMaxProject && normalizeMiniMaxH3Pipeline(state.miniMaxH3Settings?.pipeline) === "refmod";
     const referenceBuilderTargetLabel = !referenceImagesEnabled
-      ? "Gemma scene text mapping"
+      ? llmText("Gemma scene text mapping")
       : miniMaxProject && miniMaxTargetMode === "video_to_video"
         ? "MiniMax Video to Video"
         : miniMaxProject && miniMaxTargetMode === "reference_to_video"
@@ -56,7 +58,7 @@ export function createReferenceBuilder({
             ? "LTX Reference to Video"
             : currentVideoMode() === "ingredients"
               ? "LTX Ingredients to Video"
-              : "Gemma scene text mapping";
+              : llmText("Gemma scene text mapping");
     state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     const refs = state.fluxReferenceBuilder;
     // options.host renders the builder inside that element (a Story Builder tab) instead of a full-screen window.
@@ -80,7 +82,7 @@ export function createReferenceBuilder({
           ? refmodPipeline
             ? "Choose saved RefMods on character, location, prop, and style cards, then map those cards to scenes."
             : "Build and map ordered character, location, prop, style, and storyboard images for MiniMax Reference to Video."
-          : "Map character and location descriptions to scenes for Gemma prompt writing. Flux/Nano can also use attached images when those image modes are active.";
+          : llmText("Map character and location descriptions to scenes for Gemma prompt writing. Flux/Nano can also use attached images when those image modes are active.");
     heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">${focusedSection === "mapping_tools" ? "Map Subjects / Locations" : sectionTitle ? `Edit ${sectionTitle}` : "Scene Reference Builder"}</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">${referenceBuilderDescription}</div>`;
     const close = makeButton("Close");
     header.append(heading, close);
@@ -142,8 +144,8 @@ export function createReferenceBuilder({
     const subjectActions = document.createElement("div");
     subjectActions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;";
     describeMissingSubjects.title = referenceImagesEnabled
-      ? "Use vision Gemma to describe character reference images that do not already have descriptions."
-      : "Use Gemma to create missing subject descriptions from the current prompts, lyrics, and scene notes.";
+      ? llmText("Use vision Gemma to describe character reference images that do not already have descriptions.")
+      : llmText("Use Gemma to create missing subject descriptions from the current prompts, lyrics, and scene notes.");
     createAllMissingSubjectImages.title = "Batch-create missing subject/reference images. You will choose ZImage, Krea 2, or Flow/GPT before generation starts.";
     importSubjects.title = "Import subject images and matching .txt descriptions from this project's subject_location/subject folder.";
     addSubjectButton.title = "Add one blank subject/reference row.";
@@ -197,7 +199,7 @@ export function createReferenceBuilder({
     const uploadSubject = makeButton("Upload Subject Image", "primary");
     const clearSubject = makeButton("Clear Subject");
     createSubjectZImage.title = "Choose ZImage, Krea 2, or Flow/GPT for this subject reference.";
-    describeSubjectImage.title = "Use vision Gemma to write the reference description from this image.";
+    bindLlmText(describeSubjectImage, "title", "Use vision Gemma to write the reference description from this image.");
     subjectButtons.append(createSubjectZImage, describeSubjectImage, uploadSubject, clearSubject);
     const subjectsList = document.createElement("div");
     subjectsList.style.cssText = "display:none;flex-direction:column;gap:10px;flex:1 1 0;min-height:240px;overflow:auto;padding-right:4px;";
@@ -260,10 +262,10 @@ export function createReferenceBuilder({
     removeAllLocations.textContent = "Remove";
     extractLocations.title = "Ask your LLM to create location cards from the saved Storyboard story, or scout 18-22 shootable locations from lyrics and scenes when there is no story. The optional style/theme field below steers the result, including banned locations.";
     gptLocationScout.title = "Copy lyrics/dialogue, style/theme, and character descriptions as JSON, then open the Music Video Location Scout GPT.";
-    autoMapLocations.title = "Ask Gemma to assign saved locations to each scene.";
+    bindLlmText(autoMapLocations, "title", "Ask Gemma to assign saved locations to each scene.");
     describeMissingLocations.title = referenceImagesEnabled
-      ? "Use vision Gemma to describe location reference images that do not already have descriptions."
-      : "Use Gemma to create missing location descriptions from the current prompts, lyrics, and scene notes.";
+      ? llmText("Use vision Gemma to describe location reference images that do not already have descriptions.")
+      : llmText("Use Gemma to create missing location descriptions from the current prompts, lyrics, and scene notes.");
     importLocations.title = "Paste a location list, scene map, or combined location + scene JSON.";
     exportLocations.title = "Save the current location list and scene-location map as JSON in this project folder.";
     uploadLocationImages.title = "Select one or more location reference images and create location cards from them.";
@@ -277,7 +279,7 @@ export function createReferenceBuilder({
     locationActions.style.cssText = "display:grid;grid-template-columns:1fr;gap:10px;";
     const locationStyleTheme = makeInput(refs.location_style_theme || "");
     locationStyleTheme.placeholder = "Optional style/theme for location extraction...";
-    locationStyleTheme.title = "Optional. Helps Gemma choose locations that match your video style, theme, era, or mood.";
+    bindLlmText(locationStyleTheme, "title", "Optional. Helps Gemma choose locations that match your video style, theme, era, or mood.");
     locationStyleTheme.addEventListener("input", () => {
       refs.location_style_theme = locationStyleTheme.value;
     });
@@ -301,7 +303,7 @@ export function createReferenceBuilder({
       return group;
     }
     locationActions.append(
-      locationActionGroup("Gemma / GPT", [extractLocations, gptLocationScout, gptLocationScoutAdvanced, autoMapLocations, describeMissingLocations], makeField("Optional style/theme for location extraction", locationStyleTheme)),
+      locationActionGroup(llmText("Gemma / GPT"), [extractLocations, gptLocationScout, gptLocationScoutAdvanced, autoMapLocations, describeMissingLocations], makeField("Optional style/theme for location extraction", locationStyleTheme)),
       locationActionGroup("Manage", [importLocations, exportLocations, uploadLocationImages, createAllMissingLocationZImages, quickAddLocation, addLocation, arrangeLocations, removeAllLocations])
     );
     locationsHeader.append(locationsTitle, locationActions);
@@ -335,7 +337,7 @@ export function createReferenceBuilder({
     mappingActions.append(openAdvancedLineMapping, mapSubjectsFromLyrics, mapSubjectsFromSceneNotes, assignScenes, exportGptSceneContext, importGptSceneMap);
     mappingHeader.append(mappingTitle, mappingActions);
     const mappingNote = document.createElement("div");
-    mappingNote.textContent = "Choose which character and location text each scene should send to Gemma. Images are only used by image/reference-image workflows that support them.";
+    bindLlmText(mappingNote, "textContent", "Choose which character and location text each scene should send to Gemma. Images are only used by image/reference-image workflows that support them.");
     mappingNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
     const globalPerformanceControls = document.createElement("div");
     globalPerformanceControls.style.cssText = "border:1px solid #155e75;border-radius:7px;background:#071422;padding:9px;display:flex;flex-direction:column;gap:7px;";

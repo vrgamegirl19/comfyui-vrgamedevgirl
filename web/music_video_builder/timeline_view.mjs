@@ -15,7 +15,15 @@ import {
   WAVEFORM_MODES,
 } from "./constants.mjs";
 import {
-  escapeHtml, makeButton, makeCheckbox, makeInput, makeSelect, normalizeProjectVideoEngine, normalizeProjectVideoType, toast,
+  bindLlmText,
+  escapeHtml,
+  makeButton,
+  makeCheckbox,
+  makeInput,
+  makeSelect,
+  normalizeProjectVideoEngine,
+  normalizeProjectVideoType,
+  toast,
 } from "./controls.mjs";
 import { miniMaxI2VFLFEnabled } from "./minimax_keyframe_state.mjs";
 import { formatDurationSeconds, formatTime } from "./format.mjs";
@@ -1575,7 +1583,7 @@ export function createTimelineView({
         const videoBox = document.createElement("textarea");
         videoBox.value = String(segment.i2v_notes || "");
         videoBox.placeholder = "Video motion/action notes...";
-        videoBox.title = "Video notes for this scene. Gemma uses this for I2V/T2V camera motion, character movement, action, and performance direction.";
+        bindLlmText(videoBox, "title", "Video notes for this scene. Gemma uses this for I2V/T2V camera motion, character movement, action, and performance direction.");
         videoBox.style.cssText = `
           position:absolute;left:${left}px;top:${timelineVideoNoteTop()}px;width:${Math.max(86, width)}px;height:${TIMELINE_NOTE_HEIGHT}px;
           box-sizing:border-box;resize:none;z-index:3;pointer-events:auto;
@@ -1609,7 +1617,7 @@ export function createTimelineView({
         const lyricBox = document.createElement("textarea");
         lyricBox.value = String(segment.lyric_text || "");
         lyricBox.placeholder = "Line / lyric / dialogue...";
-        lyricBox.title = "Line text for this scene. Gemma uses this for singing, speaking, or visual-only behavior based on Video Type.";
+        bindLlmText(lyricBox, "title", "Line text for this scene. Gemma uses this for singing, speaking, or visual-only behavior based on Video Type.");
         lyricBox.style.cssText = `
           position:absolute;left:${left}px;top:${timelineLyricNoteTop()}px;width:${Math.max(24, width)}px;height:${TIMELINE_NOTE_HEIGHT}px;
           box-sizing:border-box;resize:none;z-index:3;pointer-events:auto;

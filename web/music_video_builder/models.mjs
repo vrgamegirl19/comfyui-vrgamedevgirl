@@ -58,6 +58,7 @@ export const VIDEO_BUILDER_CUSTOM_NODES = [
   { id: "mmh3_ultimate_upscale", label: "Comfyui-MMH3-UltimateUpscale", note: "Optional MiniMax H3 advanced upscale node used by the advanced upscale/refinement path.", url: "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale" },
   { id: "minimax_h3_audio_t8", label: "comfyui-minimax-h3-audio-T8", note: "Required by MiniMax H3 Ref to Video 2 Pass for audio/video latent separation.", url: "https://github.com/T8mars/comfyui-minimax-h3-audio-T8" },
   { id: "minimax_h3_latent_upscaler", label: "Comfyui_Minimax_h3_latent_Upscaler", note: "Only for ComfyUI older than 0.44.0. ComfyUI 0.44.0 and newer has the MiniMax H3 latent upscaler built in, which the 2 Pass workflows and the experimental video upscaler then use. The latent-upscaler checkpoint must be installed separately either way.", url: "https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler" },
+  { id: "nvidia_vfx", label: "nvidia-vfx (RTX Video Super Resolution)", note: "Optional Python library, not a custom node. The MiniMax H3 2 Pass and 3 Pass final resize can use NVIDIA RTX Video Super Resolution (nvidia_rtx_vsr), which needs it and an NVIDIA RTX GPU. Without it the final resize uses lanczos. Installed with pip from NVIDIA’s index (about 800 MB), so it is not part of Install Missing Nodes.", url: "https://pypi.org/project/nvidia-vfx/" },
 ];
 export const ZIMAGE_MODEL_DOWNLOADS = [
   { label: "Z-Image Turbo", url: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors" },
@@ -73,10 +74,10 @@ export const MOSS_IMAGE_MODEL_DOWNLOADS = [
   { label: "MOSS-Image SFT diffusion model", url: "https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_sft_bf16.safetensors" },
   { label: "Qwen3.5 9B text encoder", url: "https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/text_encoders/qwen3.5_9b_int8_convrot.safetensors" },
   { label: "Flux2 VAE", url: "https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/vae/flux2-vae.safetensors" },
-  { label: "8-step Turbo LoRA", url: "https://huggingface.co/lodestones/MOSS-Image-SFT-8-steps-dmd/resolve/main/lora.safetensors" },
   // `install` makes the button install the file through the Builder's own routes (core/model_downloads.py, which holds the same id and url)
-  // and save it as `filename`. Hugging Face calls it adapter_model.safetensors.
-  { label: "Edit LoRA (instruction editing)", url: "https://huggingface.co/chinoll/Moss-Image-Edit/resolve/main/adapter_model.safetensors", install: "moss_edit_lora", filename: "moss_image_edit_lora.safetensors" },
+  // and save it as `filename`. Hugging Face calls the Turbo LoRA lora.safetensors and the Edit LoRA adapter_model.safetensors.
+  { label: "8-step Turbo LoRA", url: "https://huggingface.co/lodestones/MOSS-Image-SFT-8-steps-dmd/resolve/main/lora.safetensors", install: "moss_turbo_lora", filename: "moss_image_sft_8_steps_dmd_lora.safetensors" },
+  { label: "Edit LoRA", url: "https://huggingface.co/chinoll/Moss-Image-Edit/resolve/main/adapter_model.safetensors", install: "moss_edit_lora", filename: "moss_image_edit_lora.safetensors" },
 ];
 export const DEFAULT_KREA2_REFERENCE_SETTINGS = {
   krea_unet_name: "krea2_turbo_fp8_scaled.safetensors",
@@ -157,7 +158,7 @@ models/
     moss_image_sft_8_steps_dmd_lora.safetensors
     moss_image_edit_lora.safetensors
 
-The Turbo LoRA downloads as lora.safetensors. Rename it to moss_image_sft_8_steps_dmd_lora.safetensors.
+The 8-step Turbo LoRA button installs the Turbo LoRA (lodestones/MOSS-Image-SFT-8-steps-dmd) here as moss_image_sft_8_steps_dmd_lora.safetensors. If you download it yourself it is called lora.safetensors: rename it.
 The Edit LoRA button installs the Edit LoRA (chinoll/Moss-Image-Edit) here as moss_image_edit_lora.safetensors. If you download it yourself it is called adapter_model.safetensors: rename it. It follows a written instruction with one to four reference images, and it needs a ComfyUI that has the "Text Encode MOSS-Image Edit" node (newer than v0.42.1). Update ComfyUI first.`,
   "Krea2": `ComfyUI/
 models/

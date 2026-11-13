@@ -95,7 +95,7 @@ or its 1-based number.
 | `POST` | `/projects/{pid}/timeline/notes` | Add a timed Timeline Note. `start` (seconds, required), `end` (later than `start`; leave out or `null` for a point note), `type`, `label`, `note`, optional `id`. The open Video Builder shows it. _(If-Match)_ |
 | `DELETE` | `/projects/{pid}/timeline/notes/{nid}` | Delete a timed Timeline Note. _(If-Match)_ |
 | `PATCH` | `/projects/{pid}/timeline/notes/{nid}` | Change the sent fields of a timed Timeline Note (`start`, `end`, `type`, `label`, `note`). The id never changes; `end: null` makes it a point note. _(If-Match)_ |
-| `POST` | `/projects/{pid}/timeline/snap` | Snap a scene edge to the nearest beat (`scene_id`, `edge`, `scope`). _(body: `edge`, `scope`)_ |
+| `POST` | `/projects/{pid}/timeline/snap` | Snap scene boundaries to a beat within 0.14 s: one edge (`scope` `edge`, with `scene_id` and `edge`) or every scene start (`scope` `all`). Returns how many scenes `moved`; an unknown `scope` is refused. _(body: `edge`, `scope`)_ |
 
 ### Scenes
 

@@ -5,7 +5,7 @@ const { functionSource, readBuilderModule } = require('./builder_source.cjs');
 
 // The runner settings every LLM request carries (web/music_video_builder/llm_runner.mjs): the GPU of Gemma Local and Qwen Local rides along with the
 // GPU layers, so each writer (prompts, enhance, reference description, storyboard, wizard) runs the model on the GPU chosen in the LLM Runner.
-const context = vm.createContext({});
+const context = vm.createContext({ setLlmTextTransform() {} });
 vm.runInContext(readBuilderModule('prompt_text.mjs'), context);
 vm.runInContext(functionSource(readBuilderModule('comfy_api.mjs'), 'normalizeOwnServerTimeoutMinutes'), context);
 vm.runInContext(functionSource(readBuilderModule('llm_global_keys.mjs'), 'gemmaVisionModelFile'), context);

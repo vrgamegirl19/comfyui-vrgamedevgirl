@@ -1,5 +1,5 @@
 import { getJson, makeEditorImageUrl, postJson } from "./comfy_api.mjs";
-import { makeButton, makeField, makeInput, makeMiniButton, toast } from "./controls.mjs";
+import { llmText, makeButton, makeField, makeInput, makeMiniButton, toast } from "./controls.mjs";
 import { MANAGER_MISSING_TEXT, builtInLine, installButtonState, managerNoteText, missingNodeIds, nodeBadge } from "./custom_nodes_status.mjs";
 import { renderDmadModelsTab } from "./dmad_models_tab.mjs";
 import { wireInstallButton } from "./model_install_button.mjs";
@@ -34,8 +34,8 @@ export function recordGemmaBatchFailure(key, segment, sceneLabel, error, debugPa
     key,
     segmentId: String(segment?.id || ""),
     sceneLabel: sceneLabel || "Unknown scene",
-    error: String(error?.message || error || "Unknown Gemma error"),
-    raw: raw || cleaned || "(raw Gemma output was not attached)",
+    error: String(error?.message || error || llmText("Unknown Gemma error")),
+    raw: raw || cleaned || llmText("(raw Gemma output was not attached)"),
     cleaned,
     debugPath: String(debugPath || error?.gemmaDebugPath || ""),
     timestamp: new Date().toISOString(),
@@ -393,7 +393,7 @@ export function showModelDownloadModal({ modelSelections = [], select = "" } = {
       groups: [
         { title: "ZImage", note: "Core ZImage Turbo diffusion model, Qwen text encoder, and VAE.", downloads: ZIMAGE_MODEL_DOWNLOADS },
         { title: "Krea2", note: "Krea2 text-to-image model used by the Reference Builder Krea 2 option.", downloads: KREA2_MODEL_DOWNLOADS },
-        { title: "MOSS-Image", note: "MOSS-Image option in Generate Subject/Location Reference. The 8-step Turbo LoRA and the Edit LoRA are optional. The Turbo LoRA needs a rename (see folder locations). The Edit LoRA button installs it for you as moss_image_edit_lora.safetensors, and it needs a newer ComfyUI.", downloads: MOSS_IMAGE_MODEL_DOWNLOADS },
+        { title: "MOSS-Image", note: "MOSS-Image option in Generate Subject/Location Reference. The 8-step Turbo LoRA and the Edit LoRA are optional. Their buttons install the files for you as moss_image_sft_8_steps_dmd_lora.safetensors and moss_image_edit_lora.safetensors, and the Edit LoRA needs a newer ComfyUI.", downloads: MOSS_IMAGE_MODEL_DOWNLOADS },
         { title: "Flux/Klein 9B", note: "9B is higher quality. 4B is smaller and lighter.", downloads: FLUX_KLEIN_9B_MODEL_DOWNLOADS },
         { title: "Flux/Klein 4B", note: "4B is smaller and lighter.", downloads: FLUX_KLEIN_4B_MODEL_DOWNLOADS },
         { title: "Ernie Image", note: "Ernie diffusion model, Ministral text encoder, and VAE.", downloads: ERNIE_MODEL_DOWNLOADS },
@@ -600,7 +600,8 @@ export function showModelDownloadModal({ modelSelections = [], select = "" } = {
         const source = document.createElement("div");
         source.textContent = builtInLine(status, comfyuiVersion) || (status?.source === "registry"
           ? `Source: Comfy Registry (${status.install})`
-          : status?.source === "github" ? "Source: GitHub (not in the Comfy Registry)" : "");
+          : status?.source === "github" ? "Source: GitHub (not in the Comfy Registry)"
+          : status?.source === "pip" ? `Source: NVIDIA Python index (pip install ${status.install})` : "");
         source.style.cssText = "font-size:12px;color:#94a3b8;";
         const buttons = document.createElement("div");
         buttons.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;margin-top:auto;";
@@ -624,8 +625,8 @@ export function showModelDownloadModal({ modelSelections = [], select = "" } = {
           } catch (error) {
             toast(String(error?.message || error), true);
           } finally {
-            install.disabled = !managerAvailable;
-          install.textContent = status?.installed ? "Reinstall Requirements" : "Install";
+            install.disabled = button.disabled;
+            install.textContent = button.text;
           }
         });
         buttons.append(repo, install);

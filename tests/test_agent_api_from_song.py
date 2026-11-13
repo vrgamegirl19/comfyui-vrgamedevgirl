@@ -79,6 +79,7 @@ class FromSongJobTests(unittest.TestCase):
         session = self.read_session()
         session["audio_path"] = audio_path
         session["audio_duration"] = 10.0
+        session["beat_markers"] = list(getattr(self, "beats", []))
         self.write_session(session)
         return {"audio_path": audio_path, "duration": 10.0}
 
@@ -121,6 +122,21 @@ class FromSongJobTests(unittest.TestCase):
         self.assertFalse(captured["params"]["stitch"])
         for key in ("audio_path", "lyrics_text", "scene_seconds"):
             self.assertNotIn(key, captured["params"])
+
+    def boundaries(self):
+        return [(round(seg["start"], 3), round(seg["end"], 3)) for seg in self.read_session()["segments"]]
+
+    def test_scene_boundaries_snap_to_nearby_beats(self):
+        self.beats = [3.4, 6.6]
+        job, _ = self.run_job({"audio_path": self.song, "scene_seconds": 4.0, "stitch": False})
+        self.assertEqual(job.status, jobs_mod.JobStatus.SUCCEEDED, job.error)
+        self.assertEqual(self.boundaries(), [(0.0, 3.4), (3.4, 6.6), (6.6, 10.0)])
+
+    def test_snap_to_beats_false_keeps_the_even_spacing(self):
+        self.beats = [3.4, 6.6]
+        job, _ = self.run_job({"audio_path": self.song, "scene_seconds": 4.0, "snap_to_beats": False, "stitch": False})
+        self.assertEqual(job.status, jobs_mod.JobStatus.SUCCEEDED, job.error)
+        self.assertEqual(self.boundaries(), [(0.0, 3.333), (3.333, 6.667), (6.667, 10.0)])
 
     def test_existing_scenes_are_kept(self):
         session = self.read_session()

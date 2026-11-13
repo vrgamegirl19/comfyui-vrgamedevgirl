@@ -1,6 +1,6 @@
 import { postJson, makeEditorThumbnailUrl } from "./comfy_api.mjs";
 import { LOCATION_MAPPER_GPT_URL } from "./constants.mjs";
-import { escapeHtml, makeButton, makeField, makeGptLinkButton, makeInput, makeSubTabs, toast } from "./controls.mjs";
+import { bindLlmText, escapeHtml, llmText, makeButton, makeField, makeGptLinkButton, makeInput, makeSubTabs, toast } from "./controls.mjs";
 import { sceneConceptPromptText } from "./image_prompts.mjs";
 import { hasReferenceImage } from "./llm_runner.mjs";
 import { imageFileFromDrop } from "./media_import.mjs";
@@ -41,7 +41,7 @@ export function createIngredientsBuilder({
     sheetHeader.innerHTML = `<div style="font-weight:900;color:#e0f2fe;">Ingredients Sheets</div>`;
     const describeSheets = makeButton("Gemma - Describe Missing", "primary");
     const addSheet = makeButton("Add Sheet", "primary");
-    describeSheets.title = "Use vision Gemma to write character appearance descriptions for sheet images that do not already have descriptions.";
+    bindLlmText(describeSheets, "title", "Use vision Gemma to write character appearance descriptions for sheet images that do not already have descriptions.");
     const sheetHeaderActions = document.createElement("div");
     sheetHeaderActions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;";
     sheetHeaderActions.append(describeSheets, addSheet);
@@ -85,7 +85,7 @@ export function createIngredientsBuilder({
     const locationPanel = document.createElement("div");
     locationPanel.style.cssText = "border:1px solid #334155;border-radius:0 7px 7px 7px;background:#0b1220;padding:10px;display:flex;flex-direction:column;gap:8px;";
     const locationHeader = document.createElement("div");
-    locationHeader.innerHTML = `<div style="font-weight:900;color:#e0f2fe;">Location Text</div><div style="font-size:12px;color:#94a3b8;margin-top:2px;">Optional text-only locations for Gemma/prompt planning. No location images or triggers are used here.</div>`;
+    locationHeader.innerHTML = llmText(`<div style="font-weight:900;color:#e0f2fe;">Location Text</div><div style="font-size:12px;color:#94a3b8;margin-top:2px;">Optional text-only locations for Gemma/prompt planning. No location images or triggers are used here.</div>`);
     const locationToolActions = document.createElement("div");
     locationToolActions.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;";
     const extractLocations = makeButton("Gemma Extract", "primary");
@@ -94,17 +94,17 @@ export function createIngredientsBuilder({
     const addLocation = makeButton("Add Location", "primary");
     const autoMapLocations = makeButton("Auto Map", "primary");
     const clearLocations = makeButton("Clear Locations");
-    extractLocations.title = "Ask Gemma to extract a reusable text-only location list from the source text and scene text.";
+    bindLlmText(extractLocations, "title", "Ask Gemma to extract a reusable text-only location list from the source text and scene text.");
     gptLocationScout.title = "Copy lyrics/dialogue, style/theme, and character descriptions as JSON, then open the Music Video Location Scout GPT.";
     locationToolActions.append(extractLocations, gptLocationScout, importLocations, addLocation, autoMapLocations, clearLocations);
     const locationStyleTheme = makeInput(refs.location_style_theme || "");
     locationStyleTheme.placeholder = "Optional style/theme for extracted locations...";
-    locationStyleTheme.title = "Optional. Helps Gemma choose locations that match your character/style/theme.";
+    bindLlmText(locationStyleTheme, "title", "Optional. Helps Gemma choose locations that match your character/style/theme.");
     const maxGeneratedLocations = makeInput(String(refs.max_generated_locations || 8), "number");
     maxGeneratedLocations.min = "1";
     maxGeneratedLocations.max = "50";
     maxGeneratedLocations.step = "1";
-    maxGeneratedLocations.title = "Maximum number of locations Gemma may add during one automatic extraction.";
+    bindLlmText(maxGeneratedLocations, "title", "Maximum number of locations Gemma may add during one automatic extraction.");
     maxGeneratedLocations.addEventListener("change", () => {
       refs.max_generated_locations = Math.max(1, Math.min(50, Number(maxGeneratedLocations.value || 8) || 8));
       maxGeneratedLocations.value = String(refs.max_generated_locations);
@@ -580,7 +580,7 @@ export function createIngredientsBuilder({
         };
         const notes = document.createElement("textarea");
         notes.value = sheet.description || "";
-        notes.placeholder = "Optional character/subject description sent to Storyboard and Gemma...";
+        bindLlmText(notes, "placeholder", "Optional character/subject description sent to Storyboard and Gemma...");
         notes.style.cssText = "width:100%;box-sizing:border-box;min-height:78px;resize:vertical;border:1px solid #334155;border-radius:6px;background:#111827;color:#f8fafc;padding:7px 8px;font-size:12px;";
         notes.oninput = () => {
           const currentSheet = ingredientsSheetById(sheet.id) || sheet;
@@ -629,7 +629,7 @@ export function createIngredientsBuilder({
         controls.style.cssText = "display:grid;grid-template-columns:1fr;gap:6px;align-self:stretch;";
         const upload = makeButton("Upload");
         const describe = makeButton("Gemma Describe", "primary");
-        describe.title = "Use vision Gemma to write the character appearance description from this sheet image.";
+        bindLlmText(describe, "title", "Use vision Gemma to write the character appearance description from this sheet image.");
         const fileInput = document.createElement("input");
         fileInput.type = "file";
         fileInput.accept = "image/*";
@@ -763,7 +763,7 @@ export function createIngredientsBuilder({
         }
         locationSelect.value = hasLocationOption || locationValue ? locationValue : "";
         locationSelect.disabled = !locations.length;
-        locationSelect.title = locations.length ? "Location text sent to Gemma/prompt planning for this scene." : "Add or import locations with Location Text Tools below.";
+        locationSelect.title = locations.length ? llmText("Location text sent to Gemma/prompt planning for this scene.") : "Add or import locations with Location Text Tools below.";
         locationSelect.onchange = () => collectMappingsFromDom();
         row.append(label, select, makeSheetPreview(select.value), locationSelect);
         sceneList.append(row);
@@ -865,7 +865,7 @@ export function createIngredientsBuilder({
       } finally {
         extractLocations.disabled = false;
         autoMapLocations.disabled = false;
-        extractLocations.textContent = "Gemma Extract";
+        bindLlmText(extractLocations, "textContent", "Gemma Extract");
       }
     };
     gptLocationScout.onclick = () => openLocationScoutGptForRefs(refs, locationStyleTheme.value || "", {

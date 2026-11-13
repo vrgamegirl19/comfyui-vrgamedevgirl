@@ -13,7 +13,7 @@ from ..minimax.tile_plan import HIDDEN_ADVANCED_SETTINGS, PLAN_OUTPUT_NAMES, nor
 
 from .paths import _bool_payload, _first_payload_value, _float_payload, _int_payload
 from .models import _NONE_LORA, _clean_lora_name, _model_choice_exists, _require_model_choice
-from .api_graph import _api_node_id_by_class, _compat_node_inputs, _get_comfy_node_mappings, _load_api_template, _set_api_input
+from .api_graph import _api_node_id_by_class, _compat_node_inputs, _fall_back_from_unavailable_rtx_vsr, _get_comfy_node_mappings, _load_api_template, _set_api_input
 from .minimax_inputs import _MINIMAX_H3_ASPECT_RATIOS, _minimax_h3_2pass_api_template_path, _minimax_h3_3pass_api_template_path, _minimax_h3_api_template_path, _minimax_h3_built_in_audio_api_template_path, _minimax_h3_image_paths, _minimax_h3_output_location, _minimax_h3_video_references, _patch_minimax_h3_image_to_video_node, _probe_media_duration_seconds, _trim_minimax_h3_audio_context
 from .minimax_patches import _validate_minimax_h3_dmad_lora, _minimax_h3_cooldown_frames, _minimax_h3_effective_warmup_frames, _minimax_h3_is_latent_mode, _minimax_h3_latent_continuation_mode, _patch_minimax_h3_advanced_settings, _patch_minimax_h3_fast_decode, _patch_minimax_h3_latent_continuation, _patch_minimax_h3_loras, _patch_minimax_h3_memory_efficient_sage_attention, _patch_minimax_h3_optional_model_paths, _patch_minimax_h3_save_latent, _patch_minimax_h3_sigma_shift, _patch_minimax_h3_te_speed, _patch_minimax_h3_turbo, _require_minimax_h3_memory_efficient_sage_attention
 
@@ -661,6 +661,7 @@ def _build_minimax_h3_2pass_api_prompt(payload):
         from .minimax_chunked_pass2 import apply_chunked_pass2
 
         chunked_pass2 = apply_chunked_pass2(prompt, payload, timing)
+    _fall_back_from_unavailable_rtx_vsr(prompt)
     return {
         "workflow_path": workflow_path,
         "output_folder": output_folder,
@@ -1092,6 +1093,7 @@ def _build_minimax_h3_3pass_api_prompt(payload):
         _use_minimax_h3_native_audio(prompt)
     latent_continuation_settings = _patch_minimax_h3_latent_continuation(prompt, payload)
     save_latent_settings = _patch_minimax_h3_save_latent(prompt, payload, timing)
+    _fall_back_from_unavailable_rtx_vsr(prompt)
     return {
         "workflow_path": workflow_path,
         "output_folder": output_folder,

@@ -1460,7 +1460,7 @@
         "scene_id",
         "scope"
       ],
-      "description": "Snap a scene edge to the nearest beat (`scene_id`, `edge`, `scope`).",
+      "description": "Snap scene boundaries to a beat within 0.14 s: one edge (`scope` `edge`, with `scene_id` and `edge`) or every scene start (`scope` `all`). Returns how many scenes `moved`; an unknown `scope` is refused.",
       "if_match": false,
       "job": false,
       "method": "POST",

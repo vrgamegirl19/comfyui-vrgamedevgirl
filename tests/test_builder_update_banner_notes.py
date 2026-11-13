@@ -1,4 +1,5 @@
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -15,128 +16,39 @@ BUILDER_GUIDE = (
 ).read_text(encoding="utf-8")
 
 
-def release_by_id(release_id):
-    return next(
-        release
-        for release in UPDATE_NOTES["releases"]
-        if release.get("id") == release_id
-    )
-
-
 class BuilderUpdateBannerNotesTests(unittest.TestCase):
-    def test_latest_release_documents_qwen_and_project_recovery_fixes(self):
-        release = release_by_id("2026-08-21-qwen-runner-project-recovery")
-        self.assertEqual(release["id"], "2026-08-21-qwen-runner-project-recovery")
-        self.assertEqual(
-            release["commit"],
-            "a946112dbd76078656b3055bb5606ce4e1b29920",
-        )
-        items = "\n".join(
-            item
-            for section in release["sections"]
-            for item in section.get("items", [])
-        )
-        for expected in (
-            "Qwen Local",
-            "both the non-vision text and vision model fields",
-            "Thinking mode is explicitly disabled",
-            "blank or missing thumbnails",
-            "reading 'image_history'",
-            "switching the Audio Builder to MiniMax H3",
-            "progress dialogs",
-            "one automatic strict-format retry",
-        ):
-            self.assertIn(expected, items)
+    # update_notes.json holds the last five builds, newest first. When a build ships, add its notes at the top and drop the oldest past five.
+    def test_notes_keep_the_last_five_builds_newest_first(self):
+        releases = UPDATE_NOTES["releases"]
+        self.assertEqual(UPDATE_NOTES["schema_version"], 1)
+        self.assertEqual(UPDATE_NOTES["product"], "AI Video Builder")
+        self.assertTrue(1 <= len(releases) <= 5, f"{len(releases)} releases, the file keeps at most five")
+        dates = [release["date"] for release in releases]
+        self.assertEqual(dates, sorted(dates, reverse=True), "newest first")
+        ids = [release["id"] for release in releases]
+        self.assertEqual(len(ids), len(set(ids)), "ids are unique")
 
-    def test_latest_release_documents_auto_build_and_singer_cues(self):
-        release = release_by_id("2026-08-07-auto-build-minimax-singer-cues")
-        self.assertEqual(
-            release["id"],
-            "2026-08-07-auto-build-minimax-singer-cues",
-        )
-        self.assertEqual(
-            release["commit"],
-            "adf9bafa12e93c66960b62b3d067719022ef1012",
-        )
-        items = "\n".join(
-            item
-            for section in release["sections"]
-            for item in section.get("items", [])
-        )
-        for expected in (
-            "Auto Build",
-            "MiniMax Singer Assignment",
-            "per-cue audio playback",
-            "Project Batch",
-            "split lyric cues now drive shot count and cut timing",
-            "creative shot JSON only",
-            "lyric cue to Instrumental",
-            "Audio 1 belongs to the target video",
-            "blank Gemma shot descriptions",
-            "Save + Close",
-        ):
-            self.assertIn(expected, items)
+    def test_every_release_has_what_the_banner_shows(self):
+        for release in UPDATE_NOTES["releases"]:
+            with self.subTest(release=release.get("id")):
+                for key in ("id", "version", "date", "title", "commit", "guide_url"):
+                    self.assertTrue(str(release.get(key) or "").strip(), key)
+                self.assertRegex(release["commit"], r"^[0-9a-f]{7,40}$")
+                self.assertIsInstance(release["restart_required"], bool)
+                self.assertTrue(release["sections"])
+                for section in release["sections"]:
+                    self.assertTrue(section["title"].strip())
+                    self.assertTrue(section["items"])
+                    for item in section["items"]:
+                        self.assertTrue(item.strip())
 
-    def test_previous_release_documents_storyboard_gemma_reliability(self):
-        release = release_by_id("2026-08-06-storyboard-gemma-network-reliability")
-        self.assertEqual(
-            release["id"],
-            "2026-08-06-storyboard-gemma-network-reliability",
-        )
-        self.assertEqual(
-            release["commit"],
-            "26004612d5ee0dcdd5269b0835a2b37d13a98223",
-        )
-        items = "\n".join(
-            item
-            for section in release["sections"]
-            for item in section.get("items", [])
-        )
-        for expected in (
-            "ten minutes per scene",
-            "lost ComfyUI backend connection",
-            "four-minute request cutoff",
-            "NetworkError when attempting to fetch resource",
-            "Expanded the AI Video Builder guide",
-            "ComfyUI Registry version 9.1.1",
-            "Manager continuing to install the July 3 version 9.0.0",
-            "may not contain Git metadata",
-            "Scene render wait limit",
-        ):
-            self.assertIn(expected, items)
-
-    def test_registry_and_runtime_versions_match_current_release(self):
-        self.assertIn('version = "9.1.1"', PACKAGE_METADATA)
-        self.assertIn('__version__ = "v9.1.1"', PACKAGE_INIT)
-        self.assertIn('__updated__ = "2026-08-06"', PACKAGE_INIT)
-
-    def test_previous_release_documents_minimax_builder_controls(self):
-        release = release_by_id("2026-08-06-minimax-turbo-reference-llm-controls")
-        self.assertEqual(
-            release["id"],
-            "2026-08-06-minimax-turbo-reference-llm-controls",
-        )
-        self.assertEqual(
-            release_by_id("2026-08-06-timeline-editing-minimax-prompt-reliability")["id"],
-            "2026-08-06-timeline-editing-minimax-prompt-reliability",
-        )
-        items = "\n".join(
-            item
-            for section in release["sections"]
-            for item in section.get("items", [])
-        )
-        for expected in (
-            "4 editable steps",
-            "automatically bypasses EasyCache",
-            "environment inspiration",
-            "Face + hair only",
-            "Cut frequency",
-            "maximum-output controls",
-            "AI Video Builder product name",
-            "3-versus-2 AdaLN tensor mismatch",
-            "Video Wizard button",
-        ):
-            self.assertIn(expected, items)
+    def test_latest_release_is_the_version_the_pack_reports(self):
+        latest = UPDATE_NOTES["releases"][0]
+        version = re.search(r'__version__ = "v([^"]+)"', PACKAGE_INIT).group(1)
+        updated = re.search(r'__updated__ = "([^"]+)"', PACKAGE_INIT).group(1)
+        self.assertIn(f'version = "{version}"', PACKAGE_METADATA)
+        self.assertEqual(latest["version"], version)
+        self.assertEqual(latest["date"], updated)
 
     def test_banner_uses_the_ai_video_builder_name(self):
         self.assertNotIn("LTX 2.3 Video Builder", BUILDER_SOURCE)

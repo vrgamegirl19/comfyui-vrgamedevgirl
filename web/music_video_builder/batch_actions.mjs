@@ -1,6 +1,7 @@
 import { normalizeOverlayTrackState } from "../VRGDG_OverlayTrack.js";
 import { GEMMA_VIDEO_PROMPT_TIMEOUT_MS, postJson } from "./comfy_api.mjs";
 import {
+  llmText,
   makeButton,
   makeCheckbox,
   makeField,
@@ -203,7 +204,7 @@ export function createBatchActions({
         }, {
           value: "redo_flf_image_chain_keep_prompts",
           label: "Redo FLF Image Chain — keep prompts",
-          description: "Use the existing saved image prompts directly—no Gemma/LLM call—and regenerate the target scenes' destination images. When starting later in the timeline, reuse the prior scene's endpoint as the chain start.",
+          description: llmText("Use the existing saved image prompts directly—no Gemma/LLM call—and regenerate the target scenes' destination images. When starting later in the timeline, reuse the prior scene's endpoint as the chain start."),
         }, {
           value: "create_end_frames",
           label: "Create End Frames",
@@ -212,7 +213,7 @@ export function createBatchActions({
         {
           value: "resume_missing",
           label: "Resume missing images",
-          description: "Safe resume mode. Keep existing image prompts and selected images. Only run Gemma/create images for scenes that do not already have an image.",
+          description: llmText("Safe resume mode. Keep existing image prompts and selected images. Only run Gemma/create images for scenes that do not already have an image."),
         },
         {
           value: "keep_prompts_redo_images",
@@ -222,7 +223,7 @@ export function createBatchActions({
         {
           value: "redo_prompts_images",
           label: "Redo image prompts and images",
-          description: "Regenerate image prompts with Gemma, randomize image seeds, and create a new image version for every scene.",
+          description: llmText("Regenerate image prompts with Gemma, randomize image seeds, and create a new image version for every scene."),
         },
       ],
       extraGroups: [
@@ -806,8 +807,8 @@ export function createBatchActions({
           value: "redo_i2v_prompts_videos",
           label: videoOnlyMode ? `Redo ${videoPromptLabel} prompts and videos` : `Keep images, redo ${videoPromptLabel} prompts and videos`,
           description: videoOnlyMode
-            ? `Regenerate ${videoPromptLabel} prompts with Gemma, then create new video versions.`
-            : `Use the current selected images. Regenerate ${videoPromptLabel} prompts with Gemma, then create new video versions.`,
+            ? llmText(`Regenerate ${videoPromptLabel} prompts with Gemma, then create new video versions.`)
+            : llmText(`Use the current selected images. Regenerate ${videoPromptLabel} prompts with Gemma, then create new video versions.`),
         },
         {
           value: "redo_videos",
