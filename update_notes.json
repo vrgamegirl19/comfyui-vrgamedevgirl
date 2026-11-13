@@ -3,1046 +3,161 @@
   "product": "AI Video Builder",
   "releases": [
     {
-      "id": "2026-09-08-builder-storyboard-match-grain-workflows",
-      "version": "2026.09.08-builder-storyboard-match-grain-workflows",
-      "date": "2026-09-08",
-      "title": "Builder lyric mapping, Storyboard context, and Match Grain workflows",
-      "commit": "4341371",
-      "restart_required": false,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/pull/177",
-      "sections": [
-        {
-          "title": "Added",
-          "items": [
-            "Added Ctrl/Cmd-click multi-selection for base scenes and inserts in both the Video Builder timeline and scene lists.",
-            "Added an optional Storyboard Builder setting that sends the previous and next lyric lines as context when generating each scene beat.",
-            "Added ready-to-use Match Grain workflows for still images and VHS meta-batched video processing."
-          ]
-        },
-        {
-          "title": "Improved",
-          "items": [
-            "Video Builder and Storyboard Builder now use the selected LLM Runner models and runner names consistently in prompts, progress text, controls, and error messages.",
-            "Renamed the MiniMax two-pass image mode to Image + Reference 2 Pass so its scene-image and optional Reference Builder inputs are clearer."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Fixed lyric mapper edits failing to update scenes previously marked instrumental by keeping stable mapper-row links and synchronizing lyric text, singers, instrumental status, and lyric sections in both directions.",
-            "Fixed unchecking instrumental in lyric editing and review views so the previous lyric text is restored instead of remaining empty."
-          ]
-        },
-        {
-          "title": "Compatibility Notes",
-          "items": [
-            "Hard-refresh the browser after updating so the revised Video Builder and Storyboard Builder JavaScript is loaded.",
-            "The Match Grain video workflow requires ComfyUI-VideoHelperSuite for video loading, meta-batching, audio passthrough, and video output."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-09-04-pr173-video-builder-image-reference-and-new-nodes",
-      "version": "2026.09.04-pr173-video-builder-image-reference-and-new-nodes",
-      "date": "2026-09-04",
-      "title": "Image-to-Video 2 Pass, safer prompts, and new video utility nodes",
-      "commit": "2311ba8",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/pull/173",
-      "sections": [
-        {
-          "title": "Added",
-          "items": [
-            "Added MiniMax H3 Image to Video 2 Pass in Video Builder. The selected scene image is always the exact opening frame, an optional end frame can anchor the finish, and ordered Reference Builder images can be added for identity, wardrobe, location, props, or visual guidance.",
-            "Added MiniMax H3 Image + Reference to Video, Text / Reference to Image, and Select Still Frame nodes for combined keyframe and reference conditioning, still-image generation, and deterministic frame selection.",
-            "Added LTX 2.5 Sigma Preset with built-in schedules and custom sigma entry, plus a dynamic node interface that exposes only the controls needed by the selected preset.",
-            "Added Video Prompt Reconstructor, which samples frames from an existing video and uses a configurable vision LLM endpoint to reconstruct a reusable generation prompt with local result caching.",
-            "Added reference-matched film grain that measures the grain strength and color character of a reference image or video and applies reproducible grain without copying its picture content.",
-            "Added H3-aware overlap preset, overlap-window construction, and overlap-output blending nodes for memory-conscious long-video processing with native VHS meta-batch support."
-          ]
-        },
-        {
-          "title": "Improved",
-          "items": [
-            "Image to Video 2 Pass now clearly identifies its required scene start frame while keeping Reference Builder images optional, and its scene-image controls apply consistently to global and scene-locked MiniMax settings.",
-            "Continuous single-shot MiniMax prompts can contain multiple ordered vocal cues while instrumental intervals coexist naturally in the same shot; cue validation still catches missing, reordered, or incorrect lyric tags.",
-            "Visual-only and no-lip-sync scenes now allow natural unsynchronized character conversation while continuing to prohibit singing, rapping, lyric mouthing, and synchronization to the saved song.",
-            "Scenes marked as having no character now receive a stricter environment-only prompt contract that excludes people, performers, crowds, body parts, faces, voices, silhouettes, and reflections."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Fixed the hidden MiniMax workflow adapter so Image to Video 2 Pass preserves the exact start frame, optional final frame, and every additional reference image instead of dropping supporting references.",
-            "Fixed reference-matched grain tensor broadcasting and added a safe default processing batch size for direct and node-based use."
-          ]
-        },
-        {
-          "title": "Compatibility Notes",
-          "items": [
-            "Restart ComfyUI and hard-refresh the browser after updating so the new Python nodes, node interfaces, and revised Video Builder JavaScript are loaded.",
-            "Image to Video 2 Pass currently follows the existing MiniMax two-pass Input Audio requirements. Reference Builder images are optional, but a selected scene image is required as the exact opening frame.",
-            "This update adds nodes and Video Builder integration only; it does not install or replace any standalone workflow JSON files."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-08-26-pr159-minimax-h3-advanced-upscale-and-video-compare",
-      "version": "2026.08.26-pr159-minimax-h3-advanced-upscale-and-video-compare",
-      "date": "2026-08-26",
-      "title": "MiniMax H3 Advanced 2-Pass Upscaling and Video Compare",
-      "commit": "8ec51ae",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/pull/159",
-      "sections": [
-        {
-          "title": "Added",
-          "items": [
-            "Added MiniMax H3 2 Pass Advanced with MMH3 temporal chunking, spatial tiling, VRAM presets, independent Pass 1 and Pass 2 resolution controls, and advanced sampler settings.",
-            "Added exact generated API workflow snapshots so users can inspect the hidden graph, node connections, and resolved target dimensions for each advanced render.",
-            "Added direct before-and-after video upload, fullscreen comparison, zoom controls, and selected-file support to Video Compare."
-          ]
-        },
-        {
-          "title": "Improved",
-          "items": [
-            "Advanced resolution controls now offer H3-aligned 1K, 2K, 1440p, and 4K presets while retaining custom megapixel control for experienced users.",
-            "Advanced MiniMax progress now reports the exact Pass 1 and Pass 2 dimensions sent to the workflow and the saved API snapshot path.",
-            "H3 latent upscaler model selection now resolves registered model directories reliably instead of depending on one custom-node folder."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Fixed the advanced workflow resolution diagnostic that could fail with a set-object indexing error."
-          ]
-        },
-        {
-          "title": "Compatibility Notes",
-          "items": [
-            "Restart ComfyUI and hard-refresh the browser after updating so the revised Python workflow route and Builder JavaScript are loaded.",
-            "MiniMax H3 2 Pass Advanced requires the latest Comfyui-MMH3-UltimateUpscale custom nodes and the required H3 diffusion, VAE, Turbo LoRA, and latent upscaler model files.",
-            "The API workflow snapshot is written beside the scene output as scene_####_minimax_h3_advanced_2pass_api.json."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-08-23-pr158-reference-cues-and-project-save-reliability",
-      "version": "2026.08.23-pr158-reference-cues-and-project-save-reliability",
-      "date": "2026-08-23",
-      "title": "Complete reference saves, Singer cue timing, and safer MiniMax prompts",
-      "commit": "d095329",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/pull/158",
-      "sections": [
-        {
-          "title": "Added",
-          "items": [
-            "Complete Reference Builder exports now save the canonical manifest, subject and location descriptions, reference-image mappings, scene-to-subject mappings, scene-to-location mappings, and non-empty project context files.",
-            "Autosave, Quick Save, Save Reference Builder, session restoration, and saved-project validation now share the same atomic save transaction and preserve the complete reference-builder state.",
-            "MiniMax H3 prompt requests now include the authoritative Singer assignment, lyric cue map, performer assignment, and an audit record containing the literal instruction sent to the LLM and its raw response."
-          ]
-        },
-        {
-          "title": "Improved",
-          "items": [
-            "Manual Singer cue maps are reused when complete; automatic timing no longer reruns Whisper for scenes that already have valid cue timing.",
-            "Cue-map prompting now preserves exact vocal-shot order, assigns the correct Singer, keeps instrumental shots non-vocal, and places canonical <d>[English] ...</d> cues in the final MiniMax H3 prompt.",
-            "MiniMax shot assembly now owns cut labels and timing, removes malformed repeated CUT TO wording, preserves detailed cinematic shot prose, and avoids duplicate lyric wording without deleting camera, blocking, wardrobe, environment, or performer action detail."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Fixed saved projects missing subject_location/reference_descriptions.json, the subject_location export structure, flux_reference_builder state, reference mappings, and project context contents.",
-            "Fixed per-scene and batch MiniMax prompt generation paths so explicit Singer cue maps are not silently dropped before the LLM request.",
-            "Fixed lyric cleanup that could remove vocal verbs or split quoted lyric punctuation into broken shot fragments such as `\"; S2 ...`."
-          ]
-        },
-        {
-          "title": "Compatibility Notes",
-          "items": [
-            "Restart ComfyUI and hard-refresh the browser after updating so the revised Python save routes and Builder JavaScript are loaded.",
-            "Existing manually completed cue maps are preserved and reused. Whisper runs only when the scene does not already have complete valid cue timing.",
-            "The exact LLM instruction and raw response can be reviewed through the saved MiniMax request audit for each generated scene."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-08-21-pr151-minimax-qwen-save-fixes",
-      "version": "2026.08.21-pr151-minimax-qwen-save-fixes",
-      "date": "2026-08-21",
-      "title": "MiniMax two-pass diagnostics, Qwen downloads, and complete project saves",
-      "commit": "6fb6d556546769ee3c7087a6c9cd569f93d3f6de",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/pull/151",
-      "sections": [
-        {
-          "title": "Added",
-          "items": [
-            "MiniMax H3 two-pass progress now reports the exact Pass 1 and Pass 2 sampler steps from the built hidden workflow.",
-            "MiniMax H3 two-pass progress now reports the exact LoRAs and strengths attached to each pass in the built hidden workflow.",
-            "LLM model downloads now have separate Gemma and Qwen subtabs, with model-specific notes and folder guidance.",
-            "Qwen3.8-27B GGUF downloads now open the repository root so users can choose their preferred quantization and model files."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Fixed MiniMax two-pass settings being lost when switching scenes or starting a render; the active Pass 1 and Pass 2 controls are flushed directly into the request.",
-            "Fixed Quick Save and autosave omitting Gemma model, Qwen model, and Qwen mmproj selections from the saved project session.",
-            "Fixed Quick Save and autosave not flushing live MiniMax builder and scene settings before serialization."
-          ]
-        },
-        {
-          "title": "Compatibility Notes",
-          "items": [
-            "Restart ComfyUI and hard-refresh the browser after updating so the revised Builder JavaScript and saved-session behavior are loaded.",
-            "Qwen3.8 requires a selected GGUF model (including all shards for that quantization) and its matching vision mmproj. Rename the projector to qwen-mmproj-BF16.gguf when using it alongside Gemma."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-08-21-qwen-runner-project-recovery",
-      "version": "2026.08.21-qwen-runner-project-recovery",
-      "date": "2026-08-21",
-      "title": "Qwen Local LLM support, synchronized Builder models, and project recovery fixes",
-      "commit": "a946112dbd76078656b3055bb5606ce4e1b29920",
+      "id": "2026-11-13-v10-0-7-rtx-fallback-moss-loras-snap-llm-names",
+      "version": "10.0.7",
+      "date": "2026-11-13",
+      "title": "RTX resize fallback, MOSS-Image LoRA installs, a working Snap and LLM names in the Builder",
+      "commit": "12b831c154358c69ceffc550fddbdde40eef09b8",
       "restart_required": true,
       "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
       "sections": [
         {
           "title": "Added",
           "items": [
-            "Added Qwen Local as a dedicated LLM Runner choice with its own GGUF model, optional vision mmproj, external GGUF file picker, context limit, output-token limit, and GPU-layer settings.",
-            "Added Qwen GGUF discovery across every registered models/LLM location and Qwen subfolder so installed Qwen models appear in the LLM Runner dropdown instead of being limited to one folder.",
-            "Added Builder support for sending text and image-reference prompt requests through the selected local Qwen model."
+            "Added an nvidia-vfx card to the Custom Nodes window. It installs the optional NVIDIA RTX Video Super Resolution library with pip from NVIDIA's index (about 800 MB) without ComfyUI-Manager, and Install Missing Nodes leaves it alone."
           ]
         },
         {
-          "title": "Changed",
+          "title": "Improved",
           "items": [
-            "The model selected in LLM Runner now synchronizes with every matching Builder model field. Qwen is placed in both the non-vision text and vision model fields because it supports both uses, and its selected mmproj is synchronized with the vision fields.",
-            "Gemma Local model selections now synchronize with the Builder model fields in the same way, while external LM Studio, API, and own-server runners keep their server-managed model settings.",
-            "Builder model labels now say LLM model instead of incorrectly identifying every selected model as Gemma.",
-            "Thinking mode is explicitly disabled for both Qwen Local and Gemma Local Builder requests so prompt generation returns the requested answer without an automatic thinking section.",
-            "Builder and Storyboard windows, progress dialogs, action buttons, hints, and runner-aware errors now display the selected Gemma Local, Qwen Local, LM Studio, LLM API, or Custom Server name instead of hardcoding Gemma."
+            "Labels, tooltips, placeholders and messages in the Video Builder now name the LLM Runner you selected (LM Studio, LLM API, Qwen Local or Custom Server) instead of always saying Gemma. Gemma Local keeps its wording, and the Gemma-only settings, Prompt Creator and the built-in Gemma4 Draft still say Gemma.",
+            "The MOSS-Image 8-step Turbo LoRA button in Models > Image Models now installs the file itself, like the Edit LoRA button, and saves it as moss_image_sft_8_steps_dmd_lora.safetensors instead of lora.safetensors.",
+            "The Edit LoRA button is now labelled Edit LoRA, and the MOSS-Image folder notes no longer ask you to rename either LoRA file.",
+            "Reference card prompts use the neutral route /vrgdg/music_builder/reference_image_prompt. The old flux_reference_zimage_prompt path still works."
           ]
         },
         {
           "title": "Fixed",
           "items": [
-            "Fixed Qwen Local remaining visually stuck on Gemma after it was selected and saved in LLM Runner.",
-            "Fixed installed Qwen models not appearing in the Qwen model dropdown when they were stored in another configured LLM model location.",
-            "Fixed loaded projects showing blank or missing thumbnails by creating missing thumbnail directories before recovering preview frames from the saved media.",
-            "Fixed project loading failing with Cannot read properties of null (reading 'image_history') when a saved scene or preview entry was empty.",
-            "Fixed switching the Audio Builder to MiniMax H3 failing on the same null image_history state by restoring a valid active scene before synchronizing the MiniMax panel.",
-            "Fixed saved Qwen, Gemma, and mmproj selections being replaced by stale Builder dropdown values after loading a project or refreshing the available model lists.",
-            "Fixed Story Arc generation failing when Qwen echoed an instruction heading instead of immediately returning the exact lyric-section headings. Clearly instructional preambles are ignored when a valid arc follows, and invalid structures receive one automatic strict-format retry before an error is shown.",
-            "Fixed model-emitted <think>, Thought, Thinking, Analysis, and Reasoning preambles leaking into Builder and Storyboard output even when local thinking mode is disabled.",
-            "Story Arc format failures now include a collapsed diagnostics panel with the runner, expected headings, raw model response, cleaned response, and a copy-output button."
+            "Fixed MiniMax H3 2 Pass renders failing at the very last node when nvidia-vfx is not installed. The final resize now falls back from nvidia_rtx_vsr to lanczos, and the console prints the pip command that installs the library.",
+            "Fixed Snap in the agent API and the song pipeline (pipeline_from_song): scope all did nothing and still reported that it had snapped, and all_starts put every boundary back where it was. Boundaries within 0.14 s of a beat now move onto it, scenes with a locked video are skipped, an unknown scope is refused, and the answer reports how many scenes moved.",
+            "Fixed the full-video and first/last-frame pipelines reading image_path from the image result when approving a scene image. The result holds saved_path, and approval only worked by falling back to the newest image in the history."
           ]
         },
         {
           "title": "Compatibility Notes",
           "items": [
-            "Restart ComfyUI and hard-refresh the browser after updating so the revised Python routes, local LLM support, and Builder JavaScript are loaded.",
-            "Place Qwen GGUF and compatible mmproj files in a configured ComfyUI LLM model folder, or select an external GGUF file directly in LLM Runner.",
-            "Older projects remain compatible. When possible, missing scene thumbnails are rebuilt automatically from their saved image or video media when the project loads."
+            "Restart ComfyUI after updating, then hard-refresh the browser so the revised Video Builder JavaScript is loaded.",
+            "NVIDIA RTX Video Super Resolution needs an NVIDIA RTX GPU and the nvidia-vfx library. Without it the final resize uses lanczos.",
+            "H3 Studio 0.1.28 carries the same changes."
           ]
         }
       ]
     },
     {
-      "id": "2026-08-16-ltx25-minimax-three-pass",
-      "version": "2026.08.16-ltx25-minimax-three-pass",
-      "date": "2026-08-16",
-      "title": "LTX 2.5 workflows, MiniMax H3 three-pass rendering, and Storyboard improvements",
-      "commit": "d2ef56a",
+      "id": "2026-11-12-v10-0-6-built-in-h3-latent-upscaler",
+      "version": "10.0.6",
+      "date": "2026-11-12",
+      "title": "ComfyUI's built-in MiniMax H3 latent upscaler",
+      "commit": "8006cca8e033bedc829467cf7993bfdd1f6eb88b",
       "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/pull/339",
       "sections": [
         {
           "title": "Added",
           "items": [
-            "Added LTX 2.5 as the default LTX engine version, with LTX 2.3 retained as a legacy option for older GGUF and dual-CLIP workflows.",
-            "Added LTX 2.5 Text to Video and Reference to Video support using the existing custom/project-audio workflow, including the LTX 2.5 video VAE, audio VAE, latent spatial upscaler, and required Licon MSR LoRA selections.",
-            "Added an experimental MiniMax H3 Ref to Video 3 Pass mode. Stage 1 establishes the scene, Stage 2 refines it, and Stage 3 produces the final clip used by timeline stitching.",
-            "Added independent three-pass controls for megapixels, steps, denoise, sampler, scheduler, seed, and TE-Speed on every pass, plus a dedicated LightX LoRA and strength control.",
-            "Added automatic Stage 1 and Stage 2 backup collection for three-pass renders so intermediate results remain available for review while Stage 3 becomes the selected scene video.",
-            "Added LTX-aware Storyboard defaults, cut-frequency planning, starting-shot guidance, camera-flow instructions, and ordinary-language chronological cut descriptions sized to each scene's exact duration."
+            "The Video Builder's learned latent upscale nodes now use the MiniMax H3 latent upscaler that is built into ComfyUI 0.44.0 and newer, so those versions no longer need the Comfyui_Minimax_h3_latent_Upscaler custom node pack. ComfyUI chooses device and precision there, so the loader's device and precision inputs are ignored.",
+            "The Custom Nodes window reports your ComfyUI version, shows the upscaler pack as Built in on 0.44.0 and newer, and skips it in Install Missing Nodes."
           ]
         },
         {
-          "title": "Changed",
+          "title": "Improved",
           "items": [
-            "LTX 2.5 model defaults now select its matching video VAE, audio VAE, latent spatial upscaler, and MSR assets automatically, while switching back to LTX 2.3 restores the legacy defaults.",
-            "Storyboard prompt generation now follows the selected project engine: MiniMax retains timestamped CUT TO formatting, while LTX receives natural chronological editing language without MiniMax-only prompt structure.",
-            "Storyboard scene defaults, camera motion, character motion, performance direction, visual effects, and cut plans now apply consistently to both MiniMax and LTX projects.",
-            "MiniMax two-pass and three-pass progress messages now identify the active stage sequence and explain which intermediate clips are retained and which stage will be used for final stitching.",
-            "MiniMax three-pass settings now save immediately, restore with the project session, and expose only controls that affect the selected rendering mode.",
-            "LTX 2.5 Text to Video now dynamically swaps the diffusion and CLIP nodes in the proven custom-audio T2V graph instead of forcing the native-audio graph.",
-            "All supported LTX Builder modes preserve supplied project/global or custom scene audio and its SRT timing."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Fixed MiniMax three-pass Stage 3 audio output and final-video selection so the completed Stage 3 clip is used for playback and stitching.",
-            "Fixed three-pass TE-Speed patching so each pass uses an isolated model branch and one pass cannot leak patched model state into another.",
-            "Fixed Stage 1 and Stage 2 backup discovery, registration, project copying, session persistence, and restoration during and after three-pass rendering.",
-            "Fixed LTX 2.5 Reference to Video settings so the correct model assets, pass strengths, dimensions, and generation options reach the hidden workflow.",
-            "Fixed invalid legacy .pth upscaler selections being reused by LTX 2.5; affected projects now migrate to the LTX 2.5 latent spatial upscaler.",
-            "Fixed LTX prompt generation to return one clean generation-ready prompt without internal headings, metadata labels, duplicated cut instructions, or MiniMax-only formatting.",
-            "Fixed Storyboard saves that could appear to fail after the project had already saved successfully because unrelated panel settings were re-normalized afterward.",
-            "Fixed side-panel Gemma generation so scenes without a usable image reference fall back to the text-only prompt path instead of failing the request.",
-            "Fixed LTX storyboard scene-beat handoff, singer/lip-sync guidance, and exact-duration cut planning so regenerated prompts preserve the intended performance and editing structure.",
-            "Fixed LTX 2.5 Text to Video custom-audio routing without using the legacy GGUF path."
+            "Older ComfyUI is unchanged: the nodes load the pack's backend as before. Without that pack the error now says to update ComfyUI to 0.44.0 or newer, or install the pack.",
+            "Saved workflows keep working, because the node inputs and outputs are the same on both paths."
           ]
         },
         {
           "title": "Compatibility Notes",
           "items": [
-            "Restart ComfyUI and hard-refresh the browser after updating so the new Python routes, workflow templates, Builder JavaScript, and Storyboard JavaScript are loaded.",
-            "The included workflow templates do not download models. Install the matching LTX 2.5 and MiniMax H3 model files and select them in Builder Settings before rendering.",
-            "MiniMax H3 two-pass and three-pass modes currently require Input Audio. Built-in MiniMax audio continues to use the existing one-pass workflow.",
-            "LTX 2.5 Text to Video uses custom/project audio; the native-audio T2V template is not used by the Video Builder.",
-            "LTX 2.5 is now the default for new LTX projects. Existing projects retain their saved engine version and settings whenever those values are present.",
-            "Three-pass Stage 1 and Stage 2 videos are review backups; Stage 3 is the final scene video used by Render All and timeline stitching."
+            "Restart ComfyUI after updating.",
+            "Comfyui-MMH3-UltimateUpscale has no built-in replacement and is still required for 2 Pass Advanced.",
+            "The latent-upscaler checkpoint (minimax_h3_latent_upscaler_3d_bf16.safetensors) must be installed separately either way.",
+            "H3 Studio 0.1.27 matches: its Custom Nodes window now asks this pack in ComfyUI, so Install and Install Missing Nodes work from the app."
           ]
         }
       ]
     },
     {
-      "id": "2026-08-12-minimax-h3-two-pass-builder",
-      "version": "2026.08.12-minimax-h3-two-pass",
-      "date": "2026-08-12",
-      "title": "MiniMax H3 two-pass Reference-to-Video rendering",
-      "commit": "7d9806a",
+      "id": "2026-11-10-v10-0-5-own-thumbnail-browser-ai-auto-build-presets",
+      "version": "10.0.5",
+      "date": "2026-11-10",
+      "title": "Own thumbnail and intro video, Browser AI thumbnails and Auto Build scene presets",
+      "commit": "a5eaa319145da4d7549f29df15f400d4c56028c6",
       "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/pull/337",
       "sections": [
         {
-          "title": "New",
+          "title": "Added",
           "items": [
-            "Added a MiniMax H3 Ref to Video 2 Pass mode in the Video Builder for external/custom audio projects.",
-            "The two-pass workflow saves separate Stage 1 and Stage 2 outputs. Stage 2 is automatically collected for timeline stitching, while Stage 1 is retained as a review backup on the scene."
+            "The Thumbnail dialog takes your own picture (png, jpg or webp) and your own intro video. The finished video starts with the thumbnail as its first frame, then your intro video with its own sound, then the video. An intro of another size or frame rate is fitted with black bars, never cropped.",
+            "Added Flow, GPT Image and Meta AI (Browser AI) as thumbnail engines, each its own entry in the engine list. They run in your own signed-in Chrome."
           ]
         },
         {
           "title": "Improved",
           "items": [
-            "Exposed MiniMax H3 reference-image sizing in Advanced Settings with Match generation size and Max identity fidelity options.",
-            "MiniMax H3 Advanced Settings now open by default and continue to expose sampler, scheduler, denoise, EasyCache, SageAttention, fp16, and reference-conditioning controls."
+            "Auto Build now has synchronized scene presets, with Medium shots as the default.",
+            "Multi-shot Whisper timing is now batched before the LLM writes the prompts."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Fixed a misleading Advanced tiling label in the MiniMax render settings."
           ]
         },
         {
           "title": "Compatibility Notes",
           "items": [
-            "Restart ComfyUI and hard-refresh the browser after updating so the revised Python nodes, workflow template, and Builder JavaScript are loaded.",
-            "The current two-pass Builder mode uses Input Audio. Built-in MiniMax audio remains on the existing one-pass path until a separate built-in-audio two-pass adapter is added.",
-            "Models are not downloaded by this update; required model files must already be installed or selected separately."
+            "Restart ComfyUI after updating, then hard-refresh the browser so the revised Video Builder JavaScript is loaded.",
+            "The Browser AI engines need Chrome and your own accounts signed in on each site.",
+            "H3 Studio 0.1.26 matches."
           ]
         }
       ]
     },
     {
-      "id": "2026-08-12-storyboard-extras-face-fix-engine-toggle",
-      "version": "2026.08.12-storyboard-extras-face-fix",
-      "date": "2026-08-12",
-      "title": "Storyboard extras, GPT story planning, face-fix improvements, and quick engine switching",
-      "commit": "99c7f72",
+      "id": "2026-11-07-v10-0-1-thumbnail-intro-moss-image-reference-bypass",
+      "version": "10.0.1",
+      "date": "2026-11-07",
+      "title": "Thumbnail intro, MOSS-Image models, reference bypass buttons and a Gemma reply fix",
+      "commit": "6f99ef6839186aa7521a29f41400d367950f21d4",
       "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/pull/333",
       "sections": [
         {
-          "title": "New",
+          "title": "Added",
           "items": [
-            "Added mapped background extras with reference images, concise identity descriptions, group counts, scene mapping, and interaction roles such as background, background dancing, alongside, dancing with, and direct contact.",
-            "Added GPT Story planning handoff/import and Advanced Location Scout tools for packaging project lyrics, story context, references, mapped extras, locations, and visual presets as JSON.",
-            "Added shot-aware face-fix preparation plus opaque and landmark-aligned compositing options for more consistent face repairs across cuts and changing camera framing.",
-            "Added a clickable MiniMax/LTX project-engine badge in the top toolbar. Click it, or focus it and press Enter/Space, to switch engines without opening Settings."
+            "Added a Thumbnail button in the middle of the Builder toolbar. Pick the exact frame of the final video, write the title and prompt (or let the LLM write it from your own brief), and generate it with Qwen Image Edit, NanoBanana, an API image or an Overlay engine that keeps the frame exactly. The video can start with the picture as a one-frame intro.",
+            "Added MOSS-Image models and settings to the Image tab model list and the Models dialog, and an Edit LoRA button that installs the LoRA as moss_image_edit_lora.safetensors.",
+            "Added the official and Singularity MiniMax H3 diffusion models to the model chooser.",
+            "Added bypass buttons for MiniMax reference changes, also in the Render All error dialog.",
+            "Added the Euler Flow Matching scheduler node to the Builder's custom nodes list."
           ]
         },
         {
           "title": "Improved",
           "items": [
-            "MiniMax prompt generation now supports mapped extras while preserving exact subject labels, reference limits, non-speaking extra behavior, and the existing prompt workflow.",
-            "Storyboard and Auto Build scene generation can continue past recoverable LLM failures and retry only skipped scenes instead of restarting the full batch.",
-            "MiniMax external prompts can be accepted without strict format validation by default; the 7,000-character hard limit remains enforced, and a testing switch restores strict validation.",
-            "Face-fix processing now handles LTX frame offsets and shot boundaries more reliably when preparing, aligning, and compositing repaired frames."
+            "Auto Build now remembers its inputs in each project when you close it.",
+            "Krea 2 reference generation is Krea-only, and the DMAD LoRAs are enforced across the Builder and the agent API.",
+            "The Update button now follows the main branch, since Beta2.0 was deleted."
           ]
         },
         {
           "title": "Fixed",
           "items": [
-            "Fixed Export GPT Context in Ref Builder Scene Mapping so it copies the scene-mapping request and JSON before opening the GPT, with explicit inline JSON instructions that prevent the GPT from treating the pasted context as a missing attachment.",
-            "Fixed the top-toolbar LTX/MiniMax engine badge so it toggles from the main Builder scope without depending on the Settings modal being open or throwing a selector-scope error."
+            "Fixed the Gemma node cutting every reply to one paragraph when keep_all_text is on, which turned Draft Story into a single act.",
+            "Fixed Auto Build failing on a missing LLM runner payload helper.",
+            "Removed a wrong comfyui-workflow-encrypt package tag from the MiniMax H3 workflows."
           ]
         },
         {
           "title": "Compatibility Notes",
           "items": [
-            "Restart ComfyUI and hard-refresh the browser after updating so the revised Python nodes and Builder JavaScript modules are loaded.",
-            "Existing projects remain on their selected video engine. The toolbar badge changes and autosaves the project-wide engine selection; it does not download models or alter model files.",
-            "The new face-fix alignment option requires the available OpenCV face-landmark detector asset and the corresponding face-fix workflow nodes."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-08-09-video-compare-shot-fx",
-      "version": "2026.08.09-video-compare-shot-fx",
-      "date": "2026-08-09",
-      "title": "Video comparison recording, shot FX, and prompt workflow updates",
-      "commit": "d48e424",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
-      "sections": [
-        {
-          "title": "New",
-          "items": [
-            "Added configurable Storyboard shot FX presets and custom FX JSON for lighting, lens, glitch, atmospheric, energy, film, distortion, supernatural, and music-video accents.",
-            "Added Video Compare Slider recording with configurable duration, browser capture, ComfyUI MP4 saving, and downloadable fallback recording support.",
-            "Added IMAGE-batch inputs to the Video Compare Slider so rendered image sequences can be previewed as browser-playable videos."
-          ]
-        },
-        {
-          "title": "Improved",
-          "items": [
-            "Video Compare now provides clearer recording progress, media-load errors, labels, and output handling.",
-            "Video Builder side-panel prompt generation can use the shared Storyboard prompt pipeline and inject selected FX directly into timestamped shots."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Removed the hardcoded reference-subject-count block from generated prompts so prompts no longer receive that mandatory boilerplate."
-          ]
-        },
-        {
-          "title": "Compatibility Notes",
-          "items": [
-            "Restart ComfyUI and hard-refresh the browser after updating so the revised Python and Builder JavaScript modules are loaded.",
-            "Video Compare recording and IMAGE-batch conversion require FFmpeg; the browser still offers a temporary WebM download if MP4 saving is unavailable."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-08-08-minimax-builder-framing-workflow",
-      "version": "2026.08.08-minimax-builder-workflow",
-      "date": "2026-08-08",
-      "title": "MiniMax framing, prompt reliability, and project workflow improvements",
-      "commit": "eaacdc7",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
-      "sections": [
-        {
-          "title": "New",
-          "items": [
-            "Added context-aware intimate close-up framing selection tied to each scene's cut count, with persistent per-scene shot choices that avoid unnecessary repetition across scenes.",
-            "Added curated Music Video Shots and Fisheye and Distorted-Lens Shots camera-flow presets, each with its own context-aware candidate list and per-scene usage tracking.",
-            "Added project-scoped LLM API key save and load support, with an export warning when a project contains a saved API key.",
-            "Added an optional MiniMax H3 memory-efficient Sage Attention path with hardware and dependency validation."
-          ]
-        },
-        {
-          "title": "Improved",
-          "items": [
-            "MiniMax prompt generation now preserves required cut wording, repairs common post-cut grammar issues, and adds explicit visible lip-sync guidance for sung lyrics and sustained non-verbal vocals.",
-            "Auto Build can pause after timeline creation so scenes can be reviewed before prompt creation, while lyric editing and storyboard context remain synchronized across Builder views.",
-            "Location descriptions can be expanded into detailed standalone environment descriptions for more consistent scene prompting.",
-            "The intimate close-up preset was the first preset-specific implementation of the candidate-list selection system; Music Video Shots and Fisheye and Distorted-Lens Shots now use the same per-preset curated-list logic, with additional presets planned later."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Fixed MiniMax framing injection so selected shot descriptions are written as natural prompt instructions instead of exposing internal builder terminology to the video model.",
-            "Fixed temporal/world-effect prompt assembly so the Builder owns the canonical continuity instruction without duplicating conflicting per-shot directions.",
-            "Added GPT-5.6 model choices to the Python and browser LLM runner configuration."
-          ]
-        },
-        {
-          "title": "Compatibility Notes",
-          "items": [
-            "Restart ComfyUI and hard-refresh the browser after updating so the revised Python and Builder JavaScript modules are loaded.",
-            "The memory-efficient Sage Attention option requires a compatible SageAttention installation and supported CUDA architecture; standard attention remains available when it is disabled."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-08-08-auto-build-advanced-lm-studio-seed",
-      "version": "2026.08.08-auto-build-advanced",
-      "date": "2026-08-08",
-      "title": "Auto Build advanced controls and LM Studio compatibility",
-      "commit": "71e45aef6abd0a58a5c084f327ba0c3e9a14737",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
-      "sections": [
-        {
-          "title": "New",
-          "items": [
-            "Added collapsed Auto Build Advanced options for 8-second recommended coverage, 5-second lower-VRAM coverage, 6-second coverage, or a custom 1–60 second segment duration.",
-            "Added a GPT Scout location source that opens the existing Reference Builder location JSON importer and preserves imported location cards and scene mappings during Auto Build.",
-            "Added an option to preserve the project's current Scene Defaults, story layer, story arc, story beats, lyric story strength, and per-scene performance settings instead of applying Auto Build recommendations."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "LM Studio native chat now retries once without the seed field when the server specifically rejects that unsupported key, while continuing to surface unrelated request and connection errors normally."
-          ]
-        },
-        {
-          "title": "Compatibility Notes",
-          "items": [
-            "Restart ComfyUI and hard-refresh the browser after updating so the revised Builder JavaScript and Python modules are loaded.",
-            "Eight-second Auto Build segments remain the recommended default; five-second segments can reduce per-clip VRAM use."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-08-07-auto-build-minimax-singer-cues",
-      "version": "2026.08.07-auto-build-singer-cues",
-      "date": "2026-08-07",
-      "title": "Auto Build and MiniMax singer cue workflow",
-      "commit": "adf9bafa12e93c66960b62b3d067719022ef1012",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
-      "sections": [
-        {
-          "title": "New",
-          "items": [
-            "Added Auto Build to the Builder toolbar so music-video projects can create scenes, lyrics, references, mappings, defaults, and prompts from a simpler guided setup.",
-            "Added MiniMax Singer Assignment for split lyric cues, including timed lyric and instrumental rows, per-cue singer selection, and synchronized Reference Builder mappings.",
-            "Added compact per-cue audio playback controls so users can audition each lyric or instrumental slice while setting Start and End times.",
-            "Added timed Dialogue and Instrumental cue rows to MiniMax built-in-audio Speaker Assignment, bringing the same Start, End, Play Cue, custom-audio Auto Time This Scene, and boundary-sync workflow used by singer cues to generated dialogue scenes.",
-            "Added optional normal MiniMax H3 LoRA support with a LoRA count, chained LoRA dropdowns, per-LoRA strength controls, and a Kijai MiniMax H3 LoRA download link.",
-            "Added a shared MiniMax H3 prompt-generation path so the side panel, Storyboard Builder, Wizard Storyboard All, and Auto Build can produce the same final MiniMax prompt format.",
-            "Added Project Batch tooling for running saved projects one after another."
-          ]
-        },
-        {
-          "title": "Improved",
-          "items": [
-            "MiniMax split lyric cues now drive shot count and cut timing, so prompt shots align with the assigned singer and cue boundaries.",
-            "MiniMax prompt generation now asks Gemma for creative shot JSON only while the Builder appends fixed reference, audio, continuity, and MiniMax format sections.",
-            "Storyboard Builder context is now passed into the same MiniMax H3 prompt context used by the side panel, keeping storyboard beats, camera guidance, style, temporal/world effects, facial direction, audio notes, and continuity aligned.",
-            "The Builder toolbar, shared tabs, buttons, and global font styling are more compact and easier to read in crowded MiniMax, LTX, and image-generation panels.",
-            "Changing a lyric cue to Instrumental now creates a new lyric slot underneath instead of merging or losing the lyric text.",
-            "Set End on one singer cue now automatically sets the next cue's Start time to the same boundary.",
-            "New split lyric cue maps now start with two larger lyric chunks instead of auto-splitting every couple of words, keeping Auto Build and manual review less crowded.",
-            "MiniMax normal LoRAs and MiniMax-H3 Turbo are now mutually exclusive, with Turbo controls disabled while the normal LoRA stack is active."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Fixed MiniMax multi-singer prompts so Audio 1 belongs to the target video instead of incorrectly assigning the whole song to Subject 1.",
-            "Fixed MiniMax prompt drift where side-panel generation, Storyboard Builder generation, and Auto Build could use slightly different request wrappers or instruction keys.",
-            "Fixed LTX-to-MiniMax conversion saving the intermediate JSON shot-description payload as the final MiniMax prompt instead of assembling the full MiniMax H3 prompt sections.",
-            "Fixed malformed LLM artifacts inside MiniMax dialogue tags and cleaned awkward post-cut wording such as 'the camera cuts to a medium close-up shows'.",
-            "Fixed blank Gemma shot descriptions by filling missing shots from the timed singer cue map instead of stopping prompt creation.",
-            "Fixed the top-right Builder close button so it asks whether to Save + Close, Close Without Saving, or Go Back before exiting."
-          ]
-        },
-        {
-          "title": "Compatibility Notes",
-          "items": [
-            "Restart ComfyUI and hard-refresh the browser after updating so the new Builder JavaScript is loaded.",
-            "If a two-performer MiniMax shot swaps lip-sync unexpectedly, use tighter framing or over-the-shoulder composition for that cue while keeping the same singer assignment data."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-08-06-storyboard-gemma-network-reliability",
-      "version": "2026.08.06-storyboard-gemma-reliability",
-      "date": "2026-08-06",
-      "title": "Storyboard Gemma reliability, Manager release, and updated guide",
-      "commit": "26004612d5ee0dcdd5269b0835a2b37d13a98223",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
-      "sections": [
-        {
-          "title": "Improved",
-          "items": [
-            "Published the current AI Video Builder, MiniMax H3, Storyboard, and configurable render-wait feature set as ComfyUI Registry version 9.1.1 so ComfyUI Manager installs include the Builder launcher and recent updates.",
-            "Added a persistent Scene render wait limit in Builder Settings. Projects can keep individual and batch LTX or MiniMax scene waits active for 1–24 hours while existing projects retain the two-hour default.",
-            "Storyboard Gemma image and video prompt requests now allow up to ten minutes per scene, matching the Builder's established long-running Gemma prompt window.",
-            "Browser fetch failures now distinguish a real timeout from a lost ComfyUI backend connection and provide direct guidance for checking the queue, console, GPU layers, and context size.",
-            "Expanded the AI Video Builder guide with the recent MiniMax-H3 Turbo, scene-image inspiration, Face + hair priority, Cut frequency, LLM context/output, LTX-to-MiniMax conversion, silent playback, rendered-scene trim, and Delete ALL Videos workflows."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Fixed ComfyUI Manager continuing to install the July 3 version 9.0.0 package, which predated the Video Builder launcher, by advancing the registry package and runtime version through 9.1.1.",
-            "Fixed the MiniMax-H3 Turbo compatibility adapter rejecting extension v1.2.2 because upstream replaced its private _AdalnDelta wrapper with the safer _make_adaln_forward API; pruned Ref2VA models can now use Turbo with reference audio through either supported upstream API shape.",
-            "Fixed Storyboard Gemma All stopping on a slow first scene because its newer Video Builder path still used a four-minute request cutoff.",
-            "Fixed Firefox exposing the opaque 'NetworkError when attempting to fetch resource' message when a Storyboard prompt request timed out or the ComfyUI connection closed."
-          ]
-        },
-        {
-          "title": "Compatibility Notes",
-          "items": [
-            "Manager-installed packages may not contain Git metadata, so update them through ComfyUI Manager rather than running git pull. Git commands and the Builder self-updater apply to installations created with git clone.",
-            "Restart ComfyUI and hard-refresh the browser after updating so both revised JavaScript modules are loaded.",
-            "A connection-lost message before the ten-minute limit usually means ComfyUI stopped or a local GGUF load exhausted memory; inspect the terminal and retry one scene with fewer GPU layers, a smaller context, or a smaller model."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-08-06-minimax-turbo-reference-llm-controls",
-      "version": "2026.08.06-minimax-builder-controls",
-      "date": "2026-08-06",
-      "title": "MiniMax Turbo, reference control, and larger LLM output",
-      "commit": "a8779f500033acb06764cd224aa6c889254ac0e5",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
-      "sections": [
-        {
-          "title": "New",
-          "items": [
-            "Added optional MiniMax-H3 Turbo LoRA acceleration to MiniMax Video Settings. The hidden workflow injects the required Turbo LoRA and dedicated sampler, defaults to 4 editable steps, allows experimental step values below the usual 4-step target, automatically bypasses EasyCache, and restores the previous normal steps and EasyCache preference when Turbo is turned off.",
-            "Added a scope-aware MiniMax Reference-to-Video Scene image use dropdown. A scene image can be unused, supplied to both the LLM and MiniMax as the exact start frame, or supplied only to the vision LLM as environment inspiration with camera framing either ignored or optionally considered.",
-            "Added Face + hair only exact-start priority. Character references can replace only face identity and hair from the first generated frame while the start image remains authoritative for body, clothing, pose, composition, lighting, environment, and every other visible detail.",
-            "Added a MiniMax-only Cut frequency Scene Default from 0–10. Zero requests one continuous uninterrupted take, while 10 schedules one continuity-preserving CUT TO per second within each segment's exact duration.",
-            "Added separate persistent input-context and maximum-output controls for Gemma Local and LM Studio so longer MiniMax prompts are no longer constrained by the former small hardcoded task limits."
-          ]
-        },
-        {
-          "title": "Improved",
-          "items": [
-            "Prompt-only scene-image inspiration is never sent to MiniMax, never receives an Image N label, and never consumes a renderer reference slot. Character references remain authoritative for character identity and appearance.",
-            "Builder, Storyboard, Wizard, Prompt Creator, and image-reference vision jobs now honor the selected local-runner output ceiling. LM Studio receives both context length and maximum output tokens through its native chat API.",
-            "Project-global MiniMax mode, model, video, scene-image, and character-priority changes now update every eligible unlocked scene while preserving independently locked scene settings.",
-            "The top status bar consistently uses the AI Video Builder product name and includes a persistent live badge showing whether the project is using LTX or MiniMax.",
-            "Existing projects saved with Turbo's old 20-step default migrate to 4 steps, and existing Turbo projects or locked scenes migrate to EasyCache bypass without overwriting later manual experimentation."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "MiniMax-H3 Turbo now uses a packaged compatibility LoRA adapter for pruned models with reference audio, preventing the SamplerCustomAdvanced 3-versus-2 AdaLN tensor mismatch while automatically delegating to the upstream node once it includes the same fix.",
-            "The Video Wizard button opens again; Project Storage handlers no longer throw an out-of-scope JavaScript error during the Builder-to-Wizard handoff.",
-            "The MiniMax managed subject-count block respects Face + hair only start-frame priority and no longer grants character sheets conflicting authority over clothing or body proportions.",
-            "Runner progress labels correctly report LM Studio for selected-runner vision jobs, while genuinely local-only Gemma work remains labeled as built-in and honors the configured output limit.",
-            "Projects created from the PR #114 development branch migrate its legacy llm_max_tokens setting into the new Gemma and LM Studio limits; commercial LLM API requests continue ignoring local-runner limits."
-          ]
-        },
-        {
-          "title": "Compatibility Notes",
-          "items": [
-            "MiniMax-H3 Turbo requires ComfyUI-MiniMax-H3-Turbo and the selected Turbo LoRA file. Standard MiniMax rendering remains unchanged when Turbo is disabled.",
-            "Existing LTX projects remain on the LTX engine unless MiniMax is explicitly selected. Prompt-only scene-image modes affect newly generated prompts, so regenerate an existing MiniMax prompt after changing that setting."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-08-06-timeline-editing-minimax-prompt-reliability",
-      "version": "2026.08.06-builder-workflow-updates",
-      "date": "2026-08-06",
-      "title": "Timeline editing and MiniMax prompt workflow improvements",
-      "commit": "2f678b0ce9e15e4350745fd365f9af438d942462",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
-      "sections": [
-        {
-          "title": "New",
-          "items": [
-            "Added a one-button Tools-panel converter that sends every populated LTX video prompt through the selected LLM Runner and saves a separate, more detailed MiniMax H3 prompt without changing the original LTX prompt, global audio, scene timing, or other project data.",
-            "Added silent timeline playback so the playhead, scene selection, seeking, and scrubbing continue to work in short-film projects and other timelines that do not have global audio.",
-            "Added playhead trimming for rendered MiniMax built-in-audio and ID-LoRA scenes. Click or right-click the scissors button and choose whether to remove everything before or after the playhead.",
-            "Added Delete ALL Videos to clear every selected video, video history entry, thumbnail assignment, trim state, and rendered-video continuity assignment from the timeline while preserving the actual files in the project folder as backups."
-          ]
-        },
-        {
-          "title": "Improved",
-          "items": [
-            "Rendered MiniMax H3 built-in-audio clips can now supply scene audio during timeline playback and begin from the rendered clip's local start when no global audio is present.",
-            "Renamed user-facing Music Video Builder and Video Creator labels to AI Video Builder across the main README, Builder guide, Prompt Creator, Storyboard Builder, Wizard, release notes, and package metadata.",
-            "Closing the Builder now stops global audio, scene audio, silent timeline playback, and active video-preview playback."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "MiniMax Render All now displays and sends the complete saved right-panel prompt exactly as written instead of rewriting voice, B-roll, or continuity text during rendering.",
-            "Replaced an unbounded MiniMax managed-block cleanup pattern that could remove every timestamped shot, Audio section, and Continuity section after a visual-only B-roll block.",
-            "Timeline Play no longer stops with a Load audio first error when the project has no global audio; it automatically uses the silent timeline clock instead.",
-            "MiniMax built-in-audio timeline scrubbing now uses scene timeline time and the correct local media offset."
-          ]
-        },
-        {
-          "title": "Compatibility Notes",
-          "items": [
-            "The LTX-to-MiniMax converter is for music-video projects and continues using the same unchanged global Audio 1 file; it does not enable MiniMax built-in audio.",
-            "Delete ALL Videos changes timeline assignments only. Existing rendered video and thumbnail files remain in the project folder and can still be used as backups."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-08-05-minimax-h3-model-downloads",
-      "version": "2026.08.05-minimax-h3-model-downloads",
-      "date": "2026-08-05",
-      "title": "MiniMax H3 downloads and Story Arc reliability",
-      "commit": "2c0dfab471929c7536b1d29659e0e4821cc629fb",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
-      "sections": [
-        {
-          "title": "New",
-          "items": [
-            "Reorganized Download Models into LTX + Image Models, LLM Models, and MiniMax H3 tabs while preserving every existing model link.",
-            "Added verified links and folder guidance for the MiniMax H3 diffusion model, Qwen3-VL text encoder, video VAE, and audio VAE."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Create User Story Arc now recognizes compound lyric headers such as [Intro] [Whispered] [Dark Atmosphere], ignores adjacent performance and mood tags plus [End], preserves consecutive real sections, and accepts harmless bracketed or first-occurrence-numbered Gemma headings."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-08-05-minimax-h3-short-film-builder",
-      "version": "2026.08.05-minimax-h3",
-      "date": "2026-08-05",
-      "title": "MiniMax H3 built-in audio and short-film authoring",
-      "commit": "e0055190d989a2fb70522b7101086880d61ce8f3",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
-      "sections": [
-        {
-          "title": "New",
-          "items": [
-            "Added Built-in MiniMax Audio as an alternative to exact supplied Input Audio, with a dedicated hidden workflow that generates and preserves native scene audio through rendering and final stitching.",
-            "Added ordered per-scene speaker cues plus American, British, Australian, and custom voice descriptions saved with Reference Builder characters.",
-            "Added Guided Film Automation, Fully Custom short-film scene cards, and a Script Mapper that validates speaker: dialogue text or JSON, maps speakers to saved characters, preserves exact cue order and wording, previews timing, and creates the real timeline only after review.",
-            "Added previous-scene spatial-reference and exact-start-frame continuity modes while preserving MiniMax's nine-image reference limit.",
-            "Added MiniMax video-aesthetic controls and protected-character temporal/world effects for Storyboard planning.",
-            "Added an optional custom projects root for newly created projects without moving existing projects or ComfyUI temporary render output."
-          ]
-        },
-        {
-          "title": "Improved",
-          "items": [
-            "MiniMax prompts now keep Input Audio and Built-in Audio contracts separate, preserve exact speaker order, avoid repeating full dialogue or lyrics in every timestamp, and relax visible mouths after the audible vocal ends.",
-            "MiniMax render progress can display the exact prompt, lyric or dialogue, mode, and ordered reference images being sent for the current scene.",
-            "The per-scene render wait limit was increased from 40 minutes to two hours.",
-            "Multi-view character sheets are now treated as one subject instead of creating duplicate people from alternate views."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "MiniMax H3 scenes marked B-roll or no-lip-sync now suppress singer, lyric, speaker, and native-voice inputs, remove conflicting vocal actions from timestamp blocks, and receive a final visual-only safety contract again at render time.",
-            "Cyrillic and other Unicode letters are preserved during reference-lyric timestamp matching instead of being stripped by ASCII-only normalization.",
-            "Added a session-save safeguard that prevents an ordinary stale save from accidentally clearing many populated lyric lines at once."
-          ]
-        },
-        {
-          "title": "Compatibility Notes",
-          "items": [
-            "Existing and newly created projects continue to use LTX 2.3 unless MiniMax H3 is explicitly selected in Builder Settings.",
-            "MiniMax Input Audio remains the exact supplied soundtrack path; Built-in MiniMax Audio must be selected when generated voices, dialogue, ambience, or sound effects are required."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-08-03-minimax-h3-builder-testing",
-      "version": "2026.08.03-minimax-h3-test",
-      "date": "2026-08-03",
-      "title": "MiniMax H3 Video Builder testing support",
-      "commit": "5b328027c5f8e7e946b8449b236ad2c9362eafd5",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl",
-      "sections": [
-        {
-          "title": "New",
-          "items": [
-            "Added MiniMax H3 as a project video engine while keeping existing and newly loaded LTX projects on the unchanged LTX path by default.",
-            "Added project-global Text to Video, Image to Video, Reference to Video, and Video to Video modes with dedicated MiniMax model, resolution, timing, sampler, EasyCache, Sage Attention, and FP16 settings.",
-            "Added a per-scene lock in MiniMax Video Settings that copies and preserves the current mode, models, render settings, and advanced settings for that scene while unlocked scenes continue following the project-global values.",
-            "Added ordered Reference Builder images, optional exact scene-image start frames, and reference-video inputs for MiniMax character, location, continuation, motion, camera, transformation, and visual-editing workflows.",
-            "Added MiniMax-specific LLM instructions and Storyboard prompting with exact scene timing, ordered Image and Video assignments, Audio 1 usage, lyric text, and lip-sync guidance.",
-            "Added exact MiniMax frame planning and custom-audio preparation so rendered scenes cover the selected timeline range and are trimmed back to its exact duration.",
-            "Added MiniMax Render All support for rendering missing clips or creating new versions from Storyboard prompts, using each scene's effective global or locked mode and settings before stitching the completed project.",
-            "Added a Builder Settings checkbox for automatic RAM/VRAM cleanup. When disabled, embedded cleanup nodes and automatic post-task cache clearing are bypassed while the manual Clear Memory button remains available."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Storyboard All, Reference Builder, LLM prompting, validation, and rendering now consistently use each scene's effective global or locked MiniMax mode instead of letting untouched scenes silently fall back to Text to Video.",
-            "Render All now routes MiniMax projects through the MiniMax hidden workflow instead of the LTX renderer and ignores stale LTX-only mode, post-processing, canvas, and embedded-audio behavior."
-          ]
-        },
-        {
-          "title": "Testing Notes",
-          "items": [
-            "This first MiniMax H3 Builder workflow requires project audio or custom scene audio and currently uses non-GGUF diffusion models.",
-            "Built-in MiniMax audio, GGUF loading, and MiniMax post-processing workflows are not part of this initial testing build."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-08-02-reference-lyrics-story-arc",
-      "version": "2026.08.02-builder-fixes",
-      "date": "2026-08-02",
-      "title": "Reference lyric transcription and Story Arc reliability",
-      "commit": "c302d9c5f62b76db4f71452e228606ad42788853",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
-      "sections": [
-        {
-          "title": "Improved",
-          "items": [
-            "Transcribe Existing Scenes now uses the supplied reference lyrics as the exact lyric source while acoustic transcription determines where each word belongs.",
-            "Beat mode now creates its beat-aligned segments first and automatically runs the same reference-preserving Transcribe Existing Scenes process with Replace All."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Prevented Transcribe Existing Scenes from silently omitting reference lyric lines or inserting pipe delimiters between lyrics.",
-            "Improved sustained boundary-word placement so audible final words follow their detected vocal tail into the correct scene instead of leaving that scene marked instrumental.",
-            "Prevented unrecognized first or last words from being stretched across several seconds of inter-line silence and assigned to the wrong scene.",
-            "Story Arc Gemma now removes only invented trailing sections after every required lyric heading is already present, while continuing to reject missing, renamed, reordered, or interleaved headings."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-08-02-builder-multi-select-ingredients",
-      "version": "2026.08.02-builder",
-      "date": "2026-08-02",
-      "title": "Faster scene selection and Ingredients panel fix",
-      "commit": "04efd428181d9cd975f393e9d250a1d5e8e59983",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
-      "sections": [
-        {
-          "title": "New",
-          "items": [
-            "Select Multi now opens a chooser for selecting clips directly on the timeline or entering base scene numbers as a list.",
-            "Scene lists accept commas, spaces, new lines, ranges such as 4-8, pasted lists, and all, odd, or even shortcuts.",
-            "Entered scene lists can replace the current selection, add scenes to it, or remove scenes from it."
-          ]
-        },
-        {
-          "title": "Improved",
-          "items": [
-            "Multi-select now shows live scene-list validation, clearer instructions, and preserves an existing selection when the mode is reopened."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Fixed the Ingredients Reference Builder tab container so the Sheets, Mapping, and Locations panels mount and display correctly."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-07-31-builder-timeline-storyboard-prompts",
-      "version": "2026.07.31-builder",
-      "date": "2026-07-31",
-      "title": "Timeline controls and smarter Storyboard prompts",
-      "commit": "ffd79be3512273e864d8a00f316c86bdb5af3d60",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
-      "sections": [
-        {
-          "title": "New",
-          "items": [
-            "Added persistent Render All logs with live timing, per-scene phase details, ETA summaries, final-stitch timing, and saved JSON and text reports.",
-            "Added an inline Motion Notes column to Storyboard Video Prep using the same notes stored in each Scene Card and sent to prompt generation.",
-            "Gemma Video All now opens an in-app choice to create only missing prompts or redo every visible scene, with exact missing and completed counts."
-          ]
-        },
-        {
-          "title": "Improved",
-          "items": [
-            "Add Segment now uses the scrubber as the new endpoint when it is at least 0.5 seconds beyond the last clip, snaps that endpoint to the nearest beat when beat snapping is enabled, and confirms unusually long segments.",
-            "Added Space for play or pause and S for Add Segment, and made the Storyboard prompt status and scene actions more compact.",
-            "Missing-only Storyboard prompt generation preserves completed prompts and saves successful partial progress if a later scene fails."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Fixed Left and Right Arrow scene navigation so it continues working after scene-list re-renders while remaining inactive during text entry and dialogs.",
-            "Custom Storyboard Motion Notes now override the scene-default camera-motion preset in Gemma requests, preventing conflicting directions such as a push-in combined with track left."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-07-30-standalone-video-enhancer",
-      "version": "2026.07.30-enhancer",
-      "date": "2026-07-30",
-      "title": "Standalone video enhancer with 2K–4K output",
-      "commit": "4289439bbff337c838583c768aedc90104cb2857",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl",
-      "sections": [
-        {
-          "title": "New",
-          "items": [
-            "Added VRGDG Standalone Video Enhancer, a clean interface outside Video Builder for uploading an existing video, previewing effects, rendering, and saving the finished result.",
-            "Added Original, 2K, 3K, and 4K output choices using high-quality Lanczos resizing while preserving aspect ratio and portrait or landscape orientation.",
-            "Added Fast Unsharp Sharpen controls up to strength 10 and Fast Film Grain controls with intensity, saturation mix, and deterministic seed settings."
-          ]
-        },
-        {
-          "title": "Improved",
-          "items": [
-            "Added current-frame and synchronized final-video before-and-after comparison with a draggable wipe slider and screen-filling expanded view.",
-            "Long videos render in memory-aware frame batches with checkpoint resume, cancellation, automatic GPU out-of-memory retry, and optional preservation of the original audio."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-07-30-video-compare-builder-reliability",
-      "version": "2026.07.30",
-      "date": "2026-07-30",
-      "title": "Video comparison, global audio, and Builder performance",
-      "commit": "91d025e0439e566ed3989604f3619471bf36f7e5",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
-      "sections": [
-        {
-          "title": "New",
-          "items": [
-            "Added VRGDG Video Compare Slider with synchronized before-and-after playback, a draggable comparison divider, timeline scrubbing, looping, labels, and optional audio.",
-            "Added a visual Storyboard subject picker for assigning one or more existing Reference Builder subjects to a scene or uploading a new subject."
-          ]
-        },
-        {
-          "title": "Improved",
-          "items": [
-            "Increased Fast Unsharp Sharpen strength from a maximum of 2.0 to 10.0.",
-            "Improved Video Builder undo memory by deduplicating embedded media and recording inspector text edits once per edit session.",
-            "Added stable, versioned thumbnail URLs and immutable caching so scene thumbnails are not downloaded again on every render.",
-            "Storyboard imports now merge incoming subjects and locations with existing references instead of ignoring new references when mappings already exist."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Global audio now remains the preferred final soundtrack and fills scenes without custom audio during scene-audio preparation and stitching.",
-            "Loading or restoring global audio now correctly restores timeline playback and the visible waveform instead of remaining on silent scene audio.",
-            "The Video Builder menu now stays inside the viewport and scrolls so every menu action remains accessible."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-07-28-builder-lyric-timing",
-      "version": "2026.07.28",
-      "date": "2026-07-28",
-      "title": "Lyric timing, Storyboard prompts, and scene merging",
-      "commit": "0974a24aabd0b3022346cae922a54302403d2c3f",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
-      "sections": [
-        {
-          "title": "New",
-          "items": [
-            "Added right-click actions to merge a scene with its left or right neighbor while combining lyrics, notes, singers, and scene mappings without shifting surrounding scene timing.",
-            "Added a confirmation warning before transcription when reference lyrics contain parenthesized text that will be treated as sung or spoken lyrics."
-          ]
-        },
-        {
-          "title": "Improved",
-          "items": [
-            "Wizard lyric scene creation now uses the same shared Create Scenes From Lines engine as Line Mapping.",
-            "Pasted lyric lines and stanzas remain intact even when their detected duration falls outside the minimum or maximum scene settings.",
-            "Exact reference-line mode keeps normal lyric alignment, instrumental-gap detection, vocal-tail padding, and boundary cleanup while ignoring only minimum and maximum duration limits.",
-            "Only [instrumental] and [instrumental break] force no-vocal sections; [intro], [outro], and [break] remain section headers because those sections may contain lyrics.",
-            "Wizard lyric output removes parenthesis characters after transcription while preserving the lyric words inside them."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Manual video prompts now render exactly as entered: typing, pasting, Prompt Options edits, reloads, and find/replace remain manual even after a later Gemma edit, while automatic trigger, vocal, facial-performance, and ID-LoRA prompt augmentation is limited to prompts originally created by Gemma.",
-            "Prevented final render preparation from appending the facial-performance direction a second time after it was already included in the generated video prompt.",
-            "Storyboard Video Prep now explicitly begins non-I2V prompts with the selected starting shot, including an extreme close-up for an eyes shot, and preserves that opening through the embedded Video Builder prompt path without changing ordinary I2V first-frame behavior.",
-            "Prevented stale inspector values from overwriting a different scene and creating blank, truncated, or 0.1-second scenes.",
-            "Improved unmatched reference-line timing so unaligned lyrics receive natural text-sized timing instead of stretching across large portions of the song.",
-            "Improved vocal-tail and shared-boundary cleanup to prevent lyric scenes from overlapping or being pushed away from their detected word starts."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-07-25-builder-navigation",
-      "version": "2026.07.25",
-      "date": "2026-07-25",
-      "title": "Builder navigation, update details, and reliability fixes",
-      "commit": "0d9f1c963e37eb7272910e41fd7b19dce7c6d513",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
-      "sections": [
-        {
-          "title": "New",
-          "items": [
-            "Added Review Guide to the Builder menu for direct access to the public AI Video Builder guide.",
-            "Added a clear legacy notice before opening the older Prompt Creator workflow.",
-            "Added an optional What's New window so users can review release details from the status banner or Builder menu."
-          ]
-        },
-        {
-          "title": "Improved",
-          "items": [
-            "New projects now open directly in Video Builder.",
-            "Prompt Creator is labeled as a legacy workflow, with Storyboard Builder recommended for new story planning."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Removed the obsolete Remake Mode menu item.",
-            "Fixed the update-status banner so it no longer stretches the toolbar or reduces the main workspace.",
-            "Fixed update detection for development builds whose changes were squash-merged to main.",
-            "Fixed ID-LoRA GGUF rendering so the unused safetensors loader is removed before ComfyUI validates the prompt."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-07-25-guide-visuals",
-      "version": "2026.07.25-guide",
-      "date": "2026-07-25",
-      "title": "Expanded Storyboard and Browser AI guide",
-      "commit": "1554e8c757e8e045fc634c713d0e9e3e84a13e62",
-      "restart_required": false,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
-      "sections": [
-        {
-          "title": "Documentation",
-          "items": [
-            "Added Storyboard Builder screenshots for the main window, Story Layer, Image Prep defaults, and Video Prep defaults.",
-            "Added Browser AI screenshots for provider setup, manual mode, and Band Sequence groups."
+            "Restart ComfyUI after updating, then hard-refresh the browser so the revised Video Builder JavaScript is loaded.",
+            "The MOSS-Image Edit LoRA needs a ComfyUI newer than v0.42.1.",
+            "H3 Studio 0.1.25 matches."
           ]
         }
       ]
