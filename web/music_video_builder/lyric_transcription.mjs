@@ -1,5 +1,5 @@
 import { postJson, queueWorkflowPrompt, waitForText } from "./comfy_api.mjs";
-import { makeButton, makeCheckbox, makeField, makeInput, makeSelect, normalizeVideoType, toast } from "./controls.mjs";
+import { llmText, makeButton, makeCheckbox, makeField, makeInput, makeSelect, normalizeVideoType, toast } from "./controls.mjs";
 import {
   assertNoBundledReferenceLyrics,
   cleanTimestampedLyricText,
@@ -65,7 +65,7 @@ function confirmParenthesizedReferenceLyrics(value) {
 }
 
 function timestampedLyricsHintHtml() {
-  return `
+  return llmText(`
       <div style="display:flex;flex-direction:column;gap:10px;font-size:12px;line-height:1.45;color:#cbd5e1;">
         <div><strong style="color:#cffafe;">Language</strong><br>Whisper/stable-ts language hint. Use <code>english</code> for English songs. Use <code>auto</code> if you do not know the language, but a specific language is usually more stable.</div>
         <div><strong style="color:#cffafe;">Segment mode</strong><br>
@@ -84,7 +84,7 @@ function timestampedLyricsHintHtml() {
         <div><strong style="color:#cffafe;">Vocal tail padding</strong><br>Adds a small amount of time after the final detected word in a vocal chunk so sung/held last words do not feel cut off. It is clamped before the next vocal word.</div>
         <div><strong style="color:#cffafe;">Manual instrumental sections</strong><br>Only <code>[instrumental]</code> or <code>[instrumental break]</code> on its own line forces a no-vocal section. <code>[intro]</code>, <code>[outro]</code>, and <code>[break]</code> are section headers only because those sections may contain lyrics. Blank lines are just spacing/stanza separators.</div>
       </div>
-    `;
+    `);
 }
 
 function stripWizardParenthesisCharacters(value) {

@@ -1,6 +1,6 @@
 import { postJson } from "./comfy_api.mjs";
 import { LOCATION_MAPPER_GPT_URL } from "./constants.mjs";
-import { makeButton, makeField, makeGptLinkButton, makeInput, normalizeProjectVideoEngine, toast } from "./controls.mjs";
+import { bindLlmText, makeButton, makeField, makeGptLinkButton, makeInput, normalizeProjectVideoEngine, toast } from "./controls.mjs";
 import { normalizeMiniMaxH3Pipeline } from "./minimax_h3.mjs";
 import { buildRefmodPicker } from "./refmod_card.mjs";
 import { sceneConceptPromptText } from "./image_prompts.mjs";
@@ -628,7 +628,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       progress.set(`Error:\n${message}`, 100);
       toast(message, true);
       autoMapLocations.disabled = false;
-      autoMapLocations.textContent = "Auto Map Locations with Gemma";
+      bindLlmText(autoMapLocations, "textContent", "Auto Map Locations with Gemma");
       return;
     }
     if (!refs.locations.length) {
@@ -636,7 +636,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       progress.set(`Error:\n${message}`, 100);
       toast(message, true);
       autoMapLocations.disabled = false;
-      autoMapLocations.textContent = "Auto Map Locations with Gemma";
+      bindLlmText(autoMapLocations, "textContent", "Auto Map Locations with Gemma");
       return;
     }
     const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
@@ -714,7 +714,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       toast(String(error?.message || error), true);
     } finally {
       autoMapLocations.disabled = false;
-      autoMapLocations.textContent = "Auto Map Locations with Gemma";
+      bindLlmText(autoMapLocations, "textContent", "Auto Map Locations with Gemma");
     }
   }
 

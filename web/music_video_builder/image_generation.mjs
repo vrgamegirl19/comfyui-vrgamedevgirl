@@ -2,7 +2,7 @@ import { buildBrowserImagePrompt } from "../VRGDG_BrowserImageBridge.js";
 import { runBrowserImageWithFallback } from "./browser_image_fallback.mjs";
 import { postJson, queueWorkflowPrompt, waitForImages } from "./comfy_api.mjs";
 import { DEFAULT_NB_IMAGE_MODEL, FLUX_GEMMA_TIMEOUT_MS } from "./constants.mjs";
-import { toast } from "./controls.mjs";
+import { bindLlmText, toast } from "./controls.mjs";
 import { builderImageInstructionKey, sceneLyricTextForPromptValidation } from "./image_prompts.mjs";
 import { setButtonGroupState } from "./inspector.mjs";
 import {
@@ -449,7 +449,7 @@ export function createImageGeneration({
     let progress = null;
     try {
       createFluxPromptButton.disabled = true;
-      createFluxPromptButton.textContent = "Gemma...";
+      bindLlmText(createFluxPromptButton, "textContent", "Gemma...");
       progress = createProgressWindow("Creating Flux/Klein prompt");
       progress.set("Autosaving session/SRT before Gemma Flux/Klein...", 8);
       await autoSaveSessionQuiet("Gemma Flux/Klein prompt");
@@ -464,7 +464,7 @@ export function createImageGeneration({
       toast(String(error?.message || error), true);
     } finally {
       createFluxPromptButton.disabled = false;
-      createFluxPromptButton.textContent = "Gemma Flux Prompt";
+      bindLlmText(createFluxPromptButton, "textContent", "Gemma Flux Prompt");
     }
   }
 
@@ -728,7 +728,7 @@ export function createImageGeneration({
     let progress = null;
     try {
       createNBPromptButton.disabled = true;
-      createNBPromptButton.textContent = "Gemma...";
+      bindLlmText(createNBPromptButton, "textContent", "Gemma...");
       progress = createProgressWindow("Creating NanoBanana prompt");
       progress.set("Autosaving session/SRT before Gemma NanoBanana...", 8);
       await autoSaveSessionQuiet("Gemma NanoBanana prompt");
@@ -743,7 +743,7 @@ export function createImageGeneration({
       toast(String(error?.message || error), true);
     } finally {
       createNBPromptButton.disabled = false;
-      createNBPromptButton.textContent = "Gemma NB Prompt";
+      bindLlmText(createNBPromptButton, "textContent", "Gemma NB Prompt");
     }
   }
 
@@ -755,7 +755,7 @@ export function createImageGeneration({
     let progress = null;
     try {
       flowGptCreatePromptButton.disabled = true;
-      flowGptCreatePromptButton.textContent = "Gemma...";
+      bindLlmText(flowGptCreatePromptButton, "textContent", "Gemma...");
       progress = createProgressWindow("Creating Browser AI prompt");
       progress.set("Autosaving session/SRT before Gemma Browser AI...", 8);
       await autoSaveSessionQuiet("Gemma Browser AI prompt");
@@ -772,7 +772,7 @@ export function createImageGeneration({
       toast(String(error?.message || error), true);
     } finally {
       flowGptCreatePromptButton.disabled = false;
-      flowGptCreatePromptButton.textContent = "Gemma Browser Prompt";
+      bindLlmText(flowGptCreatePromptButton, "textContent", "Gemma Browser Prompt");
     }
   }
 

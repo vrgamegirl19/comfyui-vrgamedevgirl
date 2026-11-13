@@ -1,5 +1,5 @@
 import { getJson, makeEditorImageUrl, postJson } from "./comfy_api.mjs";
-import { makeButton, makeField, makeInput, makeMiniButton, toast } from "./controls.mjs";
+import { llmText, makeButton, makeField, makeInput, makeMiniButton, toast } from "./controls.mjs";
 import { MANAGER_MISSING_TEXT, builtInLine, installButtonState, managerNoteText, missingNodeIds, nodeBadge } from "./custom_nodes_status.mjs";
 import { renderDmadModelsTab } from "./dmad_models_tab.mjs";
 import { wireInstallButton } from "./model_install_button.mjs";
@@ -34,8 +34,8 @@ export function recordGemmaBatchFailure(key, segment, sceneLabel, error, debugPa
     key,
     segmentId: String(segment?.id || ""),
     sceneLabel: sceneLabel || "Unknown scene",
-    error: String(error?.message || error || "Unknown Gemma error"),
-    raw: raw || cleaned || "(raw Gemma output was not attached)",
+    error: String(error?.message || error || llmText("Unknown Gemma error")),
+    raw: raw || cleaned || llmText("(raw Gemma output was not attached)"),
     cleaned,
     debugPath: String(debugPath || error?.gemmaDebugPath || ""),
     timestamp: new Date().toISOString(),

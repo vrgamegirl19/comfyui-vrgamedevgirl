@@ -5,7 +5,7 @@ import { lyricFreePerformanceEnabled } from "./lyric_free_performance.mjs";
 import { storyboardGptPayload } from "../storyboard_builder/gpt_payload.mjs";
 import { GEMMA_VIDEO_PROMPT_TIMEOUT_MS, postJson } from "./comfy_api.mjs";
 import { USE_STORYBOARD_PROMPT_PIPELINE_FOR_SIDE_PANEL } from "./constants.mjs";
-import { escapeHtml, normalizeVideoType, toast } from "./controls.mjs";
+import { bindLlmText, escapeHtml, normalizeVideoType, toast } from "./controls.mjs";
 import {
   gemmaBatchFailureStore,
   looksLikeUnfilledMiniMaxTemplate,
@@ -538,7 +538,7 @@ export function createBatchPrompts({
     let progress = null;
     try {
       createI2VButton.disabled = true;
-      createI2VButton.textContent = "Gemma...";
+      bindLlmText(createI2VButton, "textContent", "Gemma...");
       progress = createProgressWindow(`Creating ${modeLabel} prompt`);
       progress.set(`Autosaving session/SRT before Gemma ${modeLabel}...`, 8);
       await autoSaveSessionQuiet(`Gemma ${modeLabel}`);

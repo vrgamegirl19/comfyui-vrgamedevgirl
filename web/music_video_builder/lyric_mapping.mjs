@@ -1,5 +1,5 @@
 import { audioUrl } from "./comfy_api.mjs";
-import { escapeHtml, makeButton, makeCheckbox, makeField, makeInput, toast } from "./controls.mjs";
+import { bindLlmText, escapeHtml, llmText, makeButton, makeCheckbox, makeField, makeInput, toast } from "./controls.mjs";
 import { formatDurationSeconds, formatTime } from "./format.mjs";
 import { applyLyricSectionsFromReferenceText, showTimestampedLyricsHintModal } from "./lyric_transcription.mjs";
 import { isNoLipSyncSingerChoice } from "./prompt_text.mjs";
@@ -23,7 +23,7 @@ export function createLyricMapping({
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
-    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Line Mapper</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Assign Reference Builder subjects to lyric/dialogue lines so Gemma knows who performs each scene.</div>`;
+    heading.innerHTML = llmText(`<div style="font-size:16px;font-weight:900;color:#cffafe;">Line Mapper</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Assign Reference Builder subjects to lyric/dialogue lines so Gemma knows who performs each scene.</div>`);
     const close = makeButton("Close");
     header.append(heading, close);
 
@@ -332,7 +332,7 @@ export function createLyricMapping({
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
-    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Line Mapping</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Transcribe lyrics/dialogue, review scene timing, then assign performers for Gemma prompts.</div>`;
+    heading.innerHTML = llmText(`<div style="font-size:16px;font-weight:900;color:#cffafe;">Line Mapping</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Transcribe lyrics/dialogue, review scene timing, then assign performers for Gemma prompts.</div>`);
     const close = makeButton("Close");
     header.append(heading, close);
 
@@ -509,7 +509,7 @@ export function createLyricMapping({
         title.textContent = "Step 2: Review lines and map performers";
         const copy = document.createElement("div");
         copy.style.cssText = "font-size:13px;color:#cbd5e1;line-height:1.5;margin-bottom:12px;";
-        copy.textContent = "Open the scene-based editor to listen by scene, correct transcription mistakes, assign performers/speakers, mark instrumental/B-roll sections, and save the exact line notes Gemma will read.";
+        bindLlmText(copy, "textContent", "Open the scene-based editor to listen by scene, correct transcription mistakes, assign performers/speakers, mark instrumental/B-roll sections, and save the exact line notes Gemma will read.");
         const actions = document.createElement("div");
         actions.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;";
         const review = makeStepButton("Open Review + Performer Mapping", "primary");

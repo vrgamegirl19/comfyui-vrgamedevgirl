@@ -7,6 +7,8 @@ import {
   NB_IMAGE_MODELS,
 } from "./constants.mjs";
 import {
+  bindLlmText,
+  llmText,
   makeButton,
   makeCheckbox,
   makeField,
@@ -829,7 +831,7 @@ export function buildImageSettingsPanels({ makeEditImagePromptButton, shell }) {
   zEnhancePromptPreview.placeholder = "Enhance prompt copied from the selected scene...";
   zEnhancePromptPreview.style.cssText = "width:100%;box-sizing:border-box;min-height:92px;resize:vertical;border:1px solid #27272a;border-radius:6px;background:#18181b;color:#d4d4d8;padding:8px;font-size:11px;line-height:1.35;";
   const zEnhanceGemmaNotes = document.createElement("textarea");
-  zEnhanceGemmaNotes.placeholder = "Optional notes for Gemma: what to preserve, improve, restyle, or emphasize from the selected image...";
+  bindLlmText(zEnhanceGemmaNotes, "placeholder", "Optional notes for Gemma: what to preserve, improve, restyle, or emphasize from the selected image...");
   zEnhanceGemmaNotes.style.cssText = zEnhancePromptPreview.style.cssText;
   const zEnhanceGemmaModelSelect = makeSelect([""], "");
   const zEnhanceMmprojSelect = makeSelect([""], "");
@@ -978,14 +980,14 @@ export function buildImageModeCards({
   const endInput = makeInput("4", "number");
   endInput.step = "0.01";
   const notesInput = document.createElement("textarea");
-  notesInput.placeholder = "Scene notes for Gemma / prompt direction...";
+  bindLlmText(notesInput, "placeholder", "Scene notes for Gemma / prompt direction...");
   notesInput.style.cssText = "width:100%;box-sizing:border-box;min-height:82px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#fafafa;padding:9px;font-size:12px;line-height:1.45;";
   const i2vNotesInput = document.createElement("textarea");
   i2vNotesInput.placeholder = "Extra video motion notes, camera movement, character movement...";
   i2vNotesInput.style.cssText = notesInput.style.cssText;
   const flfTransitionTypeSelect = makeSelect([
     { value: "global", label: "Use Global Setting" },
-    { value: "auto", label: "Auto: Gemma decides" },
+    { value: "auto", label: llmText("Auto: Gemma decides") },
     { value: "smooth", label: "Smooth Transition" },
     { value: "morph", label: "Surreal Morph" },
   ], "global");
@@ -1037,24 +1039,24 @@ export function buildImageModeCards({
   const useI2VVisionReference = makeCheckbox("Use image reference for I2V prompt?", true);
   const useI2VPromptEnhancementPass = makeCheckbox("I2V prompt enhancement pass", false);
   const i2vPromptEnhancementNote = document.createElement("div");
-  i2vPromptEnhancementNote.textContent = "Optional second Gemma pass that rewrites I2V/T2V drafts into a stronger LTX-ready paragraph shape.";
+  bindLlmText(i2vPromptEnhancementNote, "textContent", "Optional second Gemma pass that rewrites I2V/T2V drafts into a stronger LTX-ready paragraph shape.");
   i2vPromptEnhancementNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;margin-top:-4px;";
   const i2vReferenceNote = document.createElement("div");
-  i2vReferenceNote.textContent = "When checked, Gemma looks at the scene image and your video notes to create the I2V prompt. When unchecked, it uses the T2I prompt text and your video notes instead.";
+  bindLlmText(i2vReferenceNote, "textContent", "When checked, Gemma looks at the scene image and your video notes to create the I2V prompt. When unchecked, it uses the T2I prompt text and your video notes instead.");
   i2vReferenceNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;margin-top:-4px;";
-  const useT2VVisionReference = makeCheckbox("Use image reference for T2V Gemma prompt?", false);
+  const useT2VVisionReference = makeCheckbox(llmText("Use image reference for T2V Gemma prompt?"), false);
   const t2vReferenceNote = document.createElement("div");
-  t2vReferenceNote.textContent = "Optional: Gemma looks at a reference image for pose, framing, mood, or visual direction while still creating a text-to-video prompt.";
+  bindLlmText(t2vReferenceNote, "textContent", "Optional: Gemma looks at a reference image for pose, framing, mood, or visual direction while still creating a text-to-video prompt.");
   t2vReferenceNote.style.cssText = i2vReferenceNote.style.cssText;
   const t2vLocationNote = document.createElement("div");
-  t2vLocationNote.textContent = "T2V uses mapped character and location descriptions as text context for Gemma. It does not pass those reference images into the video render.";
+  bindLlmText(t2vLocationNote, "textContent", "T2V uses mapped character and location descriptions as text context for Gemma. It does not pass those reference images into the video render.");
   t2vLocationNote.style.cssText = i2vReferenceNote.style.cssText;
   const refImageInput = makeInput("");
   refImageInput.style.display = "none";
   const refImagePanel = document.createElement("div");
   refImagePanel.style.cssText = "display:none;flex-direction:column;gap:8px;border:1px solid #27272a;border-radius:6px;background:#111113;padding:8px;";
   const refImageNote = document.createElement("div");
-  refImageNote.textContent = "Optional: give Gemma a visual reference for the direction you want.";
+  bindLlmText(refImageNote, "textContent", "Optional: give Gemma a visual reference for the direction you want.");
   refImageNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;";
   const refImageDrop = document.createElement("div");
   refImageDrop.textContent = "Drop a reference image here, or drag a scene image from the timeline.";
@@ -1106,7 +1108,7 @@ export function buildImageModeCards({
   const t2vRefImagePanel = document.createElement("div");
   t2vRefImagePanel.style.cssText = refImagePanel.style.cssText;
   const t2vRefImageNote = document.createElement("div");
-  t2vRefImageNote.textContent = "Drop/load the image Gemma should look at while writing the T2V prompt.";
+  bindLlmText(t2vRefImageNote, "textContent", "Drop/load the image Gemma should look at while writing the T2V prompt.");
   t2vRefImageNote.style.cssText = refImageNote.style.cssText;
   const t2vRefImageDrop = document.createElement("div");
   t2vRefImageDrop.textContent = refImageDrop.textContent;
@@ -1122,18 +1124,18 @@ export function buildImageModeCards({
   const krea2TwoPassSendT2IPromptToEnhanceButton = makeMiniButton("Send to Enhance");
   const editKrea2T2IInstructionsButton = makeButton("Edit Krea 2 T2I Instructions");
   const editI2VPromptButton = makeButton("Edit Prompt");
-  editI2VPromptButton.title = "Ask Gemma to make a focused text-only edit to the current video prompt.";
+  bindLlmText(editI2VPromptButton, "title", "Ask Gemma to make a focused text-only edit to the current video prompt.");
   editI2VPromptButton.style.display = "none";
   const editI2VInstructionsButton = makeButton("Edit I2V Instructions");
-  editI2VInstructionsButton.title = "Advanced: customize the Gemma instructions used when writing Image-to-Video prompts.";
+  bindLlmText(editI2VInstructionsButton, "title", "Advanced: customize the Gemma instructions used when writing Image-to-Video prompts.");
   const editIdLoraInstructionsButton = makeButton("Edit ID-LoRA Instructions");
-  editIdLoraInstructionsButton.title = "Advanced: customize the Gemma instructions used when writing ID-LoRA I2V scripts.";
+  bindLlmText(editIdLoraInstructionsButton, "title", "Advanced: customize the Gemma instructions used when writing ID-LoRA I2V scripts.");
   const editRTVInstructionsButton = makeButton("Edit Reference Video Instructions");
-  editRTVInstructionsButton.title = "Advanced: customize the Gemma instructions used when writing Reference-to-Video prompts.";
+  bindLlmText(editRTVInstructionsButton, "title", "Advanced: customize the Gemma instructions used when writing Reference-to-Video prompts.");
   const editIngredientsInstructionsButton = makeButton("Edit Ingredients Video Instructions");
-  editIngredientsInstructionsButton.title = "Advanced: customize the Gemma instructions used when writing Ingredients-to-Video prompts.";
+  bindLlmText(editIngredientsInstructionsButton, "title", "Advanced: customize the Gemma instructions used when writing Ingredients-to-Video prompts.");
   const editT2VInstructionsButton = makeButton("Edit T2V Instructions");
-  editT2VInstructionsButton.title = "Advanced: customize the Gemma instructions used when writing Text-to-Video prompts.";
+  bindLlmText(editT2VInstructionsButton, "title", "Advanced: customize the Gemma instructions used when writing Text-to-Video prompts.");
   const i2vPrompt = document.createElement("textarea");
   i2vPrompt.placeholder = "Image-to-video prompt...";
   i2vPrompt.style.cssText = notesInput.style.cssText;

@@ -1,6 +1,6 @@
 import { FACIAL_PERFORMANCE_PRESETS } from "../storyboard_builder/performance_presets.mjs";
 import { audioUrl, makeEditorThumbnailUrl } from "./comfy_api.mjs";
-import { escapeHtml, makeButton, makeCheckbox, makeField, makeInput, makeSelect, toast } from "./controls.mjs";
+import { bindLlmText, escapeHtml, llmText, makeButton, makeCheckbox, makeField, makeInput, makeSelect, toast } from "./controls.mjs";
 import { showConfirmModal, showInfoModal } from "./dialogs.mjs";
 import { formatDurationSeconds, formatTime } from "./format.mjs";
 import { refmodPreviewUrl } from "./refmod_card.mjs";
@@ -43,7 +43,7 @@ export function createLyricReview({
     if (isSingleScene) {
       heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Review Lines + Map Performers — ${escapeHtml(targetScene.label || `Scene ${targetSceneIndex + 1}`)}</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Listen to this scene, correct lyrics/dialogue, assign performers or speakers, and set lip-sync or location details.</div>`;
     } else {
-      heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Review Lines + Map Performers</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Listen scene by scene, correct transcribed lyrics/dialogue, assign performers or speakers, and mark instrumental or B-roll before running Gemma.</div>`;
+      heading.innerHTML = llmText(`<div style="font-size:16px;font-weight:900;color:#cffafe;">Review Lines + Map Performers</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Listen scene by scene, correct transcribed lyrics/dialogue, assign performers or speakers, and mark instrumental or B-roll before running Gemma.</div>`);
     }
     const lyricReviewHint = makeButton("?");
     lyricReviewHint.title = "Explain lyric review controls";
@@ -61,13 +61,13 @@ export function createLyricReview({
     lyricReviewHint.onclick = () => showInfoModal({
       title: "Lyric Review Help",
       lines: [
-        "Use this window to fix the line text, scene timing, performers/speakers, locations, and no-lip-sync flags before Gemma creates video prompts.",
+        llmText("Use this window to fix the line text, scene timing, performers/speakers, locations, and no-lip-sync flags before Gemma creates video prompts."),
         "Timing edit mode: Lock rest only changes the shared boundary between two neighboring scenes. Ripple following scenes shifts every later scene and is mainly for fixing timeline drift.",
         "Play Scene plays only that scene's current start/end range. Play From Here starts at that scene and keeps playing so you can stop where the next boundary should be.",
         "Set Start uses the audio playhead as this scene's start and moves the previous scene's end to match. Set End uses the audio playhead as this scene's end.",
         "Split At Playhead cuts that scene into two scenes at the current audio playhead. It copies line text, performer/speaker mapping, B-roll/instrumental state, motion notes, and location mapping into both pieces.",
         "Instrumental means nobody should sing or lip-sync in that scene. B-roll / no lip-sync means the scene can have visuals or movement, but visible people should not mouth the lyric.",
-        "Performer/speaker choices tell Gemma who should sing, say, or carry the line depending on the global Video Type. Location connects the scene to a Reference Builder location image.",
+        llmText("Performer/speaker choices tell Gemma who should sing, say, or carry the line depending on the global Video Type. Location connects the scene to a Reference Builder location image."),
         "Copy boundary words is optional. It appends the first word or words from the next vocal scene onto the current scene, which can help LTX warm-up and cooldown frames keep lyric context.",
         "Move end words to next is text-only. It removes the last word or words from each lyric scene and prepends them to the next vocal scene when the transcript split landed too early. If the next scene is instrumental or no-lip-sync, the words are only removed and are not added to that scene.",
         "Move last word to start of next scene changes only that row and its immediate neighbor. Press the main Save button afterward to update the timeline, cue maps, and every saved lyric note file.",
@@ -78,8 +78,8 @@ export function createLyricReview({
     const note = document.createElement("div");
     note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:9px;";
     note.textContent = isSingleScene
-      ? "These fields are the line notes Gemma uses for I2V/T2V prompting for this scene. Fix typos or timing mistakes here, then choose who performs or speaks. Use B-roll or Instrumental when nobody should lip-sync. Switching scenes saves your changes."
-      : "These fields are the timeline line notes Gemma uses for I2V/T2V prompting. Fix typos or timing mistakes here, then choose who performs or speaks in each scene. Use B-roll or Instrumental when nobody should lip-sync.";
+      ? llmText("These fields are the line notes Gemma uses for I2V/T2V prompting for this scene. Fix typos or timing mistakes here, then choose who performs or speaks. Use B-roll or Instrumental when nobody should lip-sync. Switching scenes saves your changes.")
+      : llmText("These fields are the timeline line notes Gemma uses for I2V/T2V prompting. Fix typos or timing mistakes here, then choose who performs or speaks in each scene. Use B-roll or Instrumental when nobody should lip-sync.");
 
     const reviewReferenceBuilder = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     if (!reviewReferenceBuilder.subject_scene_map || typeof reviewReferenceBuilder.subject_scene_map !== "object") reviewReferenceBuilder.subject_scene_map = {};
@@ -90,7 +90,7 @@ export function createLyricReview({
     performerLabelInput.placeholder = "the woman, the man, the performer, lead character...";
     const performerLabelHelp = document.createElement("div");
     performerLabelHelp.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
-    performerLabelHelp.textContent = "This is the phrase Gemma/LTX sees for your single character. Use natural wording like the woman, the man, or the performer instead of Character 1.";
+    bindLlmText(performerLabelHelp, "textContent", "This is the phrase Gemma/LTX sees for your single character. Use natural wording like the woman, the man, or the performer instead of Character 1.");
     performerLabelPanel.append(makeField("Single character performer label", performerLabelInput), performerLabelHelp);
     const performerLabelValue = () => String(performerLabelInput.value || singleReviewSubject?.name || "the performer").trim() || "the performer";
     const isSingleSubjectChoice = (choice) => Boolean(singleReviewSubject?.id && choice?.id === singleReviewSubject.id);

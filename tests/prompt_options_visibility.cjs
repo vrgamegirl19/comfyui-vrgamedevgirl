@@ -21,7 +21,8 @@ function fixture(engine, mode, pipeline = 'standard', imageModel = 'zimage') {
   const state = { projectVideoEngine: engine, imageModelMode: imageModel,
     miniMaxH3Settings: { video_mode: mode, pipeline } };
   const calls = [];
-  const c = vm.createContext({ document, BUILDER_FONT_STACK: 'sans-serif' });
+  const c = vm.createContext({ document, BUILDER_FONT_STACK: 'sans-serif',
+    bindLlmText: (element, property, text) => Object.assign(element, { [property]: text }) });
   for (const name of ['makeButton', 'makeCheckbox', 'makeInput', 'makeField', 'normalizeProjectVideoEngine']) {
     vm.runInContext(functionSource(readBuilderModule('controls.mjs'), name), c);
   }

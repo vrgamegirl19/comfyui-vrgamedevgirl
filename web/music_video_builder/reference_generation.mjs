@@ -1,6 +1,6 @@
 import { buildBrowserImagePrompt } from "../VRGDG_BrowserImageBridge.js";
 import { getJson, postJson, queueWorkflowPrompt, waitForImages } from "./comfy_api.mjs";
-import { makeButton, makeField, makeInput, makeSearchableLoraPicker, makeSelect, toast } from "./controls.mjs";
+import { llmText, makeButton, makeField, makeInput, makeSearchableLoraPicker, makeSelect, toast } from "./controls.mjs";
 import { showGemmaBatchFailures } from "./dialogs.mjs";
 import { hasReferenceImage } from "./llm_runner.mjs";
 import { chooseModelValue, wireSearchablePicker } from "./model_pickers.mjs";
@@ -411,7 +411,7 @@ export function createReferenceGeneration({
       progress = createProgressWindow(referenceType === "subject" ? "Creating subject reference" : "Creating location reference", { zIndex: 100008 });
       progress.set(`Creating ZImage prompt with Gemma...\n${gemmaRunnerLine()}`, 8);
       const styleTheme = state.useVrgdgTextContext ? await loadContextTextQuiet(themeStyleInput.value) : "";
-      const promptData = await postJson("/vrgdg/music_builder/flux_reference_zimage_prompt", {
+      const promptData = await postJson("/vrgdg/music_builder/reference_image_prompt", {
         ...textGemmaRunnerPayload(),
         model_file: modelFile,
         reference_type: referenceType,
@@ -489,7 +489,7 @@ export function createReferenceGeneration({
       progress = createProgressWindow(referenceType === "subject" ? "Creating subject reference" : "Creating location reference", { zIndex: 100008 });
       progress.set(`Creating ${providerLabel} reference prompt with Gemma...\n${gemmaRunnerLine()}`, 8);
       const styleTheme = state.useVrgdgTextContext ? await loadContextTextQuiet(themeStyleInput.value) : "";
-      const promptData = await postJson("/vrgdg/music_builder/flux_reference_zimage_prompt", {
+      const promptData = await postJson("/vrgdg/music_builder/reference_image_prompt", {
         ...textGemmaRunnerPayload(),
         model_file: modelFile,
         reference_type: referenceType,
@@ -586,7 +586,7 @@ export function createReferenceGeneration({
         const message = `Creating location prompts with Gemma...\n${index + 1}/${missingLocations.length}: ${location.name || `Location ${index + 1}`}\n${gemmaRunnerLine()}`;
         setInlineProgress(message, percent);
         progress.set(message, percent);
-        const promptData = await postJson("/vrgdg/music_builder/flux_reference_zimage_prompt", {
+        const promptData = await postJson("/vrgdg/music_builder/reference_image_prompt", {
           ...textGemmaRunnerPayload(),
           model_file: modelFile,
           reference_type: "location",
@@ -737,7 +737,7 @@ export function createReferenceGeneration({
         const message = `Creating subject prompts with Gemma...\n${index + 1}/${missingSubjects.length}: ${subject.name || `Subject ${index + 1}`}\n${gemmaRunnerLine()}`;
         setInlineProgress(message, percent);
         progress.set(message, percent);
-        const promptData = await postJson("/vrgdg/music_builder/flux_reference_zimage_prompt", {
+        const promptData = await postJson("/vrgdg/music_builder/reference_image_prompt", {
           ...textGemmaRunnerPayload(),
           model_file: modelFile,
           reference_type: "subject",
@@ -951,7 +951,7 @@ export function createReferenceGeneration({
       progress = createProgressWindow(referenceType === "subject" ? "Creating subject reference" : "Creating location reference", { zIndex: 100008 });
       progress.set(`Creating reference prompt with Gemma...\n${gemmaRunnerLine()}`, 8);
       const styleTheme = state.useVrgdgTextContext ? await loadContextTextQuiet(themeStyleInput.value) : "";
-      const promptData = await postJson("/vrgdg/music_builder/flux_reference_zimage_prompt", {
+      const promptData = await postJson("/vrgdg/music_builder/reference_image_prompt", {
         ...textGemmaRunnerPayload(),
         model_file: modelFile,
         reference_type: referenceType,
@@ -1109,7 +1109,7 @@ export function createReferenceGeneration({
       progress = createProgressWindow(referenceType === "subject" ? "Creating subject reference" : "Creating location reference", { zIndex: 100008 });
       progress.set(`Creating reference prompt...\n${gemmaRunnerLine()}`, 8);
       const styleTheme = state.useVrgdgTextContext ? await loadContextTextQuiet(themeStyleInput.value) : "";
-      const promptData = await postJson("/vrgdg/music_builder/flux_reference_zimage_prompt", {
+      const promptData = await postJson("/vrgdg/music_builder/reference_image_prompt", {
         ...textGemmaRunnerPayload(),
         model_file: String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim(),
         reference_type: referenceType,
@@ -1194,7 +1194,7 @@ export function createReferenceGeneration({
       const needsImage = /^image_|^all$/.test(subjectMode.value || "");
       subjectImageNote.textContent = needsImage
         ? hasSubjectImage()
-          ? "This subject already has an image. Gemma will use the row description/image identity notes as identity guidance while creating the new reference sheet prompt."
+          ? llmText("This subject already has an image. Gemma will use the row description/image identity notes as identity guidance while creating the new reference sheet prompt.")
           : "No subject image is loaded yet. This mode will still use text, but upload/drop an image first if you want image identity guidance."
         : "Description and lyrics/style modes do not require an uploaded image.";
     };
@@ -1267,8 +1267,8 @@ export function createReferenceGeneration({
     openReferenceGeneratorShell({
       title: `Generate ${referenceType === "subject" ? "Subject" : "Location"} Reference`,
       subtitle: referenceType === "subject"
-        ? "Choose what Gemma builds the character from, then pick an image workflow."
-        : "Gemma writes the location prompt from its description, then the workflow you pick draws it.",
+        ? llmText("Choose what Gemma builds the character from, then pick an image workflow.")
+        : llmText("Gemma writes the location prompt from its description, then the workflow you pick draws it."),
       note: referenceType === "subject"
         ? "Lyrics/style modes can invent a character that fits the song. Run it again if you do not like the result."
         : "",
@@ -1310,7 +1310,7 @@ export function createReferenceGeneration({
       .map((card) => ({ ...card, run: (settings) => createMissingSubjectReferencesWithImageWorkflow(card.key, settings) }));
     openReferenceGeneratorShell({
       title: "Generate Missing Subject Images",
-      subtitle: `Gemma writes a prompt for each of the ${missingCount} subject${missingCount === 1 ? "" : "s"} without an image, then the workflow you pick draws them all.`,
+      subtitle: llmText(`Gemma writes a prompt for each of the ${missingCount} subject${missingCount === 1 ? "" : "s"} without an image, then the workflow you pick draws them all.`),
       cards,
     });
   }
@@ -1331,7 +1331,7 @@ export function createReferenceGeneration({
       .map((card) => ({ ...card, run: (settings) => createMissingLocationReferencesWithZImage(card.key, settings) }));
     openReferenceGeneratorShell({
       title: "Generate Missing Location Images",
-      subtitle: `Gemma writes a prompt for each of the ${missingCount} location${missingCount === 1 ? "" : "s"} without an image, then the workflow you pick draws them all.`,
+      subtitle: llmText(`Gemma writes a prompt for each of the ${missingCount} location${missingCount === 1 ? "" : "s"} without an image, then the workflow you pick draws them all.`),
       cards,
     });
   }

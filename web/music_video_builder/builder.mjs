@@ -26,7 +26,9 @@ import { openProjectErrorLog, secretValues, setErrorLogContext } from "./error_l
 import { createExternalChangeSync } from "./external_changes.mjs";
 import { BUILDER_FONT_STACK, BUILDER_UI_VERSION } from "./constants.mjs";
 import {
+  bindLlmText,
   copyTextToClipboard,
+  llmText,
   makeButton,
   makeField,
   makeSettingsPanel,
@@ -2750,8 +2752,8 @@ export function openBuilder(node, options = {}) {
 
   function wrapCreateSceneVideoActions(button) {
     const quickButton = makeButton("✨▶", "primary");
-    quickButton.title = "Run Gemma for the current video mode, then immediately create the scene video without stopping for prompt review.";
-    quickButton.setAttribute("aria-label", "Run Gemma then create scene video");
+    bindLlmText(quickButton, "title", "Run Gemma for the current video mode, then immediately create the scene video without stopping for prompt review.");
+    quickButton.setAttribute("aria-label", llmText("Run Gemma then create scene video"));
     quickButton.style.cssText = "flex:0 0 42px;min-width:42px;padding-left:8px;padding-right:8px;";
     button.style.flex = "1 1 auto";
     gemmaThenCreateVideoButtons.push(quickButton);
