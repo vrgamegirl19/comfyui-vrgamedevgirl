@@ -74,10 +74,10 @@ export const MOSS_IMAGE_MODEL_DOWNLOADS = [
   { label: "MOSS-Image SFT diffusion model", url: "https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_sft_bf16.safetensors" },
   { label: "Qwen3.5 9B text encoder", url: "https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/text_encoders/qwen3.5_9b_int8_convrot.safetensors" },
   { label: "Flux2 VAE", url: "https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/vae/flux2-vae.safetensors" },
-  { label: "8-step Turbo LoRA", url: "https://huggingface.co/lodestones/MOSS-Image-SFT-8-steps-dmd/resolve/main/lora.safetensors" },
   // `install` makes the button install the file through the Builder's own routes (core/model_downloads.py, which holds the same id and url)
-  // and save it as `filename`. Hugging Face calls it adapter_model.safetensors.
-  { label: "Edit LoRA (instruction editing)", url: "https://huggingface.co/chinoll/Moss-Image-Edit/resolve/main/adapter_model.safetensors", install: "moss_edit_lora", filename: "moss_image_edit_lora.safetensors" },
+  // and save it as `filename`. Hugging Face calls the Turbo LoRA lora.safetensors and the Edit LoRA adapter_model.safetensors.
+  { label: "8-step Turbo LoRA", url: "https://huggingface.co/lodestones/MOSS-Image-SFT-8-steps-dmd/resolve/main/lora.safetensors", install: "moss_turbo_lora", filename: "moss_image_sft_8_steps_dmd_lora.safetensors" },
+  { label: "Edit LoRA", url: "https://huggingface.co/chinoll/Moss-Image-Edit/resolve/main/adapter_model.safetensors", install: "moss_edit_lora", filename: "moss_image_edit_lora.safetensors" },
 ];
 export const DEFAULT_KREA2_REFERENCE_SETTINGS = {
   krea_unet_name: "krea2_turbo_fp8_scaled.safetensors",
@@ -158,7 +158,7 @@ models/
     moss_image_sft_8_steps_dmd_lora.safetensors
     moss_image_edit_lora.safetensors
 
-The Turbo LoRA downloads as lora.safetensors. Rename it to moss_image_sft_8_steps_dmd_lora.safetensors.
+The 8-step Turbo LoRA button installs the Turbo LoRA (lodestones/MOSS-Image-SFT-8-steps-dmd) here as moss_image_sft_8_steps_dmd_lora.safetensors. If you download it yourself it is called lora.safetensors: rename it.
 The Edit LoRA button installs the Edit LoRA (chinoll/Moss-Image-Edit) here as moss_image_edit_lora.safetensors. If you download it yourself it is called adapter_model.safetensors: rename it. It follows a written instruction with one to four reference images, and it needs a ComfyUI that has the "Text Encode MOSS-Image Edit" node (newer than v0.42.1). Update ComfyUI first.`,
   "Krea2": `ComfyUI/
 models/
