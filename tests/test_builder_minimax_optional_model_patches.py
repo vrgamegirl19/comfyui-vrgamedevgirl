@@ -61,6 +61,7 @@ def load_two_pass_builder(sparse_method="Sol-Attn (adaptive tau)"):
         "_minimax_h3_is_latent_mode": lambda mode: mode in ("latent_continuation", "latent_continuation_exact_frame"),
         "_patch_minimax_h3_latent_continuation": lambda _prompt, _payload: {"enabled": False},
         "_patch_minimax_h3_save_latent": lambda _prompt, _payload, _timing=None: {"enabled": False},
+        "_fall_back_from_unavailable_rtx_vsr": lambda _prompt: [],
         # Sigma shift is off in these cases: the model reference passes through and there is no summary.
         "_patch_minimax_h3_sigma_shift": lambda _prompt, model_ref, *_args: (list(model_ref), None),
         "_int_payload": int_value,

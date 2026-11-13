@@ -109,6 +109,11 @@ Restart ComfyUI and hard refresh the browser page after installation.
 - Start with a short project or a few scenes before committing to a long render.
 - Save often, and use **Branch Project** or **Export Shareable Project ZIP** before major experiments.
 - Builder rendering, Browser AI, face-repair, and enhancement workflows may need additional models and custom nodes; see the guide’s [Required Custom Nodes](Workflows/LTX-2_Workflows/Video_Builder/readme.md#required-custom-nodes).
+- MiniMax H3 2 Pass and 3 Pass finish with a resize set to **nvidia_rtx_vsr** (NVIDIA RTX Video Super Resolution), which needs the optional `nvidia-vfx` library and an NVIDIA RTX GPU. Without it the pack resizes with `lanczos` instead and prints a `[VRGDG MiniMax]` warning. To use RTX Video Super Resolution, press **Install** on the **nvidia-vfx** card in the Video Builder's Custom Nodes dialog (about 800 MB), or install it yourself with the extra index (plain PyPI only has a stub) and restart ComfyUI:
+
+  ```bat
+  python_embeded\python.exe -m pip install nvidia-vfx --extra-index-url https://pypi.nvidia.com
+  ```
 - For standalone nodes and training tools, install [VRGDG Custom Node Pack](https://github.com/vrgamegirl19/VRGDG_CustomNodePack) and follow its setup instructions.
 
 ---

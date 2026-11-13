@@ -28,14 +28,21 @@ export function builtInLine(status, comfyuiVersion = "") {
   return `Built into ComfyUI${since}, so this pack is not needed.${yours} Only older ComfyUI needs it.`;
 }
 
-// The ids "Install Missing Nodes" asks for: not installed and not built in.
+// A Python library installed with pip (`source: "pip"`), not a custom node: it needs no ComfyUI-Manager.
+export function isPipLibrary(status) {
+  return status?.source === "pip";
+}
+
+// The ids "Install Missing Nodes" asks for: not installed and not built in. A pip library is large and needs an NVIDIA GPU,
+// so it is installed from its own card only.
 export function missingNodeIds(nodes) {
-  return (nodes || []).filter((node) => !node.installed && !isBuiltIn(node)).map((node) => node.id);
+  return (nodes || []).filter((node) => !node.installed && !isBuiltIn(node) && !isPipLibrary(node)).map((node) => node.id);
 }
 
 // The button of a card: its label and whether it can be clicked.
 export function installButtonState(item, status, managerAvailable) {
   if (item?.current) return { text: "Included", disabled: true };
   if (isBuiltIn(status)) return { text: "Built in", disabled: true };
+  if (isPipLibrary(status)) return status.installed ? { text: "Installed", disabled: true } : { text: "Install", disabled: false };
   return { text: status?.installed ? "Reinstall Requirements" : "Install", disabled: !managerAvailable };
 }

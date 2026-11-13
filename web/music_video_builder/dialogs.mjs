@@ -600,7 +600,8 @@ export function showModelDownloadModal({ modelSelections = [], select = "" } = {
         const source = document.createElement("div");
         source.textContent = builtInLine(status, comfyuiVersion) || (status?.source === "registry"
           ? `Source: Comfy Registry (${status.install})`
-          : status?.source === "github" ? "Source: GitHub (not in the Comfy Registry)" : "");
+          : status?.source === "github" ? "Source: GitHub (not in the Comfy Registry)"
+          : status?.source === "pip" ? `Source: NVIDIA Python index (pip install ${status.install})` : "");
         source.style.cssText = "font-size:12px;color:#94a3b8;";
         const buttons = document.createElement("div");
         buttons.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;margin-top:auto;";
@@ -624,8 +625,8 @@ export function showModelDownloadModal({ modelSelections = [], select = "" } = {
           } catch (error) {
             toast(String(error?.message || error), true);
           } finally {
-            install.disabled = !managerAvailable;
-          install.textContent = status?.installed ? "Reinstall Requirements" : "Install";
+            install.disabled = button.disabled;
+            install.textContent = button.text;
           }
         });
         buttons.append(repo, install);
