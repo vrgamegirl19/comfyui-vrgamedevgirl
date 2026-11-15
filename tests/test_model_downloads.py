@@ -68,7 +68,7 @@ class ModelDownloadTests(unittest.TestCase):
 
     def test_status_lists_every_allowlisted_file_missing_with_the_destination(self) -> None:
         status = {item["id"]: item for item in downloads.model_status()}
-        self.assertEqual(set(status), {"dmad_lora", "dmad_refiner", "moss_edit_lora"})
+        self.assertEqual(set(status), {"dmad_lora", "dmad_refiner", "moss_turbo_lora", "moss_edit_lora"})
         for item in status.values():
             self.assertFalse(item["installed"])
             self.assertEqual(item["destination"], str(self.loras))
@@ -174,10 +174,34 @@ class ModelDownloadTests(unittest.TestCase):
         self.assertTrue(item["installed"], "the status finds it by the name it was saved as")
         self.assertEqual(downloads.start_install(["moss_edit_lora"]), [], "installed, so nothing starts")
 
-    def test_the_edit_lora_name_is_the_one_the_moss_settings_look_for(self) -> None:
+    def test_the_turbo_lora_is_saved_under_its_own_name_not_lora_safetensors(self) -> None:
+        data = safetensors_bytes(4096)
+        seen = []
+
+        def fake_open(request, timeout):
+            seen.append(request.full_url)
+            return FakeResponse(data)
+
+        with patch.object(downloads, "urlopen_verified", fake_open):
+            self.assertEqual(downloads.start_install(["moss_turbo_lora"]), ["moss_turbo_lora"])
+            job = self._wait("moss_turbo_lora")
+        self.assertEqual(job["state"], "done", job["error"])
+        self.assertEqual(seen, ["https://huggingface.co/lodestones/MOSS-Image-SFT-8-steps-dmd/resolve/main/lora.safetensors"])
+        self.assertEqual((self.loras / "moss_image_sft_8_steps_dmd_lora.safetensors").read_bytes(), data)
+        self.assertFalse((self.loras / "lora.safetensors").exists())
+        self.assertEqual(list(self.loras.glob("*.part")), [])
+        item = next(entry for entry in downloads.model_status() if entry["id"] == "moss_turbo_lora")
+        self.assertTrue(item["installed"], "the status finds it by the name it was saved as")
+        # The two MOSS-Image LoRAs are different files with different names: one does not count as the other.
+        edit = next(entry for entry in downloads.model_status() if entry["id"] == "moss_edit_lora")
+        self.assertFalse(edit["installed"])
+
+    def test_the_moss_lora_names_are_the_ones_the_moss_settings_look_for(self) -> None:
         settings = (ROOT / "web" / "music_video_builder" / "moss_settings.mjs").read_text(encoding="utf-8")
-        wanted = re.search(r'export const MOSS_EDIT_LORA = "([^"]+)"', settings).group(1)
-        self.assertEqual(downloads.DOWNLOADABLE_MODELS["moss_edit_lora"]["filename"], wanted)
+        for model_id, constant in (("moss_turbo_lora", "MOSS_TURBO_LORA"), ("moss_edit_lora", "MOSS_EDIT_LORA")):
+            with self.subTest(model=model_id):
+                wanted = re.search(rf'export const {constant} = "([^"]+)"', settings).group(1)
+                self.assertEqual(downloads.DOWNLOADABLE_MODELS[model_id]["filename"], wanted)
 
     def test_the_urls_match_the_ones_the_dialog_shows(self) -> None:
         source = MODELS_MJS.read_text(encoding="utf-8")
@@ -200,8 +224,8 @@ class ModelDownloadTests(unittest.TestCase):
         self.assertEqual(
             sorted(dmad_urls), sorted(item["url"] for item in downloads.DOWNLOADABLE_MODELS.values() if item["group"] == "dmad")
         )
-        # Only the Edit LoRA button installs itself: every other MOSS-Image button still opens its page.
-        self.assertEqual(re.findall(r'install: "([^"]+)"', blocks["moss"]), ["moss_edit_lora"])
+        # Only the two LoRA buttons install themselves: every other MOSS-Image button still opens its page.
+        self.assertEqual(re.findall(r'install: "([^"]+)"', blocks["moss"]), ["moss_turbo_lora", "moss_edit_lora"])
 
     def test_dmad_file_names_match_the_ui_settings(self) -> None:
         source = (ROOT / "web" / "music_video_builder" / "minimax_h3.mjs").read_text(encoding="utf-8")

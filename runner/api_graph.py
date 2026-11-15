@@ -11,7 +11,13 @@ import sys
 import time
 import folder_paths
 
+from ..core.comfy_features import nvidia_vsr_available
 from .paths import _bool_payload, _workflow_template_path
+
+
+_RTX_VSR_RESIZE_METHOD = "nvidia_rtx_vsr"
+_RTX_VSR_FALLBACK_RESIZE_METHOD = "lanczos"
+_RTX_VSR_INSTALL_COMMAND = r"python_embeded\python.exe -m pip install nvidia-vfx --extra-index-url https://pypi.nvidia.com"
 
 
 _I2V_UNET_ALIASES = {
@@ -25,6 +31,27 @@ _PLACEHOLDER_I2I_IMAGE_NAME = "vrgdg_placeholder_i2i.png"
 _PLACEHOLDER_I2I_IMAGE_BASE64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII="
 )
+
+
+def _fall_back_from_unavailable_rtx_vsr(prompt):
+    """Swap ``nvidia_rtx_vsr`` for ``lanczos`` on every resize node when the ``nvidia-vfx`` library is not installed.
+
+    KJNodes' ``ImageResizeKJv2`` raises an ImportError for ``nvidia_rtx_vsr`` without it, and that node is the last one of a
+    MiniMax H3 render, so a scene would fail only after its whole render. Returns the ids of the nodes that were changed.
+    """
+    node_ids = [
+        node_id for node_id, node in prompt.items()
+        if isinstance(node, dict) and (node.get("inputs") or {}).get("upscale_method") == _RTX_VSR_RESIZE_METHOD
+    ]
+    if not node_ids or nvidia_vsr_available():
+        return []
+    for node_id in node_ids:
+        prompt[node_id]["inputs"]["upscale_method"] = _RTX_VSR_FALLBACK_RESIZE_METHOD
+    print(
+        f"[VRGDG MiniMax] nvidia-vfx is not installed, so the final resize uses {_RTX_VSR_FALLBACK_RESIZE_METHOD} instead of "
+        f"{_RTX_VSR_RESIZE_METHOD}. To use RTX Video Super Resolution, run: {_RTX_VSR_INSTALL_COMMAND}"
+    )
+    return node_ids
 
 
 def _clean_i2v_unet_name(value):

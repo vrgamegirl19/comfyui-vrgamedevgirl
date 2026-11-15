@@ -1,5 +1,6 @@
 import { makeEditorImageUrl } from "./comfy_api.mjs";
 import {
+  bindLlmText,
   escapeHtml,
   makeButton,
   makeCheckbox,
@@ -219,7 +220,7 @@ export function createIdLoraBuilder({
       };
       if (!refs.locations.length) {
         const empty = document.createElement("div");
-        empty.textContent = "Add locations for image creation and Gemma visual context.";
+        bindLlmText(empty, "textContent", "Add locations for image creation and Gemma visual context.");
         empty.style.cssText = "border:1px dashed #334155;border-radius:7px;color:#94a3b8;padding:14px;text-align:center;font-size:12px;";
         locationsPanel.append(empty);
       }

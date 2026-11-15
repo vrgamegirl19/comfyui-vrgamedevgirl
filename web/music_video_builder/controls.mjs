@@ -16,10 +16,66 @@ export function setWidgetValue(node, name, value) {
   app.graph?.setDirtyCanvas?.(true, true);
 }
 
+// Labels and messages are written with "Gemma", the first LLM Runner. The LLM Runner (llm_runner.mjs) registers how to show them for
+// the runner that is selected (LM Studio, LLM API, Qwen Local ...); until it does, text is shown as written.
+let llmTextTransform = (text) => text;
+// Elements whose text names the runner, so refreshLlmText() can rewrite them when another runner is selected.
+const llmBoundText = new Set();
+const llmBoundByElement = new WeakMap();
+const LLM_BOUND_TEXT_LIMIT = 2000;
+
+export function setLlmTextTransform(transform) {
+  llmTextTransform = typeof transform === "function" ? transform : (text) => text;
+}
+
+// `text` as it should read for the selected runner. Anything without "Gemma" (or not a string) is returned as it is.
+export function llmText(text) {
+  return typeof text === "string" && text.includes("Gemma") ? llmTextTransform(text) : text;
+}
+
+// Set `element[property]` (textContent, title, placeholder ...) to `template` as it reads for the selected runner, and keep it
+// in step when the runner changes. `template` is the "Gemma" wording.
+export function bindLlmText(element, property, template) {
+  if (!element) return element;
+  const applied = llmText(template);
+  element[property] = applied;
+  const byProperty = llmBoundByElement.get(element) || {};
+  const known = byProperty[property];
+  if (known) {
+    // The same element and property again (a busy label, then the label back): one entry, with the newest wording.
+    known.template = template;
+    known.applied = applied;
+    return element;
+  }
+  if (typeof template !== "string" || !template.includes("Gemma")) return element;
+  if (llmBoundText.size >= LLM_BOUND_TEXT_LIMIT) {
+    for (const entry of llmBoundText) if (!entry.element.deref()) llmBoundText.delete(entry);
+  }
+  const entry = { element: new WeakRef(element), property, template, applied };
+  byProperty[property] = entry;
+  llmBoundByElement.set(element, byProperty);
+  llmBoundText.add(entry);
+  return element;
+}
+
+// Call after the selected runner changed. An element whose text was changed by something else since (a busy label, say) is left alone.
+export function refreshLlmText() {
+  for (const entry of llmBoundText) {
+    const element = entry.element.deref();
+    if (!element) {
+      llmBoundText.delete(entry);
+      continue;
+    }
+    if (element[entry.property] !== entry.applied) continue;
+    entry.applied = llmText(entry.template);
+    element[entry.property] = entry.applied;
+  }
+}
+
 export function makeButton(label, kind = "neutral") {
   const button = document.createElement("button");
   button.type = "button";
-  button.textContent = label;
+  bindLlmText(button, "textContent", label);
   button.style.cssText = `
     border: 1px solid ${kind === "primary" ? "#0891b2" : "#3f3f46"};
     border-radius: 6px;
@@ -454,6 +510,7 @@ export function makeSubTabs(tabs = [], { modelSelectionLabel = "" } = {}) {
 }
 
 export function toast(message, isError = false) {
+  message = llmText(message);
   if (isError) reportProjectError(message, { component: "Video Builder Toast" });
   window.dispatchEvent(new CustomEvent("vrgdg:builder-toast", {
     detail: { message: String(message || ""), isError: Boolean(isError) },

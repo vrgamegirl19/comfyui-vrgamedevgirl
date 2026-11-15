@@ -1884,7 +1884,8 @@ def _generate_flux_reference_subjects(payload):
     }
 
 
-def _generate_flux_reference_zimage_prompt(payload):
+def _generate_reference_image_prompt(payload):
+    """Write the text-to-image prompt of a subject or location reference card for any image engine, with the selected LLM runner."""
     model_file = str(payload.get("model_file", "") or "").strip()
     reference_type = str(payload.get("reference_type", "") or "").strip().lower()
     source_text = str(payload.get("source_text", "") or "").strip()
@@ -1967,3 +1968,7 @@ def _generate_flux_reference_zimage_prompt(payload):
         "runner": run_info.get("runner", "builtin"),
         "unloaded": run_info.get("unloaded", True),
     }
+
+
+# The name this had while only Z-Image used it. Older callers (and H3 Studio) still use it.
+_generate_flux_reference_zimage_prompt = _generate_reference_image_prompt

@@ -487,7 +487,7 @@ export function createGemmaRunner({
       try {
         progress = createProgressWindow("Testing LM Studio");
         progress.set("Sending a tiny text prompt to LM Studio...", 35);
-        const data = await postJson("/vrgdg/music_builder/flux_reference_zimage_prompt", {
+        const data = await postJson("/vrgdg/music_builder/reference_image_prompt", {
           ...textGemmaRunnerPayload(),
           model_file: t2iTextGemmaModelSelect.value || "",
           reference_type: "location",

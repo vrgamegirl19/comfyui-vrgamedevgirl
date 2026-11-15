@@ -213,7 +213,8 @@ class TestAgentApiPipelines(unittest.TestCase):
             os.makedirs(os.path.dirname(img_p), exist_ok=True)
             with open(img_p, "wb") as f:
                 f.write(b"mock_image")
-            return {"image_path": img_p}
+            # The real generate_scene_image_async reports the archived preview as "saved_path".
+            return {"scene_id": scene_id, "saved_path": img_p, "image": {}}
 
         def _mock_render_video(project_id, scene_id, **kwargs):
             v_dir = os.path.join(self.project_dir, "rendered_scene_videos")
@@ -254,6 +255,9 @@ class TestAgentApiPipelines(unittest.TestCase):
             sess = json.load(f)
         s1 = sess["segments"][0]
         s2 = sess["segments"][1]
+        # The generated image is approved: the pipeline passes the path generate_scene_image_async reported.
+        self.assertTrue(s1["approved_image_path"].endswith(os.path.join("scene_001", "mock_img.png")), s1["approved_image_path"])
+        self.assertEqual(s2["approved_image_path"], self.scene2_image)
         self.assertTrue(s1.get("t2i_prompt"))
         self.assertTrue(s1.get("i2v_prompt"))
         self.assertTrue(s1.get("video_path"))
@@ -281,7 +285,7 @@ class TestAgentApiPipelines(unittest.TestCase):
             os.makedirs(os.path.dirname(img_p), exist_ok=True)
             with open(img_p, "wb") as f:
                 f.write(b"mock_image")
-            return {"image_path": img_p}
+            return {"scene_id": scene_id, "saved_path": img_p, "image": {}}
 
         def _mock_render_video(project_id, scene_id, **kwargs):
             v_p = os.path.join(self.project_dir, "rendered_scene_videos", f"{scene_id}_minimax.mp4")
@@ -336,7 +340,7 @@ class TestAgentApiPipelines(unittest.TestCase):
             os.makedirs(os.path.dirname(img_p), exist_ok=True)
             with open(img_p, "wb") as f:
                 f.write(b"flf_image")
-            return {"image_path": img_p}
+            return {"scene_id": scene_id, "saved_path": img_p, "image": {}}
 
         def _mock_render_video(project_id, scene_id, **kwargs):
             v_dir = os.path.join(self.project_dir, "rendered_scene_videos")
@@ -366,6 +370,9 @@ class TestAgentApiPipelines(unittest.TestCase):
         self.assertEqual(res["scenes_processed"], 2)
         self.assertEqual(res["videos_rendered"], 2)
         self.assertEqual(res["final_video_path"], final_mock_video)
+        with open(self.session_file, "r", encoding="utf-8") as f:
+            first = json.load(f)["segments"][0]
+        self.assertTrue(first["approved_image_path"].endswith(os.path.join("scene_001", "flf_start.png")), first["approved_image_path"])
 
     # ==========================================================================
     # 4. Handler Registration

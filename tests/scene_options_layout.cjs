@@ -38,6 +38,7 @@ function fixture() {
     createTextNode: text => Object.assign(new Element('#text'), { textContent: text }),
     body: new Element('body') };
   const c = vm.createContext({ document, window: {}, BUILDER_FONT_STACK: 'sans-serif',
+    bindLlmText: (element, property, text) => Object.assign(element, { [property]: text }),
     normalizeSceneRenderWaitHours: value => Number(value || 2), MAX_SCENE_RENDER_WAIT_HOURS: 24,
     normalizeNotificationSettings: () => ({ mode: 'off', volume: 0.5 }),
     normalizeContinuityMode: value => value || 'off', normalizeAutoImg2ImgStartStep: () => 5,

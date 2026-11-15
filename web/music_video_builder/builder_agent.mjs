@@ -1,5 +1,5 @@
 import { postJson } from "./comfy_api.mjs";
-import { makeButton, makeField, makeSelect, toast } from "./controls.mjs";
+import { bindLlmText, makeButton, makeField, makeSelect, toast } from "./controls.mjs";
 import { formatTime } from "./format.mjs";
 import { loadContextTextQuiet } from "./project_files.mjs";
 import { normalizeGemmaContextLimit } from "./prompt_text.mjs";
@@ -1352,7 +1352,7 @@ export function createBuilderAgent({
     };
     const storyRefUpload = makeButton("Upload Story Images");
     const storyRefAnalyze = makeButton("Analyze Images");
-    storyRefAnalyze.title = "Use the selected vision Gemma model once to turn these images into compact notes for the text-only agent.";
+    bindLlmText(storyRefAnalyze, "title", "Use the selected vision Gemma model once to turn these images into compact notes for the text-only agent.");
     renderStoryRefDropLabel();
     storyRefTools.append(storyRefDrop, storyRefUpload, storyRefAnalyze);
     const syncAgentStoryBuilderTools = () => {

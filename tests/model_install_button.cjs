@@ -11,7 +11,7 @@ const STATUS = '/vrgdg/video_builder/models/status';
 const INSTALL = '/vrgdg/video_builder/models/install';
 const CANCEL = '/vrgdg/video_builder/models/cancel';
 const ITEM = {
-  label: 'Edit LoRA (instruction editing)',
+  label: 'Edit LoRA',
   url: 'https://huggingface.co/chinoll/Moss-Image-Edit/resolve/main/adapter_model.safetensors',
   install: 'moss_edit_lora',
   filename: 'moss_image_edit_lora.safetensors',
@@ -60,11 +60,11 @@ test('the button text follows the state of the install', () => {
   vm.runInContext(readBuilderModule('model_install_button.mjs'), context);
   context.args = { item: ITEM, cases: [null, downloading(30), entry({ job: { state: 'downloading', downloaded: 5, total: 0, error: '' } }), installed(), failed('x')] };
   const texts = vm.runInContext('args.cases.map((model) => installButtonText(args.item, model))', context);
-  assert.equal(texts[0], 'Edit LoRA (instruction editing)');
-  assert.equal(texts[1], 'Installing Edit LoRA (instruction editing)… 30% (click to cancel)');
-  assert.equal(texts[2], 'Installing Edit LoRA (instruction editing)… (click to cancel)', 'no percentage without a known size');
-  assert.equal(texts[3], 'Edit LoRA (instruction editing) · installed');
-  assert.equal(texts[4], 'Edit LoRA (instruction editing) · try again');
+  assert.equal(texts[0], 'Edit LoRA');
+  assert.equal(texts[1], 'Installing Edit LoRA… 30% (click to cancel)');
+  assert.equal(texts[2], 'Installing Edit LoRA… (click to cancel)', 'no percentage without a known size');
+  assert.equal(texts[3], 'Edit LoRA · installed');
+  assert.equal(texts[4], 'Edit LoRA · try again');
 });
 
 test('it starts with the item label and the name it will be saved as', async () => {
@@ -106,7 +106,7 @@ test('a click installs by id, follows the download and says when it is done', as
   await h.runTimer();
   assert.match(h.button.textContent, /· installed$/);
   assert.equal(h.timers.length, 0, 'it stops asking when the download is over');
-  assert.deepEqual(h.notes, [['Edit LoRA (instruction editing) installed in C:/ComfyUI/models/loras as moss_image_edit_lora.safetensors.', false]]);
+  assert.deepEqual(h.notes, [['Edit LoRA installed in C:/ComfyUI/models/loras as moss_image_edit_lora.safetensors.', false]]);
   assert.deepEqual(JSON.parse(JSON.stringify(h.announced)), [['moss_edit_lora']], 'the LoRA lists are told to reload');
   assert.deepEqual(h.opened, [], 'the browser download page was never opened');
 });
@@ -124,7 +124,7 @@ test('an install that cannot start says why, and so does one that fails on the w
   const early = wired({ installAnswer: [failed('ComfyUI has no \'loras\' model folder. Is ComfyUI running?')] });
   await flush();
   await early.click();
-  assert.deepEqual(early.notes, [["Edit LoRA (instruction editing): ComfyUI has no 'loras' model folder. Is ComfyUI running?", true]]);
+  assert.deepEqual(early.notes, [["Edit LoRA: ComfyUI has no 'loras' model folder. Is ComfyUI running?", true]]);
   assert.match(early.button.textContent, /· try again$/);
 
   const late = wired({ installAnswer: [downloading(5)] });
@@ -132,7 +132,7 @@ test('an install that cannot start says why, and so does one that fails on the w
   await late.click();
   late.server.models = [failed('The download server answered 503 Service Unavailable.')];
   await late.runTimer();
-  assert.deepEqual(late.notes, [['Edit LoRA (instruction editing): The download server answered 503 Service Unavailable.', true]]);
+  assert.deepEqual(late.notes, [['Edit LoRA: The download server answered 503 Service Unavailable.', true]]);
   assert.equal(late.button.title, 'The download server answered 503 Service Unavailable.');
 });
 
@@ -179,28 +179,54 @@ function openImageModels(overrides = {}) {
 test('in the Models dialog the Edit LoRA button installs through the Builder instead of opening the page', async () => {
   const { context, calls, button } = openImageModels();
   await flush();
-  fire(button('Edit LoRA (instruction editing)'), 'click');
+  fire(button('Edit LoRA'), 'click');
   await flush();
   assert.deepEqual(calls.filter((call) => call[0] === 'post'), [['post', INSTALL, { ids: ['moss_edit_lora'] }]]);
   assert.deepEqual(context.opened, [], 'no browser tab: the file would keep the name adapter_model.safetensors');
 });
 
+test('in the Models dialog the 8-step Turbo LoRA button installs through the Builder too, so it is not saved as lora.safetensors', async () => {
+  const calls = [];
+  const { context, button } = openImageModels({
+    getJson: async (url) => { calls.push(['get', url]); return {}; },
+    postJson: async (url, body) => {
+      calls.push(['post', url, JSON.parse(JSON.stringify(body))]);
+      return { models: [{ ...downloading(10), id: 'moss_turbo_lora' }] };
+    },
+  });
+  await flush();
+  fire(button('8-step Turbo LoRA'), 'click');
+  await flush();
+  assert.deepEqual(calls.filter((call) => call[0] === 'post'), [['post', INSTALL, { ids: ['moss_turbo_lora'] }]]);
+  assert.deepEqual(context.opened, [], 'no browser tab: the file would keep the name lora.safetensors');
+});
+
 test('every other MOSS-Image button still opens its model page', async () => {
   const { context, calls, button } = openImageModels();
   await flush();
-  fire(button('8-step Turbo LoRA'), 'click');
   fire(button('Flux2 VAE'), 'click');
+  fire(button('Qwen3.5 9B text encoder'), 'click');
   assert.deepEqual(context.opened, [
-    'https://huggingface.co/lodestones/MOSS-Image-SFT-8-steps-dmd/resolve/main/lora.safetensors',
     'https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/vae/flux2-vae.safetensors',
+    'https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/text_encoders/qwen3.5_9b_int8_convrot.safetensors',
   ]);
   assert.deepEqual(calls.filter((call) => call[0] === 'post'), []);
+});
+
+test('the two MOSS-Image LoRA buttons are labelled plainly', () => {
+  const context = makeContext();
+  vm.runInContext(readBuilderModule('models.mjs'), context);
+  const labels = vm.runInContext('MOSS_IMAGE_MODEL_DOWNLOADS.filter((item) => item.install).map((item) => [item.label, item.install, item.filename])', context);
+  assert.deepEqual(JSON.parse(JSON.stringify(labels)), [
+    ['8-step Turbo LoRA', 'moss_turbo_lora', 'moss_image_sft_8_steps_dmd_lora.safetensors'],
+    ['Edit LoRA', 'moss_edit_lora', 'moss_image_edit_lora.safetensors'],
+  ]);
 });
 
 test('leaving the tab stops a running install from being followed', async () => {
   const { context, calls, button } = openImageModels();
   await flush();
-  fire(button('Edit LoRA (instruction editing)'), 'click');
+  fire(button('Edit LoRA'), 'click');
   await flush();
   assert.equal(context.timers.length, 1, 'the running download is being followed');
   fire(button('LTX'), 'click');
@@ -211,11 +237,14 @@ test('leaving the tab stops a running install from being followed', async () => 
   assert.equal(context.timers.length, 0);
 });
 
-test('the MOSS-Image folder note no longer tells people to rename the Edit LoRA', () => {
+test('the MOSS-Image folder note no longer tells people to rename the buttons\' files', () => {
   const context = makeContext();
   vm.runInContext(readBuilderModule('models.mjs'), context);
   const hint = vm.runInContext('MODEL_FOLDER_HINTS["MOSS-Image"]', context);
   assert.match(hint, /Edit LoRA button installs/);
   assert.match(hint, /moss_image_edit_lora\.safetensors/);
   assert.doesNotMatch(hint, /Rename it to moss_image_edit_lora/);
+  assert.match(hint, /8-step Turbo LoRA button installs/);
+  assert.match(hint, /moss_image_sft_8_steps_dmd_lora\.safetensors/);
+  assert.doesNotMatch(hint, /Rename it to moss_image_sft_8_steps_dmd_lora/);
 });

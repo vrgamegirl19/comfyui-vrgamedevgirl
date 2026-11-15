@@ -312,12 +312,12 @@ async def run_build_full_video_job(job: Job, manager: JobManager) -> Dict[str, A
                     job=job,
                     manager=manager,
                 )
-                # Auto-approve image
-                approve_scene_image(project_id, sid, image_path=img_res.get("image_path"))
+                # Auto-approve image (``generate_scene_image_async`` reports the archived preview as ``saved_path``)
+                approve_scene_image(project_id, sid, image_path=img_res.get("saved_path"))
                 images_generated_count += 1
 
                 # Update local segment copy
-                seg["approved_image_path"] = img_res.get("image_path")
+                seg["approved_image_path"] = img_res.get("saved_path")
                 seg["preview_mode"] = "image"
 
     # ==========================================================================
@@ -500,8 +500,8 @@ async def run_build_flf_job(job: Job, manager: JobManager) -> Dict[str, Any]:
                 job=job,
                 manager=manager,
             )
-            approve_scene_image(project_id, sid, image_path=img_res.get("image_path"))
-            seg["approved_image_path"] = img_res.get("image_path")
+            approve_scene_image(project_id, sid, image_path=img_res.get("saved_path"))
+            seg["approved_image_path"] = img_res.get("saved_path")
 
     # Stage 2: Render FLF videos
     manager.update_progress(job.id, 45.0, "flf_videos", message="Rendering FLF scene videos...")

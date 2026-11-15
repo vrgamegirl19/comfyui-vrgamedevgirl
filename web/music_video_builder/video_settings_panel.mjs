@@ -15,6 +15,8 @@ import {
 } from "./constants.mjs";
 import {
   applyCompactButtonLabel,
+  bindLlmText,
+  llmText,
   makeButton,
   makeCheckbox,
   makeEditField,
@@ -555,7 +557,7 @@ export function buildVideoSettingsPanels({ previewFluxButton, previewNBButton, w
   flfColorMatchGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
   flfColorMatchGrid.append(makeField("Color-match strength", flfColorMatchStrengthInput), makeField("Fade out (seconds)", flfColorMatchFadeInput));
   const flfGlobalTransitionTypeSelect = makeSelect([
-    { value: "auto", label: "Auto: Gemma decides" },
+    { value: "auto", label: llmText("Auto: Gemma decides") },
     { value: "smooth", label: "Smooth Transition" },
     { value: "morph", label: "Surreal Morph" },
   ], "auto");
@@ -565,13 +567,13 @@ export function buildVideoSettingsPanels({ previewFluxButton, previewNBButton, w
     { value: "full", label: "Full scene context" },
   ], "images_story");
   const flfGemmaContextNote = document.createElement("div");
-  flfGemmaContextNote.textContent = "Controls only how Gemma designs the visual transition. Images always remain endpoint truth. The exact lyric/speaking line and selected facial-performance direction are added afterward, even in Images only mode.";
+  bindLlmText(flfGemmaContextNote, "textContent", "Controls only how Gemma designs the visual transition. Images always remain endpoint truth. The exact lyric/speaking line and selected facial-performance direction are added afterward, even in Images only mode.");
   flfGemmaContextNote.style.cssText = flfGuideSettingsNote.style.cssText;
   const flfChainNote = document.createElement("div");
   flfChainNote.textContent = "Scene 1 always uses its own selected image. For Scene 2 onward, choose whether the actual video workflow starts from the prior rendered video's extracted final frame or the prior scene's assigned end image.";
   flfChainNote.style.cssText = flfGuideSettingsNote.style.cssText;
   const flfPreGenerateNote = document.createElement("div");
-  flfPreGenerateNote.textContent = "Prompt-only shortcut: when all scene/end images already exist, Gemma uses the previous scene's assigned end image as a provisional start reference and can prepare every prompt before rendering. This does not choose the workflow's actual render input; the Actual chained render start selector above controls whether rendering uses the extracted video frame or the previous assigned image. If no provisional image exists, prompt generation automatically waits for the rendered frame.";
+  bindLlmText(flfPreGenerateNote, "textContent", "Prompt-only shortcut: when all scene/end images already exist, Gemma uses the previous scene's assigned end image as a provisional start reference and can prepare every prompt before rendering. This does not choose the workflow's actual render input; the Actual chained render start selector above controls whether rendering uses the extracted video frame or the previous assigned image. If no provisional image exists, prompt generation automatically waits for the rendered frame.");
   flfPreGenerateNote.style.cssText = flfGuideSettingsNote.style.cssText;
   const flfColorMatchNote = document.createElement("div");
   flfColorMatchNote.textContent = "Optional post-process for chained FLF clips. It samples the previous video's actual final frame, color-matches the beginning of the new clip, and smoothly fades the correction away. It does not use the extracted frame as an LTX guide or alter the previous video. Best paired with Previous scene's assigned end image above.";
@@ -583,7 +585,7 @@ export function buildVideoSettingsPanels({ previewFluxButton, previewNBButton, w
   flfWorkflowHintSummary.textContent = "How Chained and Independent First/Last Frame workflows work";
   flfWorkflowHintSummary.style.cssText = "cursor:pointer;font-weight:900;color:#cffafe;font-size:12px;";
   const flfWorkflowHintBody = document.createElement("div");
-  flfWorkflowHintBody.innerHTML = `
+  flfWorkflowHintBody.innerHTML = llmText(`
     <div style="margin-top:10px;border:1px solid #155e75;border-radius:6px;background:#04151d;padding:8px;"><strong>Where to run it:</strong> choose the FLF structure here, then click <strong>Image All</strong>. Choose <strong>Build Independent Start + End Pairs</strong> for a safe resume, one of the independent redo choices to replace work, or <strong>Resume FLF Image Chain</strong> for the shared-endpoint workflow. Image All prepares images and prompts only; use Render All afterward.</div>
     <div style="margin-top:10px;"><strong style="color:#fef3c7;">Chained</strong></div>
     <div>Creates one opening image for the first scene and one destination image per scene. Scene 1 end becomes Scene 2 start, Scene 2 end becomes Scene 3 start, and so on. During rendering you can start the next clip from the previous assigned end image or from the previous video's extracted final frame. Use this when you want continuous visual handoffs between scenes.</div>
@@ -596,12 +598,12 @@ export function buildVideoSettingsPanels({ previewFluxButton, previewNBButton, w
       <li><strong>Pass 4 — final prompts:</strong> Gemma views the actual start and actual end together and writes the final FLF prompt that connects those real images.</li>
     </ol>
     <div style="margin-top:9px;"><strong>Reference behavior:</strong> Flux/Klein, NanoBanana, and Browser AI modes can receive the start image alongside their configured reference ingredients. ZImage, Ernie, and Krea use their supported image-to-image path when enabled and always receive mapped character/clothing and location descriptions in the endpoint instructions. If an endpoint reveals clothing that was outside the start image, make the Reference Builder description explicit.</div>
-    <div style="margin-top:9px;"><strong>Resume safety:</strong> “Build Independent Start + End Pairs” keeps completed starts, motion plans, ends, and final prompts. It resumes only missing stages. The redo option keeps starts but rebuilds the motion plans, end images, and final prompts.</div>`;
+    <div style="margin-top:9px;"><strong>Resume safety:</strong> “Build Independent Start + End Pairs” keeps completed starts, motion plans, ends, and final prompts. It resumes only missing stages. The redo option keeps starts but rebuilds the motion plans, end images, and final prompts.</div>`);
   flfWorkflowHint.append(flfWorkflowHintSummary, flfWorkflowHintBody);
   const flfChainedSettingsPanel = document.createElement("div");
   flfChainedSettingsPanel.style.cssText = "display:flex;flex-direction:column;gap:8px;border:1px solid #334155;border-radius:7px;background:#0b1220;padding:9px;";
   flfChainedSettingsPanel.append(makeField("Actual chained render start", flfRenderChainSourceSelect), flfChainNote, flfPreGeneratePromptsFromSceneImages.wrapper, flfPreGenerateNote, flfMatchPreviousClipColor.wrapper, flfColorMatchGrid, flfColorMatchNote);
-  const flfGuideSettingsSection = makeSettingsSection("First / Last Frame Settings", [makeField("FLF structure", flfStructureModeSelect), flfWorkflowHint, makeField("Global transition type", flfGlobalTransitionTypeSelect), makeField("Gemma visual context", flfGemmaContextModeSelect), flfGemmaContextNote, flfDurationGuidanceNote, flfGuideSettingsGrid, flfGuideSettingsNote, flfRestoreWorkflowDefaultsButton, flfAdvancedDetails, flfChainedSettingsPanel]);
+  const flfGuideSettingsSection = makeSettingsSection("First / Last Frame Settings", [makeField("FLF structure", flfStructureModeSelect), flfWorkflowHint, makeField("Global transition type", flfGlobalTransitionTypeSelect), makeField(llmText("Gemma visual context"), flfGemmaContextModeSelect), flfGemmaContextNote, flfDurationGuidanceNote, flfGuideSettingsGrid, flfGuideSettingsNote, flfRestoreWorkflowDefaultsButton, flfAdvancedDetails, flfChainedSettingsPanel]);
   flfGuideSettingsSection.style.display = "none";
   const i2vPass1SamplerSelect = makeSelect(I2V_SAMPLER_OPTIONS, "euler_ancestral");
   const i2vPass1SigmasInput = makeInput(DEFAULT_I2V_PASS1_SIGMAS);

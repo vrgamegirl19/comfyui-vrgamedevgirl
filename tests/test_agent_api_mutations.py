@@ -215,6 +215,51 @@ class AgentApiMutationsTests(unittest.TestCase):
         # Should snap to nearest beat (4.0)
         self.assertEqual(saved["segments"][0]["end"], 4.0)
 
+    def _set_boundary(self, value):
+        with open(self.session_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        data["segments"][0]["end"] = value
+        data["segments"][1]["start"] = value
+        with open(self.session_file, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+
+    def _saved_boundary(self):
+        with open(self.session_file, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+        return saved["segments"][0]["end"], saved["segments"][1]["start"]
+
+    def test_timeline_snap_all_moves_every_scene_boundary_to_its_beat(self):
+        for scope in ("all", "all_starts"):
+            with self.subTest(scope=scope):
+                self._set_boundary(4.1)
+                res = mutations.timeline_snap("Test_Track", scope=scope)
+                self.assertTrue(res["snapped"])
+                self.assertEqual(res["moved"], 2)
+                # The end of scene 1 and the start of scene 2 are one boundary and move together.
+                self.assertEqual(self._saved_boundary(), (4.0, 4.0))
+
+    def test_timeline_snap_all_leaves_a_boundary_with_no_beat_nearby(self):
+        self._set_boundary(4.4)
+        res = mutations.timeline_snap("Test_Track", scope="all")
+        self.assertEqual(res["moved"], 0)
+        self.assertEqual(self._saved_boundary(), (4.4, 4.4))
+
+    def test_timeline_snap_all_keeps_a_scene_with_a_locked_video_where_it_is(self):
+        self._set_boundary(4.1)
+        with open(self.session_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        data["segments"][1]["video_path"] = "video.mp4"
+        with open(self.session_file, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        res = mutations.timeline_snap("Test_Track", scope="all")
+        self.assertEqual(res["moved"], 0)
+        self.assertEqual(self._saved_boundary(), (4.1, 4.1))
+
+    def test_timeline_snap_refuses_an_unknown_scope_instead_of_doing_nothing(self):
+        with self.assertRaises(errors.ValidationError) as raised:
+            mutations.timeline_snap("Test_Track", scope="everything")
+        self.assertIn("all", str(raised.exception))
+
     def test_timeline_bulk_durations(self):
         bulk_text = "3.5\n4.5\n2.0\n"
         res = mutations.timeline_bulk("Test_Track", bulk_text, mode="durations", action="replace")

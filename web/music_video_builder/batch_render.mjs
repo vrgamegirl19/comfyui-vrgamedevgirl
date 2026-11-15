@@ -1,7 +1,7 @@
 import { assertMiniMaxLorasInstalled } from "./minimax_lora_validation.mjs";
 import { storyboardGptPayload } from "../storyboard_builder/gpt_payload.mjs";
 import { cancelComfyExecutionAndWaitIdle, getJson, postJson } from "./comfy_api.mjs";
-import { escapeHtml, normalizeProjectVideoEngine, toast } from "./controls.mjs";
+import { bindLlmText, escapeHtml, normalizeProjectVideoEngine, toast } from "./controls.mjs";
 import { showFinalVideoReadyModal } from "./dialogs.mjs";
 import { sceneImagePromptForEnhanceAll } from "./image_generation.mjs";
 import { setButtonGroupState } from "./inspector.mjs";
@@ -1301,7 +1301,7 @@ export function createBatchRender({
       flowGptCreateImageButton.disabled = false;
       flowGptCreateImageButton.textContent = "Create with Browser AI";
       flowGptCreatePromptButton.disabled = false;
-      flowGptCreatePromptButton.textContent = "Gemma Browser Prompt";
+      bindLlmText(flowGptCreatePromptButton, "textContent", "Gemma Browser Prompt");
       state.batchCancelled = false;
       syncInspector();
       render();

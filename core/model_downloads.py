@@ -48,6 +48,17 @@ DOWNLOADABLE_MODELS: Dict[str, Dict[str, str]] = {
         "page": "https://huggingface.co/Kijai/MiniMax-H3-experimental/blob/main/loras/minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors",
         "note": "Pass 2 LoRA. Restores detail in 2 to 3 steps.",
     },
+    # Hugging Face calls this file lora.safetensors, a name that would collide with any other LoRA. It is saved under the name the
+    # MOSS-Image settings look for (MOSS_TURBO_LORA in web/music_video_builder/moss_settings.mjs).
+    "moss_turbo_lora": {
+        "label": "MOSS-Image 8-step Turbo LoRA",
+        "group": "moss",
+        "folder": "loras",
+        "filename": "moss_image_sft_8_steps_dmd_lora.safetensors",
+        "url": "https://huggingface.co/lodestones/MOSS-Image-SFT-8-steps-dmd/resolve/main/lora.safetensors",
+        "page": "https://huggingface.co/lodestones/MOSS-Image-SFT-8-steps-dmd/tree/main",
+        "note": "Samples MOSS-Image in 8 steps. Saved as moss_image_sft_8_steps_dmd_lora.safetensors.",
+    },
     # Hugging Face calls this file adapter_model.safetensors, a name that would collide with any other adapter. It is saved
     # under the name the MOSS-Image settings look for (MOSS_EDIT_LORA in web/music_video_builder/moss_settings.mjs).
     "moss_edit_lora": {

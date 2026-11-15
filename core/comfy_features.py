@@ -1,5 +1,9 @@
-"""What the running ComfyUI has built in, so the pack uses it and asks for a custom node pack only when it is missing."""
+"""What the running ComfyUI has built in, so the pack uses it and asks for a custom node pack only when it is missing.
 
+Also whether the optional ``nvidia-vfx`` library (RTX Video Super Resolution) is installed.
+"""
+
+import importlib
 import re
 from typing import Optional, Tuple
 
@@ -36,6 +40,19 @@ def has_built_in(since: Version, version: Optional[Version] = None) -> bool:
     """True when ComfyUI ``version`` (default: the running one) is ``since`` or newer. An unknown version is not."""
     version = comfyui_version() if version is None else version
     return version is not None and version >= since
+
+
+def nvidia_vsr_available() -> bool:
+    """True when ``nvvfx`` (pip package ``nvidia-vfx``) imports, which KJNodes' ``nvidia_rtx_vsr`` resize method needs.
+
+    Import caches are cleared first, so a package installed while ComfyUI runs is found without a restart.
+    """
+    importlib.invalidate_caches()
+    try:
+        import nvvfx  # noqa: F401
+    except Exception:
+        return False
+    return True
 
 
 def native_minimax_h3_upscaler() -> bool:

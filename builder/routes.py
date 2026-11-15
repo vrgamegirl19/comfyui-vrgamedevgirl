@@ -46,7 +46,7 @@ from .project import _copy_latest_prompt_creator_outputs, _copy_prompt_creator_o
 from ..llm.builder_instructions import _get_builder_instruction, _list_builder_instruction_presets, _load_builder_instruction_preset, _reset_builder_instruction, _save_builder_instruction, _save_builder_instruction_preset
 from ..llm.builder_runner import _clear_builder_memory_direct, _gemma_choices, _gpu_choices, _generate_own_server_image, _list_lm_studio_models, _list_own_server_models, _llm_multi_choices, _test_llm_api, _test_own_server
 from ..llm.video_prompt_generation import _edit_builder_video_prompt, _enhance_builder_video_prompt, _enhance_minimax_h3_prompt, _generate_builder_chained_i2v_prompt, _generate_builder_i2v_prompt, _generate_builder_motion_notes, _generate_builder_t2v_prompt
-from ..llm.image_prompt_generation import _analyze_builder_story_references, _edit_builder_image_prompt, _generate_builder_concept_prompts, _generate_builder_reference_description, _generate_builder_t2i_prompt, _generate_flux_klein_prompt, _generate_flux_reference_location_map, _generate_flux_reference_locations, _generate_flux_reference_subjects, _generate_flux_reference_zimage_prompt, _generate_lm_scout_locations, _generate_nb_image_prompt, _generate_wizard_locations_from_lyrics
+from ..llm.image_prompt_generation import _analyze_builder_story_references, _edit_builder_image_prompt, _generate_builder_concept_prompts, _generate_builder_reference_description, _generate_builder_t2i_prompt, _generate_flux_klein_prompt, _generate_flux_reference_location_map, _generate_flux_reference_locations, _generate_flux_reference_subjects, _generate_lm_scout_locations, _generate_nb_image_prompt, _generate_reference_image_prompt, _generate_wizard_locations_from_lyrics
 from ..llm.builder_agent import _generate_builder_agent_reply
 from ..llm.thumbnail_prompt import _generate_thumbnail_prompt
 from ..llm.gemma4 import _run_gemma4_prompt
@@ -1401,11 +1401,13 @@ def _ensure_music_builder_routes():
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})
 
+    # Writes the card prompt for every image engine. The old path, from when only Z-Image used it, stays for older callers.
+    @server_instance.routes.post("/vrgdg/music_builder/reference_image_prompt")
     @server_instance.routes.post("/vrgdg/music_builder/flux_reference_zimage_prompt")
-    async def vrgdg_music_builder_flux_reference_zimage_prompt(request):
+    async def vrgdg_music_builder_reference_image_prompt(request):
         try:
             payload = await request.json()
-            result = await asyncio.to_thread(_generate_flux_reference_zimage_prompt, payload)
+            result = await asyncio.to_thread(_generate_reference_image_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})

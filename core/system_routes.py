@@ -21,7 +21,7 @@ from aiohttp import web
 from server import PromptServer
 
 from . import model_downloads
-from .comfy_features import MINIMAX_H3_LATENT_UPSCALER_SINCE, comfyui_version, has_built_in, version_text
+from .comfy_features import MINIMAX_H3_LATENT_UPSCALER_SINCE, comfyui_version, has_built_in, nvidia_vsr_available, version_text
 
 
 _lock = asyncio.Lock()
@@ -435,6 +435,9 @@ VIDEO_BUILDER_CUSTOM_NODES = {
     # ComfyUI 0.44.0 and newer has this upscaler built in, so the pack is only needed on older ComfyUI ("built_in_since").
     "minimax_h3_latent_upscaler": {"install": "https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler.git", "folders": ("Comfyui_Minimax_h3_latent_Upscaler",),
                                    "built_in_since": MINIMAX_H3_LATENT_UPSCALER_SINCE},
+    # A Python library, not a custom node: it is installed with pip from NVIDIA's index (plain PyPI only has a stub that fails
+    # to build), and needs no ComfyUI-Manager. "is_installed" tells whether it imports.
+    "nvidia_vfx": {"pip": "nvidia-vfx", "index_url": "https://pypi.nvidia.com", "is_installed": nvidia_vsr_available},
 }
 
 
@@ -448,6 +451,8 @@ def _built_in(item):
 
 
 def _node_status(item_id, item):
+    if item.get("pip"):
+        return {"id": item_id, "folder": "", "installed": bool(item["is_installed"]()), "path": "", "source": "pip", "install": item["pip"]}
     path = _installed_node_path(item)
     status = {
         "id": item_id,
@@ -467,29 +472,49 @@ def _manager_available():
     return importlib.util.find_spec("cm_cli") is not None
 
 
-def _run_cm_cli(*args, timeout=1800):
-    command = [sys.executable, "-m", "cm_cli", *args]
+def _run_command(command, tool, timeout=1800):
     env = {**os.environ, "COMFYUI_PATH": folder_paths.base_path, "PYTHONIOENCODING": "utf-8"}
     try:
         result = subprocess.run(command, cwd=folder_paths.base_path, env=env, stdin=subprocess.DEVNULL, capture_output=True,
                                 text=True, errors="replace", timeout=timeout, check=False)
     except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"ComfyUI-Manager timed out: {subprocess.list2cmdline(command)}") from exc
+        raise RuntimeError(f"{tool} timed out: {subprocess.list2cmdline(command)}") from exc
     output = "\n".join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
     if result.returncode != 0:
         raise RuntimeError(f"{subprocess.list2cmdline(command)} failed:\n{output[-2000:] or 'No output.'}")
     return output
 
 
+def _run_cm_cli(*args, timeout=1800):
+    return _run_command([sys.executable, "-m", "cm_cli", *args], "ComfyUI-Manager", timeout)
+
+
+def _run_pip_install(item, timeout=3600):
+    """Install an allowlisted library into ComfyUI's Python. Wheels only: a source download is the stub PyPI has for nvidia-vfx."""
+    command = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "--no-input", "--only-binary", item["pip"], item["pip"]]
+    if item.get("index_url"):
+        command += ["--extra-index-url", item["index_url"]]
+    return _run_command(command, "pip", timeout)
+
+
 def _install(ids):
-    if not _manager_available():
+    requested = [(item_id, VIDEO_BUILDER_CUSTOM_NODES[item_id]) for item_id in ids if item_id in VIDEO_BUILDER_CUSTOM_NODES]
+    if requested and not _manager_available() and any(not item.get("pip") for _, item in requested):
         raise RuntimeError("ComfyUI-Manager is not installed in ComfyUI's Python. Start ComfyUI with --enable-manager "
                            "or run pip install -r manager_requirements.txt from the ComfyUI folder, then try again.")
-    requested = [(item_id, VIDEO_BUILDER_CUSTOM_NODES[item_id]) for item_id in ids if item_id in VIDEO_BUILDER_CUSTOM_NODES]
     if not requested:
         raise RuntimeError("No recognized Video Builder custom nodes were selected.")
     results = []
     for item_id, item in requested:
+        if item.get("pip"):
+            if item["is_installed"]():
+                results.append({"id": item_id, "folder": "", "action": "already installed", "output": ""})
+                continue
+            output = _run_pip_install(item)
+            if not item["is_installed"]():
+                raise RuntimeError(f"pip finished, but {item['pip']} still does not import:\n{output[-2000:]}")
+            results.append({"id": item_id, "folder": "", "action": "installed", "output": output[-1200:]})
+            continue
         if _built_in(item):
             results.append({"id": item_id, "folder": item["folders"][0], "action": "built into ComfyUI", "output": ""})
             continue

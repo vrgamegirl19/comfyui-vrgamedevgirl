@@ -949,13 +949,23 @@ def enforce_scene_lengths_on_project(
     }
 
 
+_SNAP_SCOPES = ("edge", "all", "all_starts")
+
+
 def timeline_snap(
     project_id: str,
     scope: str = "edge",
     scene_id: Optional[str] = None,
     edge: str = "start",
 ) -> Dict[str, Any]:
-    """Snap scene boundaries to nearest beats (Section 15.4 T13, T14)."""
+    """Snap scene boundaries to nearest beats (Section 15.4 T13, T14).
+
+    ``scope`` is ``edge`` (one edge of ``scene_id``) or ``all`` (every scene start, which is also the end of the scene before it;
+    ``all_starts`` is the same). A boundary only moves when a beat is within ``snap_to_beat``'s tolerance. ``moved`` counts the
+    scenes whose start or end changed.
+    """
+    if scope not in _SNAP_SCOPES:
+        raise ValidationError(f"Unknown snap scope '{scope}'. Supported: {', '.join(_SNAP_SCOPES)}.", details={"supported": list(_SNAP_SCOPES)})
     with _BUILDER_SAVE_LOCK:
         folder, session = _get_active_session_and_folder(project_id)
         segments = session.setdefault("segments", [])
@@ -963,6 +973,7 @@ def timeline_snap(
         if not beats:
             raise ValidationError("No beats loaded in project. Analyze audio first.")
 
+        before = {id(s): (s.get("start"), s.get("end")) for s in segments}
         if scope == "edge":
             idx = next((i for i, s in enumerate(segments) if s.get("id") == scene_id or str(i + 1) == str(scene_id)), 0)
             if idx < len(segments):
@@ -970,16 +981,20 @@ def timeline_snap(
                 target_key = "start" if edge == "start" else "end"
                 scene[target_key] = snap_to_beat(float(scene.get(target_key, 0.0) or 0.0), beats)
                 normalize_segments(segments, active_index=idx)
-        elif scope == "all_starts":
-            for i, s in enumerate(segments):
-                if i > 0 and not has_locked_video(s):
-                    s["start"] = snap_to_beat(float(s.get("start", 0.0) or 0.0), beats)
-            for i in range(len(segments)):
+        else:
+            # Snap one start at a time and settle it straight away: the settling puts the previous scene's end on the new start,
+            # so settling once after all of them would put every start back where it was.
+            for i in range(1, len(segments)):
+                if has_locked_video(segments[i]):
+                    continue
+                segments[i]["start"] = snap_to_beat(float(segments[i].get("start", 0.0) or 0.0), beats)
                 normalize_segments(segments, active_index=i)
 
+        moved = sum(1 for s in segments if before.get(id(s)) != (s.get("start"), s.get("end")))
         save_result = _persist_session(folder, session)
         return {
             "snapped": True,
+            "moved": moved,
             "revision": save_result.get("revision", 1),
         }
 

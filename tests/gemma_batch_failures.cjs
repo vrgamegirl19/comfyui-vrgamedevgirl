@@ -18,6 +18,7 @@ function fixture(retryHandler) {
     body,
     document: { createElement: element, body },
     makeButton: (label) => ({ ...element(), textContent: label }),
+    llmText: (text) => text,
     toast: (message, isError) => toasts.push([message, isError]),
     retryHandler,
   };

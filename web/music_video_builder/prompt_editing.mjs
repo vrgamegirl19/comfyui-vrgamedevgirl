@@ -1,6 +1,6 @@
 import { emotionExpressionInput } from "./emotion_expression.mjs";
 import { GEMMA_VIDEO_ENHANCE_TIMEOUT_MS, postJson } from "./comfy_api.mjs";
-import { escapeHtml, makeButton, makeCheckbox, makeField, toast } from "./controls.mjs";
+import { bindLlmText, escapeHtml, llmText, makeButton, makeCheckbox, makeField, toast } from "./controls.mjs";
 import { recordGemmaBatchFailure, showGemmaBatchFailures } from "./dialogs.mjs";
 import { sceneConceptPromptText, t2iMissingReason } from "./image_prompts.mjs";
 import {
@@ -87,7 +87,7 @@ function showVideoPromptEditModal(currentPrompt, modeLabel, options = {}) {
     sceneContextHint.style.cssText = "font-size:11px;color:#94a3b8;line-height:1.35;margin-top:-6px;";
     const useStartingImage = makeCheckbox("Use starting image", false);
     const imageHint = document.createElement("div");
-    imageHint.textContent = "Off: text-only prompt edit. On: also sends the current scene image so Gemma can make visual-aware motion or camera changes.";
+    bindLlmText(imageHint, "textContent", "Off: text-only prompt edit. On: also sends the current scene image so Gemma can make visual-aware motion or camera changes.");
     imageHint.style.cssText = sceneContextHint.style.cssText;
     const showStartingImage = Boolean(options.canUseStartingImage);
     useStartingImage.wrapper.style.display = showStartingImage ? "flex" : "none";
@@ -147,7 +147,7 @@ function showImagePromptEditModal(currentPrompt, modeLabel, options = {}) {
     sceneContextHint.style.cssText = "font-size:11px;color:#94a3b8;line-height:1.35;margin-top:-6px;";
     const useReferenceImage = makeCheckbox("Use current scene image as visual reference", false);
     const imageHint = document.createElement("div");
-    imageHint.textContent = "Off: text-only prompt edit. On: also sends the selected scene image so Gemma can make visual-aware prompt changes.";
+    bindLlmText(imageHint, "textContent", "Off: text-only prompt edit. On: also sends the selected scene image so Gemma can make visual-aware prompt changes.");
     imageHint.style.cssText = sceneContextHint.style.cssText;
     const showReferenceImage = Boolean(options.canUseReferenceImage);
     useReferenceImage.wrapper.style.display = showReferenceImage ? "flex" : "none";
@@ -226,7 +226,7 @@ export function createPromptEditing({
     let progress = null;
     try {
       zEnhanceGemmaButton.disabled = true;
-      zEnhanceGemmaButton.textContent = "Gemma...";
+      bindLlmText(zEnhanceGemmaButton, "textContent", "Gemma...");
       progress = createProgressWindow("Creating Enhance prompt");
       progress.set(`Reading selected image with Gemma vision...\n${gemmaRunnerLine({ vision: true })}`, 20);
       const userNotes = [
@@ -260,7 +260,7 @@ export function createPromptEditing({
       toast(String(error?.message || error), true);
     } finally {
       zEnhanceGemmaButton.disabled = false;
-      zEnhanceGemmaButton.textContent = "Gemma Enhance Prompt";
+      bindLlmText(zEnhanceGemmaButton, "textContent", "Gemma Enhance Prompt");
     }
   }
 
@@ -320,7 +320,7 @@ export function createPromptEditing({
     let progress = null;
     try {
       createT2IButton.disabled = true;
-      createT2IButton.textContent = "Gemma...";
+      bindLlmText(createT2IButton, "textContent", "Gemma...");
       progress = createProgressWindow("Creating T2I prompt");
       progress.set("Autosaving session/SRT before Gemma T2I...", 8);
       await autoSaveSessionQuiet("Gemma T2I");
@@ -348,7 +348,7 @@ export function createPromptEditing({
       toast(String(error?.message || error), true);
     } finally {
       createT2IButton.disabled = false;
-      createT2IButton.textContent = "Gemma T2I";
+      bindLlmText(createT2IButton, "textContent", "Gemma T2I");
     }
   }
 
@@ -392,7 +392,7 @@ export function createPromptEditing({
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:12px;";
     const title = document.createElement("div");
-    title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Edit ${escapeHtml(data.label || "I2V")} ${key === "elevenlabs_dialogue" ? "LLM" : "Gemma"} Instructions</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">${escapeHtml(sceneDisplayName(segment, segmentIndexInfo(segment).index))}</div>`;
+    title.innerHTML = llmText(`<div style="font-size:16px;font-weight:900;color:#cffafe;">Edit ${escapeHtml(data.label || "I2V")} ${key === "elevenlabs_dialogue" ? "LLM" : "Gemma"} Instructions</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">${escapeHtml(sceneDisplayName(segment, segmentIndexInfo(segment).index))}</div>`);
     const close = makeButton("Close");
     header.append(title, close);
     const status = document.createElement("div");

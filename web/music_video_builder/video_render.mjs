@@ -10,7 +10,7 @@ import {
   waitForVideos,
 } from "./comfy_api.mjs";
 import { DEFAULT_LTX_INGREDIENTS_HEIGHT, DEFAULT_LTX_INGREDIENTS_WIDTH } from "./constants.mjs";
-import { makeButton, makeField, makeInput, normalizeProjectVideoEngine, toast } from "./controls.mjs";
+import { bindLlmText, llmText, makeButton, makeField, makeInput, normalizeProjectVideoEngine, toast } from "./controls.mjs";
 import { showFinalVideoReadyModal } from "./dialogs.mjs";
 import { applyOverlayAfterStitch } from "./overlay_render.mjs";
 import { applyThumbnailIntroAfterStitch, applyVideoIntroAfterStitch } from "./thumbnail.mjs";
@@ -58,7 +58,7 @@ export function showMultiSelectHint() {
   const selectedBatch = document.createElement("div");
   selectedBatch.innerHTML = `<strong style="color:#e0f2fe;">Batch render selected scenes</strong><br>When two or more scenes are selected, Image All, LLM All, Render All, and Build Full Video offer a selected-scenes option. Use it to generate prompts, images, or videos for only those selected scenes. Selected Render/Build does not stitch a final video.`;
   const preview = document.createElement("div");
-  preview.innerHTML = `<strong style="color:#e0f2fe;">Stitch Preview</strong><br>Use the Stitch Preview menu option to make a quick complete video from selected scenes or from a start/end scene range. Inserts are included automatically, and no Gemma, image generation, or video rendering is run.`;
+  preview.innerHTML = llmText(`<strong style="color:#e0f2fe;">Stitch Preview</strong><br>Use the Stitch Preview menu option to make a quick complete video from selected scenes or from a start/end scene range. Inserts are included automatically, and no Gemma, image generation, or video rendering is run.`);
   const note = document.createElement("div");
   note.textContent = "Selected scenes turn red. Ctrl/Cmd-click toggles scenes on or off; a plain click returns to normal single-scene editing.";
   note.style.cssText = "border:1px solid #334155;border-radius:6px;background:#0f172a;padding:9px;color:#cbd5e1;";
@@ -1783,7 +1783,7 @@ export function createVideoRender({
     const close = makeButton("Close");
     header.append(heading, close);
     const note = document.createElement("div");
-    note.textContent = "Creates a preview video from already-rendered scene videos. Inserts are included automatically. This does not run Gemma, create images, or render new videos.";
+    bindLlmText(note, "textContent", "Creates a preview video from already-rendered scene videos. Inserts are included automatically. This does not run Gemma, create images, or render new videos.");
     note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
     const selectedCount = selectedBase.length;
     const selectedButton = makeButton(`Use Selected Scenes${selectedCount ? ` (${selectedCount})` : ""}`, "primary");

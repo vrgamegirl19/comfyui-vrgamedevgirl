@@ -41,6 +41,18 @@ test('a pack built into ComfyUI says so, and only the packs that are neither ins
   assert.deepEqual(plain(c.missingNodeIds(undefined)), []);
 });
 
+test('a pip library installs from its own card without ComfyUI-Manager and is left out of Install Missing Nodes', () => {
+  const c = load();
+  const state = (item, status, manager) => plain(c.installButtonState(item, status, manager));
+  const pip = { id: 'nvidia_vfx', label: 'nvidia-vfx (RTX Video Super Resolution)' };
+  assert.deepEqual(state(pip, { source: 'pip', installed: false }, false), { text: 'Install', disabled: false });
+  assert.deepEqual(state(pip, { source: 'pip', installed: true }, false), { text: 'Installed', disabled: true });
+  assert.deepEqual(plain(c.nodeBadge(pip, { source: 'pip', installed: true })), { text: 'Installed', kind: 'ok' });
+  assert.deepEqual(plain(c.nodeBadge(pip, { source: 'pip', installed: false })), { text: 'Missing', kind: 'missing' });
+  const nodes = [{ id: 'gguf', installed: false, source: 'registry' }, { id: 'nvidia_vfx', installed: false, source: 'pip' }];
+  assert.deepEqual(plain(c.missingNodeIds(nodes)), ['gguf']);
+});
+
 test('the built-in line names the ComfyUI version it came with and the one in use', () => {
   const c = load();
   assert.equal(c.builtInLine(builtInStatus, '0.45.0'), 'Built into ComfyUI 0.44.0 and newer, so this pack is not needed. Yours is 0.45.0. Only older ComfyUI needs it.');

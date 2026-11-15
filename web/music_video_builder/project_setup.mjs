@@ -13,6 +13,7 @@ import {
   REQUIRED_LTX25_MSR_LORA,
 } from "./constants.mjs";
 import {
+  bindLlmText,
   makeButton,
   makeCheckbox,
   makeField,
@@ -373,7 +374,7 @@ export function createProjectSetup({
       Boolean(state.automaticMemoryCleanup),
     );
     const automaticMemoryCleanupNote = document.createElement("div");
-    automaticMemoryCleanupNote.textContent = "Off is recommended when ComfyUI DynamicVRAM is enabled. When off, the Builder bypasses embedded RAMCleanup/VRAMCleanup nodes in hidden workflows and will not directly clear Comfy/Gemma caches between tasks, retries, errors, or stops. The manual Clear Memory button still works.";
+    bindLlmText(automaticMemoryCleanupNote, "textContent", "Off is recommended when ComfyUI DynamicVRAM is enabled. When off, the Builder bypasses embedded RAMCleanup/VRAMCleanup nodes in hidden workflows and will not directly clear Comfy/Gemma caches between tasks, retries, errors, or stops. The manual Clear Memory button still works.");
     automaticMemoryCleanupNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
     const memoryManagementPanel = makeSettingsSection("Memory Management", [
       automaticMemoryCleanupControl.wrapper,
@@ -538,7 +539,7 @@ export function createProjectSetup({
     autoImg2ImgOnlyControls.append(autoImg2ImgStartStepWrap, autoImg2ImgCreativityWrap);
     const autoChainNote = document.createElement("div");
     autoChainNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;";
-    autoChainNote.textContent = "Render All / Build Full Video only. I2V chain feeds each final frame plus a new Gemma Vision prompt into the next video scene. Img2Img continuity feeds each final frame into the next scene's image-to-image source, using the existing Storyboard/Wizard image prompt and the Img2Img strength shown here. Pick one mode or Off.";
+    bindLlmText(autoChainNote, "textContent", "Render All / Build Full Video only. I2V chain feeds each final frame plus a new Gemma Vision prompt into the next video scene. Img2Img continuity feeds each final frame into the next scene's image-to-image source, using the existing Storyboard/Wizard image prompt and the Img2Img strength shown here. Pick one mode or Off.");
     const autoChainPanel = makeSettingsSection("Scene Continuity", [
       autoChainGrid,
       autoChainNote,
