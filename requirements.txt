@@ -1,7 +1,6 @@
 librosa
 opencv-python
 torchcodec
-google-generativeai
 stable-ts
 demucs
 transformers
