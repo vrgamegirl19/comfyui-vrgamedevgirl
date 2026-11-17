@@ -3,6 +3,30 @@
   "product": "AI Video Builder",
   "releases": [
     {
+      "id": "2026-11-15-v10-0-8-no-protobuf-downgrade",
+      "version": "10.0.8",
+      "date": "2026-11-15",
+      "title": "The pack's requirements no longer downgrade protobuf",
+      "commit": "78f52485df43a2115658e2480c6b4738d412d6ae",
+      "restart_required": false,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "sections": [
+        {
+          "title": "Fixed",
+          "items": [
+            "Fixed ComfyUI-Manager downgrading protobuf when it installed the pack's requirements. The pack asked for google-generativeai, which pins protobuf below 6, so Manager pulled protobuf down and other node packs that need a newer one stopped working (onnx no longer imported). The package is not required any more. Gemini in the LLM runner and NanoBanana Pro works as before: it uses google-genai when that is installed and a direct REST call otherwise."
+          ]
+        },
+        {
+          "title": "Compatibility Notes",
+          "items": [
+            "No code changed in this build, so updating needs no restart.",
+            "If protobuf was already downgraded on your install, run python_embeded\\python.exe -m pip install -U protobuf from the ComfyUI folder, then restart ComfyUI. If nothing else of yours uses google-generativeai, remove it with pip uninstall google-generativeai google-ai-generativelanguage so a later pip run does not pin protobuf again."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-11-13-v10-0-7-rtx-fallback-moss-loras-snap-llm-names",
       "version": "10.0.7",
       "date": "2026-11-13",
