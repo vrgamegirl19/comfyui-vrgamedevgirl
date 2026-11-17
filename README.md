@@ -8,6 +8,12 @@ Standalone face-repair, utility, LLM, long-video, LoRA-training, LTX/MiniMax, mu
 
 ---
 
+## Agent skills
+
+Shareable agent skills live in [`skills/`](skills/).
+
+- [VRGDG Band Music Video](skills/vrgdg-band-music-video/SKILL.md): a MiniMax H3 band music-video workflow with scripts, reference guides, and example projects. Copy the entire `skills/vrgdg-band-music-video` folder into your assistant's skills directory, preserving its supporting files.
+
 ## Resource monitor
 
 The AI Video Builder shows host RAM and NVIDIA VRAM usage in its top toolbar, refreshing about every two seconds while the Builder is open. The compact display hides automatically when the toolbar is too narrow. GPU readings require the driver's `nvidia-smi`; RAM remains available when GPU sensors are unsupported.
