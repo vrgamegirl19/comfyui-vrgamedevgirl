@@ -1,0 +1,33 @@
+2 step ref to image workflow. Standard pipeline.
+pass 1:
+Singularly V2
+25 steps
+
+pass2: 
+Lora DMAD 4 step AND the regenerate Refine 2k lora set to 0.70 strength. 
+2 steps for this pass.
+
+0.2 denoise
+
+
+If a scene is over 8 seconds, turn on feedforward for both passes.
+
+if we OOM at all we should clear all vram and ram and then try again. we can re-try 3 times. if we still OOM after that, we need to set the ref image setting to match instead of max to see if that helps that one scene.  
+
+
+do not use any latent continuation in this video. 
+scenes should be between 2 seconds and 8 seconds long.  
+add multi shots when it fits.
+
+make sure to use the eleven labs API key so you can transcribe the lyrics and also use it for multi shot cue timing. 
+
+at the very end of the video you can pass the task back to Claude opus 5.5 to review frames of each scene to make sure they line up with the prompt and have it just create a summary of issues i should look at. 
+
+do not review drafts. each scene should run through both passes. 
+always check Comfyui every few mins to make sure it did not crash or get stuck till the video is done.  
+
+but claude opus 5.5 can handle all that. after prompt creation before we render you can have claude opus 5.5 take over after you provide it with a hand off summary.
+
+
+
+

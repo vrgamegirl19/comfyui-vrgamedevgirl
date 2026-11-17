@@ -1,0 +1,139 @@
+# Music Video Project – Creative Direction & Instructions
+
+## Project Goal
+
+Create a highly cinematic, photorealistic music video using all the supplied assets and our previous music video workflows as references.
+
+I'm providing a main project folder containing subfolders with characters, band members, locations, music, lyrics, style prompts, and individual instrument/vocal stems.
+
+Analyze everything before planning the video. Use our previous music video projects and established prompting techniques to guide the overall production.
+
+The goal is to create a professional music video that alternates between **energetic full-band performances and cinematic solo sequences featuring the lead singer.**
+
+## 1. Music Analysis & Editing
+
+- Analyze the full song, lyrics, musical structure, energy changes, and instrument stems.
+- Identify intros, verses, choruses, instrumental breaks, solos, and outros.
+- Use energetic sections, particularly choruses and heavy instrumental passages, for band performance sequences.
+- Use quieter or more emotional sections for the singer's solo journey.
+- Follow the music's rhythm with natural cinematic cuts and transitions.
+- Use individual stems to identify exactly when each instrument is active, prominent, or performing a solo.
+- Give every band member individual moments to shine, including close-ups of guitar riffs, bass performances, and drumming.
+- Match each performance to the actual instrument heard in the music.
+
+## 2. Band Performance – Stage Only
+
+**All band members perform exclusively in the provided stage location.**
+
+Establish a consistent stage layout:
+
+- **Lead singer:** Center stage.
+- **Lead guitarist:** Stage left.
+- **Bass guitarist:** Stage right.
+- **Drummer:** Rear center behind the singer.
+
+Position everyone with realistic spacing, similar to a professional live band. Maintain these positions across all performance shots, allowing natural movement and interaction.
+
+The band should feel alive and authentic:
+
+- Guitarists can move toward each other, perform back-to-back, exchange looks, or interact naturally.
+- Band members should move with the rhythm and demonstrate realistic playing techniques.
+- Use full-band wide shots, medium shots, dramatic close-ups, side angles, and moving cinematic shots.
+- Give each musician dedicated performance shots that highlight their instrument and personality.
+
+**Instrument accuracy is critical.**
+
+Only describe a musician actively playing when their instrument is audible in the corresponding stem.
+
+When an instrument is inactive, describe the musician's actual non-playing behavior, such as resting their hands, moving with the rhythm, or interacting with another musician.
+
+Use positive action descriptions rather than negative instructions.
+
+## 3. Lead Singer – Solo Journey
+
+The lead singer is the only band member who appears outside the stage.
+
+Use **every supplied solo location** throughout the music video, distributing them naturally across the song.
+
+These sequences should feel like a cinematic solo journey rather than a literal recreation of the lyrics.
+
+The singer should:
+
+- Sing directly toward the camera with expressive facial movements and natural lip synchronization.
+- Walk through environments and interact with surroundings.
+- Explore locations through natural body movements, gestures, and changing emotions.
+- Occasionally look away, turn, pause, or engage with environmental features.
+- Display a range of expressions matching the energy and emotional tone of the song.
+
+Use varied cinematic framing, including extreme close-ups, medium shots, full-body shots, tracking shots, and smooth orbiting movements.
+
+Avoid repetitive standing-and-singing shots. Make the singer physically active and visually engaging.
+
+## 4. Microphone Rules
+
+**On stage:** The singer uses the same **black handheld microphone** in every performance shot. It is a studio-style handheld microphone, consistently held in her hand.
+
+**Solo locations:** The singer performs naturally without microphone equipment. Her hands remain available for gestures and environmental interactions.
+
+Maintain microphone appearance and continuity throughout every stage performance.
+
+## 5. Vocal & Instrument Synchronization
+
+Use the vocal stem to determine exactly when singing occurs.
+
+- During vocal sections, describe realistic singing, mouth movements, and facial expressions synchronized to the lyrics.
+- During instrumental or non-vocal sections, describe appropriate closed-mouth expressions, breathing, emotional reactions, or physical movement.
+- Avoid assigning vocal performances to sections where the singer has no vocal activity.
+- Match instrument performance descriptions to their corresponding audio stems.
+- During instrumental solos, prioritize the musician responsible for the prominent instrument.
+
+All character actions should reflect what is actually happening in the music.
+
+## 6. Cinematic Style & Continuity
+
+The video should feel like a professionally directed music video, with intentional shot composition, visual storytelling, and dynamic editing.
+
+Maintain:
+
+- Exact character identities, facial features, hairstyles, outfits, and instruments.
+- Consistent stage architecture and musician positioning.
+- Realistic instrument handling and performance movements.
+- Natural facial expressions and believable body movements.
+- Cohesive visual aesthetics across all supplied locations.
+- Varied camera angles and shot types.
+- Seamless transitions between solo sequences and band performances.
+
+The solo scenes should feel visually connected, creating an emotional journey through the environments without requiring a literal storyline.
+
+## 7. Prompt Generation Rules
+
+Apply our previous music video prompting techniques and established workflows.
+
+- Write detailed, standalone scene prompts.
+- Use positive descriptions of visible actions rather than negative wording.
+- Describe specific physical movements instead of generic performance instructions.
+- Maintain spatial continuity and consistent subject references.
+- Explicitly describe the correct musician, instrument, and action.
+- Give the singer meaningful movement and interaction in solo scenes.
+- Ensure each scene's actions are appropriate for its exact musical timing.
+- Keep every shot visually distinct and purposeful.
+
+## 8. Expected Workflow
+
+1. Examine all project folders and identify every available asset.
+2. Analyze the song, lyrics, structure, energy, vocals, and instrument stems.
+3. Establish the fixed stage arrangement and character continuity rules.
+4. Map out the full music video timeline, identifying band performance sections and solo sequences.
+5. Distribute every provided solo location throughout the timeline.
+6. Plan dynamic cuts, musical highlights, musician close-ups, and character interactions.
+7. Develop cinematic, production-ready prompts for every planned shot using our existing workflow.
+
+## Final Creative Objective
+
+Produce a visually impressive music video that feels like a real rock band's professionally directed production.
+
+The band delivers powerful, authentic performances during the song's heavier and more energetic moments, while the singer takes the audience on an expressive solo journey through all the supplied locations.
+
+**Every band member gets meaningful screen time, every location is used, every performance matches the music, and the entire video feels cohesive, energetic, cinematic, and believable.**
+
+i won't be around, i'm going to bed so you have to make all the creative decisions yourself. I won't be around to ask. 

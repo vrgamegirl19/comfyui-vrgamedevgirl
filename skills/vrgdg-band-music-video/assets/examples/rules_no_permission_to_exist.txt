@@ -1,0 +1,18 @@
+Okay, let’s do this again. This time, you have free rein over everything except the song.
+
+Create the characters using our Krea 2 two-pass workflow under Create Character in the Ref Builder. You can use MCP for this because the workflow uses a specific three-panel layout. Have Sonnet review the character images to make sure the panels are correct and in this order.
+1. Close-up of the face
+2. Upper-body shot
+3. Full-body shot
+Use a solid gray background with no text or borders.
+
+The characters should all be in their mid-20s, with a punk rock look that fits the song’s style.
+British punk reframed as austere post-punk pressure at 162 BPM: descending bass, clipped distorted guitar, dry drums, feedback edges, sparse low verses rising into stacked female responses, smoky low-contralto rasp kept restrained before a gravelly feral final refrain, spoken bridge and stark withheld pauses
+
+As with the last video, you can create location images for the band’s performance and for scenes where the singer sings alone. This one should have more energy and feel more fun because the song itself is a bit more fun. Feel free to create extra characters if they’d make the singer’s solo journey more fun. That’s up to you.
+
+The folder below contains the song, stems, lyrics, song style, and a new ElevenLabs API key for transcribing the song and timing cues in multi-shot scenes.
+
+<song folder>
+
+Use the same settings and workflow as last time, and apply everything you learned from that project.
