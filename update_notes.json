@@ -3,6 +3,45 @@
   "product": "AI Video Builder",
   "releases": [
     {
+      "id": "2026-11-20-v10-0-9-install-models-hf-token-restart-comfyui",
+      "version": "10.0.9",
+      "date": "2026-11-20",
+      "title": "Install models from the Models dialog, a Hugging Face token box and a Restart ComfyUI button",
+      "commit": "2010601daa121a675c7ed94ca9f9a88a31a4b6a2",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "sections": [
+        {
+          "title": "Added",
+          "items": [
+            "Models > MiniMax H3, Image Models and LLM Models now install their files for you. Every file has a check box and each card says how much is still to download. Install Recommended downloads the files the Builder uses by default, Install Selected downloads the ticked ones, and every file is saved into the right ComfyUI folder (diffusion_models, text_encoders, vae, loras, latent_upscale_models or models/LLM). Downloads show their progress and can be cancelled, a finished file is checked before it gets its name, a file you already have is never replaced, and installed files show as Installed.",
+            "Added a Hugging Face token box at the top of those tabs, with Save Token, Test Token, Remove Token and Create a Token. A saved token lets the installer fetch files Hugging Face keeps behind a login, such as the Flux/Klein 9B diffusion model. Accept the model's licence on its Hugging Face page with the same account first. The token is saved in a file of its own in ComfyUI's output folder (VRGDG_Model_Defaults/hf_token.json), is never shown again and is sent only to huggingface.co.",
+            "Added a Restart ComfyUI button next to the engine badge at the top right. It asks first and says how many running or queued jobs a restart would lose, then asks ComfyUI-Manager to restart ComfyUI and waits until ComfyUI answers again."
+          ]
+        },
+        {
+          "title": "Improved",
+          "items": [
+            "Models > LLM Models shows the Gemma and Qwen files as two cards on one tab, and the MiniMax H3 folder note lists the loras and latent_upscale_models folders too."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Fixed the Custom Nodes window offering the MiniMax H3 Audio T8 pack again after it was installed. ComfyUI-Manager saves it in a folder named minimax-h3-audio-t8, and the window now knows that name."
+          ]
+        },
+        {
+          "title": "Compatibility Notes",
+          "items": [
+            "Restart ComfyUI and refresh the page after updating, so the new routes and the new buttons load.",
+            "The Restart ComfyUI button needs ComfyUI-Manager with a security level of normal or lower. Without the Manager, or when it refuses, the button says so and nothing restarts.",
+            "A file Hugging Face keeps behind a login still opens its model page until a token is saved."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-11-15-v10-0-8-no-protobuf-downgrade",
       "version": "10.0.8",
       "date": "2026-11-15",
@@ -137,51 +176,6 @@
             "Restart ComfyUI after updating, then hard-refresh the browser so the revised Video Builder JavaScript is loaded.",
             "The Browser AI engines need Chrome and your own accounts signed in on each site.",
             "H3 Studio 0.1.26 matches."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-11-07-v10-0-1-thumbnail-intro-moss-image-reference-bypass",
-      "version": "10.0.1",
-      "date": "2026-11-07",
-      "title": "Thumbnail intro, MOSS-Image models, reference bypass buttons and a Gemma reply fix",
-      "commit": "6f99ef6839186aa7521a29f41400d367950f21d4",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/pull/333",
-      "sections": [
-        {
-          "title": "Added",
-          "items": [
-            "Added a Thumbnail button in the middle of the Builder toolbar. Pick the exact frame of the final video, write the title and prompt (or let the LLM write it from your own brief), and generate it with Qwen Image Edit, NanoBanana, an API image or an Overlay engine that keeps the frame exactly. The video can start with the picture as a one-frame intro.",
-            "Added MOSS-Image models and settings to the Image tab model list and the Models dialog, and an Edit LoRA button that installs the LoRA as moss_image_edit_lora.safetensors.",
-            "Added the official and Singularity MiniMax H3 diffusion models to the model chooser.",
-            "Added bypass buttons for MiniMax reference changes, also in the Render All error dialog.",
-            "Added the Euler Flow Matching scheduler node to the Builder's custom nodes list."
-          ]
-        },
-        {
-          "title": "Improved",
-          "items": [
-            "Auto Build now remembers its inputs in each project when you close it.",
-            "Krea 2 reference generation is Krea-only, and the DMAD LoRAs are enforced across the Builder and the agent API.",
-            "The Update button now follows the main branch, since Beta2.0 was deleted."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Fixed the Gemma node cutting every reply to one paragraph when keep_all_text is on, which turned Draft Story into a single act.",
-            "Fixed Auto Build failing on a missing LLM runner payload helper.",
-            "Removed a wrong comfyui-workflow-encrypt package tag from the MiniMax H3 workflows."
-          ]
-        },
-        {
-          "title": "Compatibility Notes",
-          "items": [
-            "Restart ComfyUI after updating, then hard-refresh the browser so the revised Video Builder JavaScript is loaded.",
-            "The MOSS-Image Edit LoRA needs a ComfyUI newer than v0.42.1.",
-            "H3 Studio 0.1.25 matches."
           ]
         }
       ]

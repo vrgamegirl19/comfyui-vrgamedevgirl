@@ -15,6 +15,7 @@ import {
   toast,
   VIDEO_TYPE_OPTIONS,
 } from "./controls.mjs";
+import { wireRestartComfyButton } from "./comfy_restart.mjs";
 import { showModelDownloadModal } from "./dialogs.mjs";
 import { pickPath } from "./project_setup.mjs";
 import { openRefModsStudio } from "./refmods_studio.mjs";
@@ -527,6 +528,7 @@ export function buildTopbar({
   const fullFLFBuildButton = makeButton("Build Full FLF Video");
   const stopWorkflowButton = makeButton("Stop");
   const downloadModelsButton = makeButton("Models");
+  const restartComfyButton = makeButton("Restart ComfyUI");
   const buyMeACoffeeButton = makeBuyMeACoffeeButton();
   const updateV10Button = makeButton("Update to Latest");
   updateV10Button.style.background = "#9a3412";
@@ -630,6 +632,13 @@ export function buildTopbar({
     width: 52,
     title: "Clear Builder, ComfyUI, and model memory caches.",
   });
+  styleCompactToolbarButton(restartComfyButton, {
+    lines: ["Restart", "ComfyUI"],
+    icon: "restart",
+    width: 58,
+    title: "Restart ComfyUI through ComfyUI-Manager. Running and queued jobs stop. This button waits until ComfyUI answers again.",
+  });
+  wireRestartComfyButton(restartComfyButton, { api, toast });
   styleCompactToolbarButton(fullscreenButton, {
     icon: "fullscreen",
     iconOnly: true,
@@ -818,7 +827,7 @@ export function buildTopbar({
   projectVideoEngineBadge.setAttribute("aria-label", "Switch project video engine");
   projectVideoEngineBadge.setAttribute("aria-live", "polite");
   projectVideoEngineBadge.style.cssText = `height:26px;box-sizing:border-box;display:inline-flex;align-items:center;padding:0 9px;border:1px solid #60a5fa;border-radius:999px;background:#172554;color:#bfdbfe;font-family:${BUILDER_FONT_STACK};font-size:11px;font-weight:600;letter-spacing:0;white-space:nowrap;cursor:pointer;user-select:none;`;
-  utilityActions.append(projectVideoEngineBadge, stopWorkflowButton, downloadModelsButton, clearMemoryButton, fullscreenButton, closeButton);
+  utilityActions.append(projectVideoEngineBadge, restartComfyButton, stopWorkflowButton, downloadModelsButton, clearMemoryButton, fullscreenButton, closeButton);
   topbar.append(projectActions, centerActions, utilityActions, menuDropdown);
 
   // The left and right groups have different widths, which pushes the middle buttons off the window's center. Giving

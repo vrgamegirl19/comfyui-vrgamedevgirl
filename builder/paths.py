@@ -412,3 +412,8 @@ def _global_llm_keys_path():
 def _global_llm_runner_path():
     """The LLM runner settings kept for every project (runner, servers, models and limits; no keys)."""
     return os.path.join(os.path.dirname(_model_defaults_path()), "llm_runner.json")
+
+
+def _hf_token_path():
+    """The Hugging Face token the Models dialog downloads with. A file of its own next to the LLM keys, never copied into a project."""
+    return os.path.join(os.path.dirname(_model_defaults_path()), "hf_token.json")

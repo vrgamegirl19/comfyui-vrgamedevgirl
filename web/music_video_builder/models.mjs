@@ -231,5 +231,11 @@ models/
     qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors
   vae/
     minimax_h3_video_vae_fp16.safetensors
-    minimax_h3_audio_vae_fp32.safetensors`,
+    minimax_h3_audio_vae_fp32.safetensors
+  loras/
+    <the Turbo LoRAs you install>
+  latent_upscale_models/
+    minimax_h3_latent_upscaler_3d_bf16.safetensors
+
+The Install buttons put every file in its own folder for you.`,
 };
