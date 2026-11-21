@@ -75,7 +75,7 @@ class BuilderUpdateBannerNotesTests(unittest.TestCase):
             BUILDER_SOURCE,
         )
         self.assertIn(
-            "utilityActions.append(projectVideoEngineBadge, stopWorkflowButton",
+            "utilityActions.append(projectVideoEngineBadge, restartComfyButton, stopWorkflowButton",
             BUILDER_SOURCE,
         )
 

@@ -1,0 +1,1114 @@
+[
+  {
+    "id": "dmad_lora",
+    "label": "DMAD 4-step LoRA",
+    "category": "dmad",
+    "groups": [
+      "DMAD"
+    ],
+    "group": "dmad",
+    "folder": "loras",
+    "filename": "dmad_minimax_h3_4step_full_critic_comfyui.safetensors",
+    "url": "https://huggingface.co/ZhengmingYu/DMAD/resolve/main/minimax_h3/dmad_minimax_h3_4step_full_critic_comfyui.safetensors",
+    "page": "https://huggingface.co/ZhengmingYu/DMAD/tree/main/minimax_h3",
+    "note": "Pass 1 LoRA. Use the ComfyUI file (name ends in _comfyui). The Diffusers file does not load in ComfyUI.",
+    "format": "safetensors",
+    "default": true,
+    "download_size": 1956195976
+  },
+  {
+    "id": "dmad_refiner",
+    "label": "Refiner LoRA",
+    "category": "dmad",
+    "groups": [
+      "DMAD"
+    ],
+    "group": "dmad",
+    "folder": "loras",
+    "filename": "minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors",
+    "url": "https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/loras/minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors",
+    "page": "https://huggingface.co/Kijai/MiniMax-H3-experimental/blob/main/loras/minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors",
+    "note": "Pass 2 LoRA. Restores detail in 2 to 3 steps.",
+    "format": "safetensors",
+    "default": true,
+    "download_size": 155133472
+  },
+  {
+    "id": "moss_turbo_lora",
+    "label": "8-step Turbo LoRA",
+    "category": "image",
+    "groups": [
+      "MOSS-Image"
+    ],
+    "group": "moss",
+    "folder": "loras",
+    "filename": "moss_image_sft_8_steps_dmd_lora.safetensors",
+    "url": "https://huggingface.co/lodestones/MOSS-Image-SFT-8-steps-dmd/resolve/main/lora.safetensors",
+    "page": "https://huggingface.co/lodestones/MOSS-Image-SFT-8-steps-dmd/tree/main",
+    "note": "Optional. Samples MOSS-Image in 8 steps. Saved as moss_image_sft_8_steps_dmd_lora.safetensors.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 1189176800
+  },
+  {
+    "id": "moss_edit_lora",
+    "label": "Edit LoRA",
+    "category": "image",
+    "groups": [
+      "MOSS-Image"
+    ],
+    "group": "moss",
+    "folder": "loras",
+    "filename": "moss_image_edit_lora.safetensors",
+    "url": "https://huggingface.co/chinoll/Moss-Image-Edit/resolve/main/adapter_model.safetensors",
+    "page": "https://huggingface.co/chinoll/Moss-Image-Edit/tree/main",
+    "note": "Optional. Follows a written instruction with one to four reference images. Saved as moss_image_edit_lora.safetensors. Needs a ComfyUI newer than v0.42.1.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 297382216
+  },
+  {
+    "id": "minimax_h3_ref2va_pruned_int8_convrot",
+    "label": "Diffusion model: Ref2VA pruned int8 (Builder default)",
+    "category": "minimax",
+    "groups": [
+      "Core models"
+    ],
+    "folder": "diffusion_models",
+    "filename": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+    "note": "The diffusion model the Builder selects by default. Reference to video.",
+    "format": "safetensors",
+    "default": true,
+    "download_size": 20970379616
+  },
+  {
+    "id": "minimax_h3_qwen3vl_nvfp4",
+    "label": "Qwen3-VL text encoder (nvfp4)",
+    "category": "minimax",
+    "groups": [
+      "Core models"
+    ],
+    "folder": "text_encoders",
+    "filename": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    "note": "The text encoder the Builder selects by default.",
+    "format": "safetensors",
+    "default": true,
+    "download_size": 15687142551
+  },
+  {
+    "id": "minimax_h3_video_vae",
+    "label": "Video VAE (fp16)",
+    "category": "minimax",
+    "groups": [
+      "Core models"
+    ],
+    "folder": "vae",
+    "filename": "minimax_h3_video_vae_fp16.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_fp16.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_video_vae_fp16.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": true,
+    "download_size": 5207808496
+  },
+  {
+    "id": "minimax_h3_audio_vae",
+    "label": "Audio VAE (fp32)",
+    "category": "minimax",
+    "groups": [
+      "Core models"
+    ],
+    "folder": "vae",
+    "filename": "minimax_h3_audio_vae_fp32.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_audio_vae_fp32.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": true,
+    "download_size": 605254808
+  },
+  {
+    "id": "minimax_h3_fl2va_pruned_int8_convrot",
+    "label": "FL2VA pruned int8",
+    "category": "minimax",
+    "groups": [
+      "More diffusion models (official)"
+    ],
+    "folder": "diffusion_models",
+    "filename": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+    "note": "First and last frame to video.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 20970379616
+  },
+  {
+    "id": "minimax_h3_fl2va_pruned_fp8_scaled",
+    "label": "FL2VA pruned fp8",
+    "category": "minimax",
+    "groups": [
+      "More diffusion models (official)"
+    ],
+    "folder": "diffusion_models",
+    "filename": "minimax_h3_fl2va_pruned_fp8_scaled.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_fp8_scaled.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_fl2va_pruned_fp8_scaled.safetensors",
+    "note": "First and last frame to video.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 20958205608
+  },
+  {
+    "id": "minimax_h3_fl2va_pruned_w6a8",
+    "label": "FL2VA pruned w6a8 (smallest)",
+    "category": "minimax",
+    "groups": [
+      "More diffusion models (official)"
+    ],
+    "folder": "diffusion_models",
+    "filename": "minimax_h3_fl2va_pruned_w6a8.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_w6a8.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_fl2va_pruned_w6a8.safetensors",
+    "note": "First and last frame to video.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 15983746636
+  },
+  {
+    "id": "minimax_h3_fl2va_int8_convrot",
+    "label": "FL2VA full int8",
+    "category": "minimax",
+    "groups": [
+      "More diffusion models (official)"
+    ],
+    "folder": "diffusion_models",
+    "filename": "minimax_h3_fl2va_int8_convrot.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_int8_convrot.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_fl2va_int8_convrot.safetensors",
+    "note": "First and last frame to video.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 34038892334
+  },
+  {
+    "id": "minimax_h3_fl2va_pruned_bf16",
+    "label": "FL2VA pruned bf16",
+    "category": "minimax",
+    "groups": [
+      "More diffusion models (official)"
+    ],
+    "folder": "diffusion_models",
+    "filename": "minimax_h3_fl2va_pruned_bf16.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_bf16.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_fl2va_pruned_bf16.safetensors",
+    "note": "First and last frame to video.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 40225724176
+  },
+  {
+    "id": "minimax_h3_fl2va_bf16",
+    "label": "FL2VA full bf16",
+    "category": "minimax",
+    "groups": [
+      "More diffusion models (official)"
+    ],
+    "folder": "diffusion_models",
+    "filename": "minimax_h3_fl2va_bf16.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_bf16.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_fl2va_bf16.safetensors",
+    "note": "First and last frame to video.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 66280487368
+  },
+  {
+    "id": "minimax_h3_ref2va_pruned_fp8_scaled",
+    "label": "REF2VA pruned fp8",
+    "category": "minimax",
+    "groups": [
+      "More diffusion models (official)"
+    ],
+    "folder": "diffusion_models",
+    "filename": "minimax_h3_ref2va_pruned_fp8_scaled.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_fp8_scaled.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_ref2va_pruned_fp8_scaled.safetensors",
+    "note": "Reference to video.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 20958205608
+  },
+  {
+    "id": "minimax_h3_ref2va_pruned_w6a8",
+    "label": "REF2VA pruned w6a8 (smallest)",
+    "category": "minimax",
+    "groups": [
+      "More diffusion models (official)"
+    ],
+    "folder": "diffusion_models",
+    "filename": "minimax_h3_ref2va_pruned_w6a8.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_w6a8.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_ref2va_pruned_w6a8.safetensors",
+    "note": "Reference to video.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 15983746636
+  },
+  {
+    "id": "minimax_h3_ref2va_int8_convrot",
+    "label": "REF2VA full int8",
+    "category": "minimax",
+    "groups": [
+      "More diffusion models (official)"
+    ],
+    "folder": "diffusion_models",
+    "filename": "minimax_h3_ref2va_int8_convrot.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_int8_convrot.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_ref2va_int8_convrot.safetensors",
+    "note": "Reference to video.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 34038894550
+  },
+  {
+    "id": "minimax_h3_ref2va_pruned_bf16",
+    "label": "REF2VA pruned bf16",
+    "category": "minimax",
+    "groups": [
+      "More diffusion models (official)"
+    ],
+    "folder": "diffusion_models",
+    "filename": "minimax_h3_ref2va_pruned_bf16.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_bf16.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_ref2va_pruned_bf16.safetensors",
+    "note": "Reference to video.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 40225724176
+  },
+  {
+    "id": "minimax_h3_ref2va_bf16",
+    "label": "REF2VA full bf16",
+    "category": "minimax",
+    "groups": [
+      "More diffusion models (official)"
+    ],
+    "folder": "diffusion_models",
+    "filename": "minimax_h3_ref2va_bf16.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_bf16.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_ref2va_bf16.safetensors",
+    "note": "Reference to video.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 66280487368
+  },
+  {
+    "id": "minimax_h3_singularity_ref2va_v2_pruned_int8",
+    "label": "Singularity v2 pruned int8",
+    "category": "minimax",
+    "groups": [
+      "More diffusion models (Singularity)"
+    ],
+    "folder": "diffusion_models",
+    "filename": "Minimax-h3_Singularity_ref2va_v2_pruned_int8.safetensors",
+    "url": "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/resolve/main/Minimax-h3_Singularity_ref2va_v2_pruned_int8.safetensors",
+    "page": "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/blob/main/Minimax-h3_Singularity_ref2va_v2_pruned_int8.safetensors",
+    "note": "Community fine-tune. Reference to video.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 20967647456
+  },
+  {
+    "id": "minimax_h3_singularity_ref2va_pruned_v1_3_int8",
+    "label": "Singularity v1.3 pruned int8",
+    "category": "minimax",
+    "groups": [
+      "More diffusion models (Singularity)"
+    ],
+    "folder": "diffusion_models",
+    "filename": "Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors",
+    "url": "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/resolve/main/Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors",
+    "page": "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/blob/main/Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors",
+    "note": "Community fine-tune. Reference to video.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 20967647456
+  },
+  {
+    "id": "minimax_h3_singularity_ref2va_v1_3_pruned_w4a8",
+    "label": "Singularity v1.3 pruned w4a8 (smallest)",
+    "category": "minimax",
+    "groups": [
+      "More diffusion models (Singularity)"
+    ],
+    "folder": "diffusion_models",
+    "filename": "Minimax-h3_Singularity_ref2va_v1.3_Pruned_w4a8.safetensors",
+    "url": "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/resolve/main/Minimax-h3_Singularity_ref2va_v1.3_Pruned_w4a8.safetensors",
+    "page": "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/blob/main/Minimax-h3_Singularity_ref2va_v1.3_Pruned_w4a8.safetensors",
+    "note": "Community fine-tune. Reference to video.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 11767930768
+  },
+  {
+    "id": "minimax_h3_singularity_ref2va_v2_int8",
+    "label": "Singularity v2 int8",
+    "category": "minimax",
+    "groups": [
+      "More diffusion models (Singularity)"
+    ],
+    "folder": "diffusion_models",
+    "filename": "Minimax-h3_Singularity_ref2va_v2_int8.safetensors",
+    "url": "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/resolve/main/Minimax-h3_Singularity_ref2va_v2_int8.safetensors",
+    "page": "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/blob/main/Minimax-h3_Singularity_ref2va_v2_int8.safetensors",
+    "note": "Community fine-tune. Reference to video.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 34004507622
+  },
+  {
+    "id": "minimax_h3_singularity_ref2va_v1_3_int8",
+    "label": "Singularity v1.3 int8",
+    "category": "minimax",
+    "groups": [
+      "More diffusion models (Singularity)"
+    ],
+    "folder": "diffusion_models",
+    "filename": "Minimax-h3_Singularity_ref2va_v1.3_int8.safetensors",
+    "url": "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/resolve/main/Minimax-h3_Singularity_ref2va_v1.3_int8.safetensors",
+    "page": "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/blob/main/Minimax-h3_Singularity_ref2va_v1.3_int8.safetensors",
+    "note": "Community fine-tune. Reference to video.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 34004507622
+  },
+  {
+    "id": "minimax_h3_singularity_ref2va_v2_bf16",
+    "label": "Singularity v2 bf16",
+    "category": "minimax",
+    "groups": [
+      "More diffusion models (Singularity)"
+    ],
+    "folder": "diffusion_models",
+    "filename": "Minimax-h3_Singularity_ref2va_v2_bf16.safetensors",
+    "url": "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/resolve/main/Minimax-h3_Singularity_ref2va_v2_bf16.safetensors",
+    "page": "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/blob/main/Minimax-h3_Singularity_ref2va_v2_bf16.safetensors",
+    "note": "Community fine-tune. Reference to video.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 66280498488
+  },
+  {
+    "id": "minimax_h3_fl2v_lightx2v_turbo_4step_v0_1_comfy_resized_avg_rank_21_bf16",
+    "label": "FL2V Turbo 4-step v0.1 rank 21 (Builder default for 3 pass)",
+    "category": "minimax",
+    "groups": [
+      "LoRAs (Kijai)"
+    ],
+    "folder": "loras",
+    "filename": "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
+    "url": "https://huggingface.co/Kijai/MiniMax-H3_comfy/resolve/main/loras/minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
+    "page": "https://huggingface.co/Kijai/MiniMax-H3_comfy/blob/main/loras/minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": true,
+    "download_size": 314878200
+  },
+  {
+    "id": "minimax_h3_fl2v_lightx2v_turbo_4step_v0_1_comfy",
+    "label": "FL2V Turbo 4-step v0.1 (full)",
+    "category": "minimax",
+    "groups": [
+      "LoRAs (Kijai)"
+    ],
+    "folder": "loras",
+    "filename": "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors",
+    "url": "https://huggingface.co/Kijai/MiniMax-H3_comfy/resolve/main/loras/minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors",
+    "page": "https://huggingface.co/Kijai/MiniMax-H3_comfy/blob/main/loras/minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 1956171984
+  },
+  {
+    "id": "minimax_h3_fl2v_lightx2v_turbo_4step_v1_0_768p_resized_avg_rank_31_bf16",
+    "label": "FL2V Turbo 4-step v1.0 768p rank 31",
+    "category": "minimax",
+    "groups": [
+      "LoRAs (Kijai)"
+    ],
+    "folder": "loras",
+    "filename": "minimax_h3_fl2v_lightx2v_turbo_4step_v1.0_768p_resized_avg_rank_31_bf16.safetensors",
+    "url": "https://huggingface.co/Kijai/MiniMax-H3_comfy/resolve/main/loras/minimax_h3_fl2v_lightx2v_turbo_4step_v1.0_768p_resized_avg_rank_31_bf16.safetensors",
+    "page": "https://huggingface.co/Kijai/MiniMax-H3_comfy/blob/main/loras/minimax_h3_fl2v_lightx2v_turbo_4step_v1.0_768p_resized_avg_rank_31_bf16.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 440873704
+  },
+  {
+    "id": "minimax_h3_fl2v_lightx2v_turbo_8step_v1_0_resized_avg_rank_24_bf16",
+    "label": "FL2V Turbo 8-step v1.0 rank 24",
+    "category": "minimax",
+    "groups": [
+      "LoRAs (Kijai)"
+    ],
+    "folder": "loras",
+    "filename": "minimax_h3_fl2v_lightx2v_turbo_8step_v1.0_resized_avg_rank_24_bf16.safetensors",
+    "url": "https://huggingface.co/Kijai/MiniMax-H3_comfy/resolve/main/loras/minimax_h3_fl2v_lightx2v_turbo_8step_v1.0_resized_avg_rank_24_bf16.safetensors",
+    "page": "https://huggingface.co/Kijai/MiniMax-H3_comfy/blob/main/loras/minimax_h3_fl2v_lightx2v_turbo_8step_v1.0_resized_avg_rank_24_bf16.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 364638304
+  },
+  {
+    "id": "minimax_h3_fl2v_turbo_8step_v1_2_768p_pruned_avg_rank_24_bf16",
+    "label": "FL2V Turbo 8-step v1.2 768p rank 24",
+    "category": "minimax",
+    "groups": [
+      "LoRAs (Kijai)"
+    ],
+    "folder": "loras",
+    "filename": "minimax_h3_fl2v_turbo_8step_v1.2_768p_pruned_avg_rank_24_bf16.safetensors",
+    "url": "https://huggingface.co/Kijai/MiniMax-H3_comfy/resolve/main/loras/minimax_h3_fl2v_turbo_8step_v1.2_768p_pruned_avg_rank_24_bf16.safetensors",
+    "page": "https://huggingface.co/Kijai/MiniMax-H3_comfy/blob/main/loras/minimax_h3_fl2v_turbo_8step_v1.2_768p_pruned_avg_rank_24_bf16.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 335604966
+  },
+  {
+    "id": "minimax_h3_ref2v_lightx2v_turbo_4step_v0_1_resized_avg_rank_20_bf16",
+    "label": "Ref2V Turbo 4-step v0.1 rank 20",
+    "category": "minimax",
+    "groups": [
+      "LoRAs (Kijai)"
+    ],
+    "folder": "loras",
+    "filename": "minimax_h3_ref2v_lightx2v_turbo_4step_v0.1_resized_avg_rank_20_bf16.safetensors",
+    "url": "https://huggingface.co/Kijai/MiniMax-H3_comfy/resolve/main/loras/minimax_h3_ref2v_lightx2v_turbo_4step_v0.1_resized_avg_rank_20_bf16.safetensors",
+    "page": "https://huggingface.co/Kijai/MiniMax-H3_comfy/blob/main/loras/minimax_h3_ref2v_lightx2v_turbo_4step_v0.1_resized_avg_rank_20_bf16.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 306731560
+  },
+  {
+    "id": "minimax_h3_taomate_3step_lora_avg_rank_19_bf16",
+    "label": "TaoMate 3-step rank 19",
+    "category": "minimax",
+    "groups": [
+      "LoRAs (Kijai)"
+    ],
+    "folder": "loras",
+    "filename": "minimax_h3_taomate_3step_lora_avg_rank_19_bf16.safetensors",
+    "url": "https://huggingface.co/Kijai/MiniMax-H3_comfy/resolve/main/loras/minimax_h3_taomate_3step_lora_avg_rank_19_bf16.safetensors",
+    "page": "https://huggingface.co/Kijai/MiniMax-H3_comfy/blob/main/loras/minimax_h3_taomate_3step_lora_avg_rank_19_bf16.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 181697688
+  },
+  {
+    "id": "minimax_h3_ref2v_turbo_4step_v0_1_comfyui_bf16",
+    "label": "ref2v turbo 4step v0.1 Turbo LoRA",
+    "category": "minimax",
+    "groups": [
+      "LoRAs (LightX2V Turbo)"
+    ],
+    "folder": "loras",
+    "filename": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+    "url": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+    "page": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/blob/main/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+    "note": "ComfyUI format. The Builder's default for 2 pass.",
+    "format": "safetensors",
+    "default": true,
+    "download_size": 1956193000
+  },
+  {
+    "id": "minimax_h3_ref2v_turbo_4step_v1_0_768p_comfyui_bf16",
+    "label": "ref2v turbo 4step v1.0 768p Turbo LoRA",
+    "category": "minimax",
+    "groups": [
+      "LoRAs (LightX2V Turbo)"
+    ],
+    "folder": "loras",
+    "filename": "minimax_h3_ref2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors",
+    "url": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_ref2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors",
+    "page": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/blob/main/minimax_h3_ref2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors",
+    "note": "ComfyUI format.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 1956193000
+  },
+  {
+    "id": "minimax_h3_ref2v_turbo_8step_v1_0_768p_comfyui_bf16",
+    "label": "ref2v turbo 8step v1.0 768p Turbo LoRA",
+    "category": "minimax",
+    "groups": [
+      "LoRAs (LightX2V Turbo)"
+    ],
+    "folder": "loras",
+    "filename": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+    "url": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+    "page": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/blob/main/minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+    "note": "ComfyUI format.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 1956193000
+  },
+  {
+    "id": "minimax_h3_ref2v_turbo_8step_v1_1_768p_comfyui_bf16",
+    "label": "ref2v turbo 8step v1.1 768p Turbo LoRA",
+    "category": "minimax",
+    "groups": [
+      "LoRAs (LightX2V Turbo)"
+    ],
+    "folder": "loras",
+    "filename": "minimax_h3_ref2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors",
+    "url": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_ref2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors",
+    "page": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/blob/main/minimax_h3_ref2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors",
+    "note": "ComfyUI format.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 1956193000
+  },
+  {
+    "id": "minimax_h3_fl2v_turbo_4step_v1_0_768p_comfyui_bf16",
+    "label": "fl2v turbo 4step v1.0 768p Turbo LoRA",
+    "category": "minimax",
+    "groups": [
+      "LoRAs (LightX2V Turbo)"
+    ],
+    "folder": "loras",
+    "filename": "minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors",
+    "url": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors",
+    "page": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/blob/main/minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors",
+    "note": "ComfyUI format.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 1956192992
+  },
+  {
+    "id": "minimax_h3_fl2v_turbo_4step_v1_1_768p_comfyui_bf16",
+    "label": "fl2v turbo 4step v1.1 768p Turbo LoRA",
+    "category": "minimax",
+    "groups": [
+      "LoRAs (LightX2V Turbo)"
+    ],
+    "folder": "loras",
+    "filename": "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors",
+    "url": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors",
+    "page": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/blob/main/minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors",
+    "note": "ComfyUI format.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 1956192992
+  },
+  {
+    "id": "minimax_h3_fl2v_turbo_4step_v1_2_768p_comfyui_bf16",
+    "label": "fl2v turbo 4step v1.2 768p Turbo LoRA",
+    "category": "minimax",
+    "groups": [
+      "LoRAs (LightX2V Turbo)"
+    ],
+    "folder": "loras",
+    "filename": "minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors",
+    "url": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors",
+    "page": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/blob/main/minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors",
+    "note": "ComfyUI format.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 1956193000
+  },
+  {
+    "id": "minimax_h3_fl2v_turbo_4step_v1_3_768p_comfyui_bf16",
+    "label": "fl2v turbo 4step v1.3 768p Turbo LoRA",
+    "category": "minimax",
+    "groups": [
+      "LoRAs (LightX2V Turbo)"
+    ],
+    "folder": "loras",
+    "filename": "minimax_h3_fl2v_turbo_4step_v1.3_768p_comfyui_bf16.safetensors",
+    "url": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_4step_v1.3_768p_comfyui_bf16.safetensors",
+    "page": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/blob/main/minimax_h3_fl2v_turbo_4step_v1.3_768p_comfyui_bf16.safetensors",
+    "note": "ComfyUI format.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 1956193000
+  },
+  {
+    "id": "minimax_h3_fl2v_turbo_8step_v1_0_comfyui_bf16",
+    "label": "fl2v turbo 8step v1.0 Turbo LoRA",
+    "category": "minimax",
+    "groups": [
+      "LoRAs (LightX2V Turbo)"
+    ],
+    "folder": "loras",
+    "filename": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+    "url": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+    "page": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/blob/main/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+    "note": "ComfyUI format.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 1956193000
+  },
+  {
+    "id": "minimax_h3_fl2v_turbo_8step_v1_0_768p_comfyui_bf16",
+    "label": "fl2v turbo 8step v1.0 768p Turbo LoRA",
+    "category": "minimax",
+    "groups": [
+      "LoRAs (LightX2V Turbo)"
+    ],
+    "folder": "loras",
+    "filename": "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+    "url": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+    "page": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/blob/main/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+    "note": "ComfyUI format.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 1956193000
+  },
+  {
+    "id": "minimax_h3_fl2v_turbo_8step_v1_1_768p_comfyui_bf16",
+    "label": "fl2v turbo 8step v1.1 768p Turbo LoRA",
+    "category": "minimax",
+    "groups": [
+      "LoRAs (LightX2V Turbo)"
+    ],
+    "folder": "loras",
+    "filename": "minimax_h3_fl2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors",
+    "url": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors",
+    "page": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/blob/main/minimax_h3_fl2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors",
+    "note": "ComfyUI format.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 1956193000
+  },
+  {
+    "id": "minimax_h3_fl2v_turbo_8step_v1_2_768p_comfyui_bf16",
+    "label": "fl2v turbo 8step v1.2 768p Turbo LoRA",
+    "category": "minimax",
+    "groups": [
+      "LoRAs (LightX2V Turbo)"
+    ],
+    "folder": "loras",
+    "filename": "minimax_h3_fl2v_turbo_8step_v1.2_768p_comfyui_bf16.safetensors",
+    "url": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_8step_v1.2_768p_comfyui_bf16.safetensors",
+    "page": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/blob/main/minimax_h3_fl2v_turbo_8step_v1.2_768p_comfyui_bf16.safetensors",
+    "note": "ComfyUI format.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 2115772012
+  },
+  {
+    "id": "minimax_h3_latent_upscaler_3d",
+    "label": "Latent upscaler 3D (bf16)",
+    "category": "minimax",
+    "groups": [
+      "Latent upscaler"
+    ],
+    "folder": "latent_upscale_models",
+    "filename": "minimax_h3_latent_upscaler_3d_bf16.safetensors",
+    "url": "https://huggingface.co/LBH-123-AI/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors",
+    "page": "https://huggingface.co/LBH-123-AI/Minimax_h3_latent_Upscaler/blob/main/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors",
+    "note": "Used by the 2 Pass workflows. Saved as minimax_h3_latent_upscaler_3d_bf16.safetensors, the name the Builder settings look for.",
+    "format": "safetensors",
+    "default": true,
+    "download_size": 690592992
+  },
+  {
+    "id": "zimage_turbo",
+    "label": "Z-Image Turbo diffusion model",
+    "category": "image",
+    "groups": [
+      "ZImage"
+    ],
+    "folder": "diffusion_models",
+    "filename": "z_image_turbo_bf16.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/z_image_turbo/blob/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 12309866400
+  },
+  {
+    "id": "qwen_3_4b",
+    "label": "Qwen 3 4B text encoder",
+    "category": "image",
+    "groups": [
+      "ZImage",
+      "Flux/Klein 4B"
+    ],
+    "folder": "text_encoders",
+    "filename": "qwen_3_4b.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/z_image_turbo/blob/main/split_files/text_encoders/qwen_3_4b.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 8044982048
+  },
+  {
+    "id": "zimage_vae",
+    "label": "Z-Image VAE",
+    "category": "image",
+    "groups": [
+      "ZImage"
+    ],
+    "folder": "vae",
+    "filename": "ae.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/z_image_turbo/blob/main/split_files/vae/ae.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 335304388
+  },
+  {
+    "id": "krea2_diffusion",
+    "label": "Krea2 diffusion model",
+    "category": "image",
+    "groups": [
+      "Krea2"
+    ],
+    "folder": "diffusion_models",
+    "filename": "krea2_turbo_fp8_scaled.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/diffusion_models/krea2_turbo_fp8_scaled.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/Krea-2/blob/main/diffusion_models/krea2_turbo_fp8_scaled.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 13141730784
+  },
+  {
+    "id": "krea2_text_encoder",
+    "label": "Krea2 text encoder",
+    "category": "image",
+    "groups": [
+      "Krea2"
+    ],
+    "folder": "text_encoders",
+    "filename": "qwen3vl_4b_fp8_scaled.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/text_encoders/qwen3vl_4b_fp8_scaled.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/Krea-2/blob/main/text_encoders/qwen3vl_4b_fp8_scaled.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 5242467968
+  },
+  {
+    "id": "krea2_vae",
+    "label": "Krea2 VAE",
+    "category": "image",
+    "groups": [
+      "Krea2"
+    ],
+    "folder": "vae",
+    "filename": "qwen_image_vae.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/vae/qwen_image_vae.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/Krea-2/blob/main/vae/qwen_image_vae.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 253806246
+  },
+  {
+    "id": "moss_image_sft",
+    "label": "MOSS-Image SFT diffusion model",
+    "category": "image",
+    "groups": [
+      "MOSS-Image"
+    ],
+    "folder": "diffusion_models",
+    "filename": "moss_image_sft_bf16.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_sft_bf16.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/MOSS-Image/blob/main/diffusion_models/moss_image_sft_bf16.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 10164655808
+  },
+  {
+    "id": "moss_text_encoder",
+    "label": "Qwen3.5 9B text encoder",
+    "category": "image",
+    "groups": [
+      "MOSS-Image"
+    ],
+    "folder": "text_encoders",
+    "filename": "qwen3.5_9b_int8_convrot.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/text_encoders/qwen3.5_9b_int8_convrot.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/MOSS-Image/blob/main/text_encoders/qwen3.5_9b_int8_convrot.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 9748121532
+  },
+  {
+    "id": "flux2_vae",
+    "label": "Flux2 VAE",
+    "category": "image",
+    "groups": [
+      "MOSS-Image",
+      "Flux/Klein 4B",
+      "Ernie Image"
+    ],
+    "folder": "vae",
+    "filename": "flux2-vae.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/flux2-dev/blob/main/split_files/vae/flux2-vae.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 336213556
+  },
+  {
+    "id": "flux_klein_9b_diffusion",
+    "label": "9B diffusion model",
+    "category": "image",
+    "groups": [
+      "Flux/Klein 9B"
+    ],
+    "folder": "diffusion_models",
+    "filename": "flux-2-klein-9b-fp8.safetensors",
+    "url": "https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-fp8/resolve/main/flux-2-klein-9b-fp8.safetensors",
+    "page": "https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-fp8/blob/main/flux-2-klein-9b-fp8.safetensors",
+    "note": "Gated on Hugging Face: it needs a Hugging Face token and the licence accepted on its page. H3 Studio installs it with the token saved in App Settings, otherwise download it from its page.",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 9433061528,
+    "gated": true
+  },
+  {
+    "id": "flux_klein_9b_text_encoder",
+    "label": "9B Qwen text encoder",
+    "category": "image",
+    "groups": [
+      "Flux/Klein 9B"
+    ],
+    "folder": "text_encoders",
+    "filename": "qwen_3_8b_fp8mixed.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/flux2-klein-9B/resolve/main/split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/flux2-klein-9B/blob/main/split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 8664848742
+  },
+  {
+    "id": "flux_klein_9b_vae",
+    "label": "9B VAE",
+    "category": "image",
+    "groups": [
+      "Flux/Klein 9B"
+    ],
+    "folder": "vae",
+    "filename": "full_encoder_small_decoder.safetensors",
+    "url": "https://huggingface.co/black-forest-labs/FLUX.2-small-decoder/resolve/main/full_encoder_small_decoder.safetensors",
+    "page": "https://huggingface.co/black-forest-labs/FLUX.2-small-decoder/blob/main/full_encoder_small_decoder.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 249519092
+  },
+  {
+    "id": "flux_klein_4b_diffusion",
+    "label": "4B diffusion model",
+    "category": "image",
+    "groups": [
+      "Flux/Klein 4B"
+    ],
+    "folder": "diffusion_models",
+    "filename": "flux-2-klein-4b-fp8.safetensors",
+    "url": "https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8/resolve/main/flux-2-klein-4b-fp8.safetensors",
+    "page": "https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8/blob/main/flux-2-klein-4b-fp8.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 4070624520
+  },
+  {
+    "id": "ernie_diffusion",
+    "label": "Ernie diffusion model",
+    "category": "image",
+    "groups": [
+      "Ernie Image"
+    ],
+    "folder": "diffusion_models",
+    "filename": "ernie-image-turbo.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/ERNIE-Image/resolve/main/diffusion_models/ernie-image-turbo.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/ERNIE-Image/blob/main/diffusion_models/ernie-image-turbo.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 16067025480
+  },
+  {
+    "id": "ernie_text_encoder",
+    "label": "Ministral text encoder",
+    "category": "image",
+    "groups": [
+      "Ernie Image"
+    ],
+    "folder": "text_encoders",
+    "filename": "ministral-3-3b.safetensors",
+    "url": "https://huggingface.co/Comfy-Org/ERNIE-Image/resolve/main/text_encoders/ministral-3-3b.safetensors",
+    "page": "https://huggingface.co/Comfy-Org/ERNIE-Image/blob/main/text_encoders/ministral-3-3b.safetensors",
+    "note": "",
+    "format": "safetensors",
+    "default": false,
+    "download_size": 7717637511
+  },
+  {
+    "id": "supergemma_gguf",
+    "label": "SuperGemma 26B (Q4_K_M)",
+    "category": "llm",
+    "groups": [
+      "Gemma"
+    ],
+    "folder": "LLM",
+    "filename": "supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf",
+    "url": "https://huggingface.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2/resolve/main/supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf",
+    "page": "https://huggingface.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2/blob/main/supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf",
+    "note": "Used for text prompting.",
+    "format": "gguf",
+    "default": true,
+    "download_size": 16796015232
+  },
+  {
+    "id": "gemma_vision_gguf",
+    "label": "Gemma 4 26B Vision (IQ2_M)",
+    "category": "llm",
+    "groups": [
+      "Gemma"
+    ],
+    "folder": "LLM",
+    "filename": "gemma-4-26B-A4B-it-UD-IQ2_M.gguf",
+    "url": "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/gemma-4-26B-A4B-it-UD-IQ2_M.gguf",
+    "page": "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/blob/main/gemma-4-26B-A4B-it-UD-IQ2_M.gguf",
+    "note": "Used for image-reference prompting. Needs its mmproj file too.",
+    "format": "gguf",
+    "default": true,
+    "download_size": 10014755296
+  },
+  {
+    "id": "gemma_vision_mmproj",
+    "label": "Gemma Vision mmproj (BF16)",
+    "category": "llm",
+    "groups": [
+      "Gemma"
+    ],
+    "folder": "LLM",
+    "filename": "mmproj-BF16.gguf",
+    "url": "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/mmproj-BF16.gguf",
+    "page": "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/blob/main/mmproj-BF16.gguf",
+    "note": "The vision projector that matches the Gemma Vision model.",
+    "format": "gguf",
+    "default": true,
+    "download_size": 1194828256
+  },
+  {
+    "id": "qwen3_8_27b_ud_q4_k_m",
+    "label": "Qwen3.8 27B Q4_K_M (recommended)",
+    "category": "llm",
+    "groups": [
+      "Qwen"
+    ],
+    "folder": "LLM",
+    "filename": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+    "url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/Qwen3.8-27B-UD-Q4_K_M.gguf",
+    "page": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/blob/main/Qwen3.8-27B-UD-Q4_K_M.gguf",
+    "note": "Pick one quantization. The Builder lists every Qwen GGUF it finds.",
+    "format": "gguf",
+    "default": true,
+    "download_size": 16564259744
+  },
+  {
+    "id": "qwen3_8_27b_ud_iq4_xs",
+    "label": "Qwen3.8 27B IQ4_XS (smaller)",
+    "category": "llm",
+    "groups": [
+      "Qwen"
+    ],
+    "folder": "LLM",
+    "filename": "Qwen3.8-27B-UD-IQ4_XS.gguf",
+    "url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/Qwen3.8-27B-UD-IQ4_XS.gguf",
+    "page": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/blob/main/Qwen3.8-27B-UD-IQ4_XS.gguf",
+    "note": "Pick one quantization. The Builder lists every Qwen GGUF it finds.",
+    "format": "gguf",
+    "default": false,
+    "download_size": 14352911264
+  },
+  {
+    "id": "qwen3_8_27b_ud_q5_k_m",
+    "label": "Qwen3.8 27B Q5_K_M",
+    "category": "llm",
+    "groups": [
+      "Qwen"
+    ],
+    "folder": "LLM",
+    "filename": "Qwen3.8-27B-UD-Q5_K_M.gguf",
+    "url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/Qwen3.8-27B-UD-Q5_K_M.gguf",
+    "page": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/blob/main/Qwen3.8-27B-UD-Q5_K_M.gguf",
+    "note": "Pick one quantization. The Builder lists every Qwen GGUF it finds.",
+    "format": "gguf",
+    "default": false,
+    "download_size": 19870878624
+  },
+  {
+    "id": "qwen3_8_27b_ud_q6_k",
+    "label": "Qwen3.8 27B Q6_K",
+    "category": "llm",
+    "groups": [
+      "Qwen"
+    ],
+    "folder": "LLM",
+    "filename": "Qwen3.8-27B-UD-Q6_K.gguf",
+    "url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/Qwen3.8-27B-UD-Q6_K.gguf",
+    "page": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/blob/main/Qwen3.8-27B-UD-Q6_K.gguf",
+    "note": "Pick one quantization. The Builder lists every Qwen GGUF it finds.",
+    "format": "gguf",
+    "default": false,
+    "download_size": 21980441504
+  },
+  {
+    "id": "qwen3_8_27b_q8_0",
+    "label": "Qwen3.8 27B Q8_0 (largest)",
+    "category": "llm",
+    "groups": [
+      "Qwen"
+    ],
+    "folder": "LLM",
+    "filename": "Qwen3.8-27B-Q8_0.gguf",
+    "url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/Qwen3.8-27B-Q8_0.gguf",
+    "page": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/blob/main/Qwen3.8-27B-Q8_0.gguf",
+    "note": "Pick one quantization. The Builder lists every Qwen GGUF it finds.",
+    "format": "gguf",
+    "default": false,
+    "download_size": 29047086048
+  },
+  {
+    "id": "qwen_mmproj",
+    "label": "Qwen vision mmproj (BF16)",
+    "category": "llm",
+    "groups": [
+      "Qwen"
+    ],
+    "folder": "LLM",
+    "filename": "qwen-mmproj-BF16.gguf",
+    "url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/mmproj-BF16.gguf",
+    "page": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/blob/main/mmproj-BF16.gguf",
+    "note": "The vision projector that matches Qwen3.8. Saved as qwen-mmproj-BF16.gguf so it is not confused with Gemma's mmproj-BF16.gguf.",
+    "format": "gguf",
+    "default": true,
+    "download_size": 931146432
+  }
+]

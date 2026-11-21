@@ -128,9 +128,13 @@ function makeContext(overrides = {}) {
   return context;
 }
 
-// The Models dialog itself, with the real models.mjs, model_install_button.mjs and dialogs.mjs.
+// The Models dialog itself, with the real models.mjs, the model tabs (dmad_models_tab.mjs, catalog_models_tab.mjs with its hf_token_box.mjs),
+// model_install_button.mjs and dialogs.mjs.
 function loadDialog(context) {
   vm.runInContext(readBuilderModule('models.mjs'), context);
+  vm.runInContext(readBuilderModule('dmad_models_tab.mjs'), context);
+  vm.runInContext(readBuilderModule('hf_token_box.mjs'), context);
+  vm.runInContext(readBuilderModule('catalog_models_tab.mjs'), context);
   vm.runInContext(readBuilderModule('model_install_button.mjs'), context);
   vm.runInContext(readBuilderModule('dialogs.mjs'), context);
 }

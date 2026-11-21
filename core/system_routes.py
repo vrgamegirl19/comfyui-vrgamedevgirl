@@ -3,6 +3,7 @@ allowlisted installs of the custom nodes and model files (the DMAD LoRAs) the bu
 
 import asyncio
 import csv
+import http.client
 import importlib.util
 import io
 import itertools
@@ -10,9 +11,12 @@ import json
 import logging
 import math
 import os
+import ssl
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import folder_paths
@@ -20,7 +24,7 @@ import psutil
 from aiohttp import web
 from server import PromptServer
 
-from . import model_downloads
+from . import hf_token, model_downloads
 from .comfy_features import MINIMAX_H3_LATENT_UPSCALER_SINCE, comfyui_version, has_built_in, nvidia_vsr_available, version_text
 
 
@@ -431,7 +435,7 @@ VIDEO_BUILDER_CUSTOM_NODES = {
     "ltxvideo": {"install": "ComfyUI-LTXVideo", "folders": ("ComfyUI-LTXVideo",)},
     "te_speed_minimax_h3": {"install": "https://github.com/HELPMEEADICE/TE-Speed-MiniMaxH3-OSS.git", "folders": ("TE-Speed-MiniMaxH3-OSS",)},
     "mmh3_ultimate_upscale": {"install": "Comfyui-MMH3-UltimateUpscale", "folders": ("Comfyui-MMH3-UltimateUpscale",)},
-    "minimax_h3_audio_t8": {"install": "https://github.com/T8mars/comfyui-minimax-h3-audio-T8.git", "folders": ("comfyui-minimax-h3-audio-T8",)},
+    "minimax_h3_audio_t8": {"install": "https://github.com/T8mars/comfyui-minimax-h3-audio-T8.git", "folders": ("minimax-h3-audio-t8", "comfyui-minimax-h3-audio-T8")},
     # ComfyUI 0.44.0 and newer has this upscaler built in, so the pack is only needed on older ComfyUI ("built_in_since").
     "minimax_h3_latent_upscaler": {"install": "https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler.git", "folders": ("Comfyui_Minimax_h3_latent_Upscaler",),
                                    "built_in_since": MINIMAX_H3_LATENT_UPSCALER_SINCE},
@@ -568,7 +572,7 @@ def _model_ids(payload):
 async def models_status(request):
     """Allowlisted downloadable models (the Models dialog's DMAD Models tab): installed or not, and download progress."""
     data = await asyncio.to_thread(model_downloads.model_status)
-    return web.json_response({"ok": True, "models": data})
+    return web.json_response({"ok": True, "models": data, "hf_token_saved": await asyncio.to_thread(hf_token.is_saved)})
 
 
 @PromptServer.instance.routes.post("/vrgdg/video_builder/models/install")
@@ -577,7 +581,7 @@ async def models_install(request):
     try:
         started = await asyncio.to_thread(model_downloads.start_install, _model_ids(await request.json()))
         data = await asyncio.to_thread(model_downloads.model_status)
-        return web.json_response({"ok": True, "started": started, "models": data})
+        return web.json_response({"ok": True, "started": started, "models": data, "hf_token_saved": await asyncio.to_thread(hf_token.is_saved)})
     except Exception as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=400)
 
@@ -590,6 +594,97 @@ async def models_cancel(request):
         return web.json_response({"ok": True, "cancelled": cancelled})
     except Exception as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+
+@PromptServer.instance.routes.post("/vrgdg/video_builder/models/hf_token")
+async def models_hf_token_save(request):
+    """Save the Hugging Face token the installer downloads with (``api_key``; an empty string clears it). No reply carries the token."""
+    try:
+        payload = await request.json()
+        if not isinstance(payload, dict) or not isinstance(payload.get("api_key"), str):
+            raise ValueError("api_key is required; use an empty string to clear it.")
+        configured = await asyncio.to_thread(hf_token.save_token, payload["api_key"])
+        return web.json_response({"ok": True, "configured": configured})
+    except Exception as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+
+@PromptServer.instance.routes.post("/vrgdg/video_builder/models/hf_token/test")
+async def models_hf_token_test(request):
+    """Ask Hugging Face whose token this is: the one in ``api_key`` when it is sent, else the saved one."""
+    try:
+        try:
+            payload = await request.json()
+        except ValueError:
+            payload = {}
+        sent = payload.get("api_key") if isinstance(payload, dict) else ""
+        user = await asyncio.to_thread(hf_token.verify, sent if isinstance(sent, str) else "")
+        return web.json_response({"ok": True, "connected": True, "user": user})
+    except Exception as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+
+# -- restart ComfyUI -------------------------------------------------------------------------------------------------------
+
+# ComfyUI-Manager restarts ComfyUI with a route of its own: the v2 address of its newer versions, then the older one.
+_MANAGER_REBOOT_PATHS = ("/v2/manager/reboot", "/manager/reboot")
+
+
+def _manager_reboot_route(routes):
+    """(path, method) of ComfyUI-Manager's reboot route among the server's aiohttp `routes`, or None when it is not installed."""
+    methods = {}
+    for route in routes:
+        path = getattr(getattr(route, "resource", None), "canonical", "")
+        if path in _MANAGER_REBOOT_PATHS:
+            methods.setdefault(path, set()).add(str(route.method).upper())
+    for path in _MANAGER_REBOOT_PATHS:
+        if path in methods:
+            return path, "POST" if methods[path] & {"POST", "*"} else "GET"
+    return None
+
+
+def _own_base(scheme, sockname, port):
+    """The address this ComfyUI answers on for a request made from its own machine: the address the browser's connection came in on."""
+    host = str(sockname[0]) if sockname else "127.0.0.1"
+    if ":" in host:
+        host = f"[{host}]"
+    return f"{scheme}://{host}:{sockname[1] if sockname else port}"
+
+
+def _call_reboot(url, method, secure):
+    """Ask ComfyUI-Manager at `url` to restart ComfyUI. It restarts the process from inside this very request, so a connection that closes
+    without an answer means it worked. Gives (ok, error text).
+
+    The POST has no body on purpose: urllib adds a form Content-Type to a POST that has one, even an empty one, and ComfyUI-Manager answers
+    400 to that (its guard against cross-site form posts). With no body it sends no Content-Type."""
+    request = urllib.request.Request(url, method=method)
+    context = ssl._create_unverified_context() if secure else None
+    try:
+        urllib.request.urlopen(request, timeout=10, context=context).close()
+    except urllib.error.HTTPError as exc:
+        if exc.code == 403:
+            return False, "ComfyUI-Manager refused to restart ComfyUI. Its security level has to be normal or lower for that. Restart ComfyUI by hand."
+        return False, f"ComfyUI-Manager answered {exc.code} when it was asked to restart ComfyUI."
+    except (OSError, http.client.HTTPException):
+        pass
+    return True, ""
+
+
+@PromptServer.instance.routes.post("/vrgdg/video_builder/comfyui/restart")
+async def comfyui_restart(request):
+    """Restart ComfyUI through ComfyUI-Manager (the Video Builder's Restart ComfyUI button). The restart usually cuts this answer short, so the
+    front end treats a dropped connection as done and waits for ComfyUI to answer again."""
+    target = _manager_reboot_route(PromptServer.instance.app.router.routes())
+    if target is None:
+        return web.json_response({"ok": False, "error": "ComfyUI-Manager is not installed in this ComfyUI, so it cannot restart itself. Close ComfyUI and start it again."}, status=501)
+    path, method = target
+    sockname = request.transport.get_extra_info("sockname") if request.transport else None
+    url = _own_base(request.scheme, sockname, PromptServer.instance.port) + path
+    _log.warning("[VRGDG Restart] Restarting ComfyUI at the Video Builder's request (ComfyUI-Manager %s %s).", method, path)
+    ok, error = await asyncio.to_thread(_call_reboot, url, method, request.scheme == "https")
+    if not ok:
+        return web.json_response({"ok": False, "error": error}, status=502)
+    return web.json_response({"ok": True, "status": "restarting"}, status=202)
 
 
 NODE_CLASS_MAPPINGS = {}
