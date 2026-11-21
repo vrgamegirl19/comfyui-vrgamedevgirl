@@ -339,3 +339,65 @@ test('leaving the tab stops its polling', async () => {
   await settle();
   assert.ok(server.calls.length - after <= 1, 'at most one request already in flight when the tab was left');
 });
+
+// The badge on a row is the span that says what state the file is in.
+const BADGES = ['Installed', 'Available', 'Login needed', 'Downloading', 'Missing'];
+const badges = (node) => find(node, (item) => item.tagName === 'span' && BADGES.includes(item.textContent));
+
+test('a file that is not installed is Available in yellow, never Missing', async () => {
+  const { modelBadge } = await import('../web/music_video_builder/dmad_models_tab.mjs');
+  assert.deepEqual(modelBadge(model('a')), { text: 'Available', colors: ['#713f12', '#fde047'] });
+  assert.equal(modelBadge(model('a', { installed: true })).text, 'Installed');
+  assert.equal(modelBadge(model('a'), { busy: true }).text, 'Downloading');
+  const login = modelBadge(model('a', { gated: true }), { loginNeeded: true });
+  assert.equal(login.text, 'Login needed');
+  assert.notDeepEqual(login.colors, modelBadge(model('a')).colors, 'a file that needs a login does not look like one you can install');
+
+  installer([model('a1', { installed: true, size: 2 * GB }), model('a2'), model('shared', { groups: ['Alpha', 'Beta'] }), model('b2', { groups: ['Beta'], gated: true })]);
+  const body = new FakeElement('div');
+  const stop = renderCatalogTab(body, { category: 'image', groups: CARDS });
+  await settle();
+  const shown = badges(body).map((badge) => badge.textContent);
+  assert.ok(shown.includes('Installed') && shown.includes('Available') && shown.includes('Login needed'));
+  assert.equal(shown.includes('Missing'), false);
+  assert.doesNotMatch(textOf(body), /Missing/);
+  const available = badges(body).find((badge) => badge.textContent === 'Available');
+  assert.match(available.style.cssText, /background:#713f12;color:#fde047/);
+  stop();
+});
+
+test('an installed file keeps its tick, greyed out, and an available one has none', async () => {
+  installer([model('a1', { installed: true, size: 2 * GB }), model('a2')]);
+  const body = new FakeElement('div');
+  const stop = renderCatalogTab(body, { category: 'image', groups: [CARDS[0]] });
+  await settle();
+  const [cardBox, installedBox, availableBox] = checkboxes(body);
+  assert.equal(installedBox.checked, true, 'a1 is installed');
+  assert.equal(installedBox.disabled, true, 'and cannot be picked again');
+  assert.equal(installedBox.title, 'Already installed');
+  assert.equal(availableBox.checked, false, 'a2 is only available');
+  assert.equal(availableBox.disabled, false);
+  assert.equal(cardBox.checked, false, 'a card with a file still to install is not ticked');
+  assert.equal(buttonStarting(body, 'Install Selected').disabled, true, 'the ticks of installed files start nothing');
+  availableBox.tick(true);
+  assert.equal(buttonStarting(body, 'Install Selected').textContent, 'Install Selected (1 file, 2.00 GB)', 'only a2 is counted');
+  assert.equal(checkboxes(body)[1].checked, true);
+  stop();
+});
+
+test('a card whose files are all installed is ticked too, and ticking the others in a card ticks the card', async () => {
+  installer([model('a1', { installed: true, size: 2 * GB }), model('b1', { groups: ['Beta'] }), model('b2', { groups: ['Beta'], installed: true, size: 2 * GB })]);
+  const body = new FakeElement('div');
+  const stop = renderCatalogTab(body, { category: 'image', groups: CARDS });
+  await settle();
+  const cardBoxes = checkboxes(body).filter((box) => box.title.startsWith('Tick or untick') || box.title.startsWith('Every file'));
+  const [alphaBox, betaBox] = cardBoxes;
+  assert.equal(alphaBox.checked, true);
+  assert.equal(alphaBox.disabled, true);
+  assert.equal(alphaBox.title, 'Every file of this card is installed');
+  assert.equal(betaBox.checked, false, 'b1 is still to install');
+  betaBox.tick(true);
+  assert.equal(checkboxes(body).filter((box) => box.title.startsWith('Tick or untick'))[0].checked, true, 'every file left in the card is picked');
+  assert.equal(buttonStarting(body, 'Install Selected').textContent, 'Install Selected (1 file, 2.00 GB)');
+  stop();
+});

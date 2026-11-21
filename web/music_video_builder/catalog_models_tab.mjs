@@ -1,6 +1,6 @@
 import { getJson, postJson } from "./comfy_api.mjs";
 import { makeMiniButton, toast } from "./controls.mjs";
-import { dmadModelStateText, formatBytes } from "./dmad_models_tab.mjs";
+import { dmadModelStateText, formatBytes, modelBadge } from "./dmad_models_tab.mjs";
 import { renderHfTokenBox } from "./hf_token_box.mjs";
 
 // The Models dialog's MiniMax H3, Image Models and LLM Models tabs. Every file is a row with a check box. "Install Selected" puts the ticked
@@ -150,7 +150,8 @@ export function renderCatalogTab(body, { category, groups, intro = "", fallback 
     top.style.cssText = "display:flex;align-items:flex-start;gap:10px;";
     const box = document.createElement("input");
     box.type = "checkbox";
-    box.checked = selected.has(model.id) && canInstallModel(model);
+    // An installed file keeps its tick (greyed out, it cannot be picked again). A file that is only available is ticked when it is selected.
+    box.checked = Boolean(model.installed) || (selected.has(model.id) && canInstallModel(model));
     box.disabled = !canInstallModel(model);
     box.title = model.installed ? "Already installed" : needsHfToken(model) ? "Needs a Hugging Face login: save your token in the box at the top of this tab, or download it from its page" : "Tick to install it with Install Selected";
     box.style.cssText = "width:18px;height:18px;margin-top:2px;flex:none;";
@@ -170,8 +171,8 @@ export function renderCatalogTab(body, { category, groups, intro = "", fallback 
     file.style.cssText = "font-size:12px;color:#94a3b8;overflow-wrap:anywhere;";
     text.append(name, file);
     const badge = document.createElement("span");
-    badge.textContent = busy ? "Downloading" : model.installed ? "Installed" : needsHfToken(model) ? "Login needed" : "Missing";
-    const colors = busy ? ["#1e3a8a", "#bfdbfe"] : model.installed ? ["#14532d", "#bbf7d0"] : needsHfToken(model) ? ["#78350f", "#fde68a"] : ["#7f1d1d", "#fecaca"];
+    const { text: badgeText, colors } = modelBadge(model, { busy, loginNeeded: needsHfToken(model) });
+    badge.textContent = badgeText;
     badge.style.cssText = `flex:none;font-size:11px;font-weight:900;padding:4px 7px;border-radius:999px;background:${colors[0]};color:${colors[1]};`;
     top.append(box, text, badge);
     row.append(top);
@@ -225,9 +226,11 @@ export function renderCatalogTab(body, { category, groups, intro = "", fallback 
     const selectable = members.filter(canInstallModel);
     const groupBox = document.createElement("input");
     groupBox.type = "checkbox";
-    groupBox.checked = selectable.length > 0 && selectable.every((model) => selected.has(model.id));
+    // A card whose files are all installed keeps its tick too (greyed out).
+    const allInstalled = members.length > 0 && members.every((model) => model.installed);
+    groupBox.checked = selectable.length > 0 ? selectable.every((model) => selected.has(model.id)) : allInstalled;
     groupBox.disabled = !selectable.length;
-    groupBox.title = "Tick or untick every file of this card that is not installed yet";
+    groupBox.title = allInstalled ? "Every file of this card is installed" : "Tick or untick every file of this card that is not installed yet";
     groupBox.style.cssText = "width:20px;height:20px;flex:none;";
     groupBox.addEventListener("change", () => {
       for (const model of selectable) {
