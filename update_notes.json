@@ -3,6 +3,30 @@
   "product": "AI Video Builder",
   "releases": [
     {
+      "id": "2026-11-21-v10-0-10-models-installed-ticked-available",
+      "version": "10.0.10",
+      "date": "2026-11-21",
+      "title": "Installed models keep their check mark and the rest show Available",
+      "commit": "87ce1dd40ce39992e8dd47d9c533369d50b8a121",
+      "restart_required": false,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "sections": [
+        {
+          "title": "Improved",
+          "items": [
+            "Models dialog: a file you already have keeps its check mark (greyed out, it cannot be picked again), and a card whose files are all installed is ticked too. Install Selected still counts only the files that are left to download.",
+            "Models dialog: a file that is not installed is now badged Available in yellow instead of Missing in red. These files come in many versions and nobody needs all of them, so Missing suggested something was wrong. This covers the MiniMax H3, Image Models, LLM Models and DMAD LoRA tabs. Files that need a Hugging Face login show Login needed in orange."
+          ]
+        },
+        {
+          "title": "Compatibility Notes",
+          "items": [
+            "Only the web page changed in this build, so updating needs no restart. Refresh the browser page to see it."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-11-20-v10-0-9-install-models-hf-token-restart-comfyui",
       "version": "10.0.9",
       "date": "2026-11-20",
@@ -137,45 +161,6 @@
             "Comfyui-MMH3-UltimateUpscale has no built-in replacement and is still required for 2 Pass Advanced.",
             "The latent-upscaler checkpoint (minimax_h3_latent_upscaler_3d_bf16.safetensors) must be installed separately either way.",
             "H3 Studio 0.1.27 matches: its Custom Nodes window now asks this pack in ComfyUI, so Install and Install Missing Nodes work from the app."
-          ]
-        }
-      ]
-    },
-    {
-      "id": "2026-11-10-v10-0-5-own-thumbnail-browser-ai-auto-build-presets",
-      "version": "10.0.5",
-      "date": "2026-11-10",
-      "title": "Own thumbnail and intro video, Browser AI thumbnails and Auto Build scene presets",
-      "commit": "a5eaa319145da4d7549f29df15f400d4c56028c6",
-      "restart_required": true,
-      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/pull/337",
-      "sections": [
-        {
-          "title": "Added",
-          "items": [
-            "The Thumbnail dialog takes your own picture (png, jpg or webp) and your own intro video. The finished video starts with the thumbnail as its first frame, then your intro video with its own sound, then the video. An intro of another size or frame rate is fitted with black bars, never cropped.",
-            "Added Flow, GPT Image and Meta AI (Browser AI) as thumbnail engines, each its own entry in the engine list. They run in your own signed-in Chrome."
-          ]
-        },
-        {
-          "title": "Improved",
-          "items": [
-            "Auto Build now has synchronized scene presets, with Medium shots as the default.",
-            "Multi-shot Whisper timing is now batched before the LLM writes the prompts."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Fixed a misleading Advanced tiling label in the MiniMax render settings."
-          ]
-        },
-        {
-          "title": "Compatibility Notes",
-          "items": [
-            "Restart ComfyUI after updating, then hard-refresh the browser so the revised Video Builder JavaScript is loaded.",
-            "The Browser AI engines need Chrome and your own accounts signed in on each site.",
-            "H3 Studio 0.1.26 matches."
           ]
         }
       ]

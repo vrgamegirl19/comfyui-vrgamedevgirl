@@ -124,6 +124,7 @@ test('the tab lists both LoRAs as missing and where they will go', async () => {
   assert.match(text, /DMAD 4-step LoRA/);
   assert.match(text, /Refiner LoRA/);
   assert.equal((text.match(/Not installed/g) || []).length, 2);
+  assert.equal((text.match(/Available/g) || []).length, 2, 'each file that is not installed carries an Available badge');
   assert.match(text, /Installs to: C:\/ComfyUI\/models\/loras/);
   assert.equal(buttonLabelled(body, 'Install Missing Files').disabled, false);
   assert.equal(server.calls.every((call) => call.url === '/vrgdg/video_builder/models/status'), true);

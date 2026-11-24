@@ -27,6 +27,15 @@ export function dmadModelStateText(model) {
   return "Not installed";
 }
 
+// The badge on a file: its text and its background and text colours. A file that is not installed is "Available", in yellow, and not "Missing":
+// these files come in many versions and nobody needs all of them, so "Missing" read as a thing to fix.
+export function modelBadge(model, { busy = false, loginNeeded = false } = {}) {
+  if (busy) return { text: "Downloading", colors: ["#1e3a8a", "#bfdbfe"] };
+  if (model?.installed) return { text: "Installed", colors: ["#14532d", "#bbf7d0"] };
+  if (loginNeeded) return { text: "Login needed", colors: ["#7c2d12", "#fed7aa"] };
+  return { text: "Available", colors: ["#713f12", "#fde047"] };
+}
+
 // Every file shown, from the server's list. The static list keeps the cards (and their links) when the server cannot be reached.
 export function mergeDmadModels(serverModels = []) {
   const byId = new Map((Array.isArray(serverModels) ? serverModels : []).map((item) => [item.id, item]));
@@ -98,8 +107,8 @@ export function renderDmadModelsTab(body) {
       name.textContent = model.label;
       name.style.cssText = "font-size:17px;font-weight:900;color:#f8fafc;";
       const badge = document.createElement("span");
-      badge.textContent = busy ? "Downloading" : model.installed ? "Installed" : "Missing";
-      const badgeColors = busy ? ["#1e3a8a", "#bfdbfe"] : model.installed ? ["#14532d", "#bbf7d0"] : ["#7f1d1d", "#fecaca"];
+      const { text: badgeText, colors: badgeColors } = modelBadge(model, { busy });
+      badge.textContent = badgeText;
       badge.style.cssText = `font-size:11px;font-weight:900;padding:4px 7px;border-radius:999px;background:${badgeColors[0]};color:${badgeColors[1]};`;
       heading.append(name, badge);
       const file = document.createElement("div");
