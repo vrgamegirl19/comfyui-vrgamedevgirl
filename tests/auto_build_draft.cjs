@@ -67,6 +67,7 @@ test('closing saves all inputs and reopening a reloaded project restores file co
   }
   f.nodes('textarea')[0].value = '  My complete lyrics\nsecond line  ';
   f.nodes('select').find(node => node.children.some(option => option.value === 'custom')).value = 'custom';
+  f.nodes('select').find(node => node.children.some(option => option.value === 'german')).value = 'german';
   f.nodes('input').find(node => node.type === 'number').value = '7.5';
   f.nodes('input').filter(node => node.type === 'checkbox').forEach(node => { node.checked = true; });
   f.nodes('details')[0].open = true;
@@ -74,12 +75,14 @@ test('closing saves all inputs and reopening a reloaded project restores file co
   assert.equal(f.document.body.children.length, 0);
   const saved = f.saves[0];
   assert.equal(saved.lyrics, '  My complete lyrics\nsecond line  ');
+  assert.equal(saved.lyrics_language, 'german');
   assert.equal(saved.use_current_settings, true);
   assert.equal(saved.skip_prompts, true);
   const reloaded = fixture('Z:/projects/one', JSON.parse(JSON.stringify(saved)));
   reloaded.api.openAutoBuildModal();
   assert.equal(reloaded.nodes('textarea')[0].value, saved.lyrics);
   assert.equal(reloaded.nodes('select').find(node => node.children.some(option => option.value === 'custom')).value, 'custom');
+  assert.equal(reloaded.nodes('select').find(node => node.children.some(option => option.value === 'german')).value, 'german');
   assert.equal(reloaded.nodes('input').find(node => node.type === 'number').value, '7.5');
   assert.ok(walk(reloaded.document.body).some(node => node.textContent === 'song.wav'));
   await reloaded.button('Cancel').onclick();
@@ -94,6 +97,7 @@ test('drafts stay within their project and an older project has no inherited inp
   const f = fixture('Z:/projects/two', { project_folder: 'Z:/projects/one', lyrics: 'private to one' });
   f.api.openAutoBuildModal();
   assert.equal(f.nodes('textarea')[0].value, '');
+  assert.equal(f.nodes('select').find(node => node.children.some(option => option.value === 'german')).value, 'auto');
   assert.equal(f.c.autoBuildDraftForProject({ project_folder: 'Z:\\projects\\one\\' }, 'z:/projects/one').project_folder, 'Z:\\projects\\one\\');
 });
 

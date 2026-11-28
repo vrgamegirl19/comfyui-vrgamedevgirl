@@ -252,9 +252,23 @@ export function createAutoBuild({
     customDuration.style.cssText = "display:none;border:1px solid #475569;border-radius:7px;background:#020617;color:#f8fafc;padding:8px;font-size:12px;";
     durationSelect.onchange = () => { customDuration.style.display = durationSelect.value === "custom" ? "block" : "none"; };
     durationLabel.append(durationSelect, customDuration);
+    const languageLabel = document.createElement("label");
+    languageLabel.textContent = "Lyrics language";
+    languageLabel.style.cssText = durationLabel.style.cssText;
+    const languageSelect = document.createElement("select");
+    languageSelect.style.cssText = durationSelect.style.cssText;
+    const lyricLanguages = ["auto", "german", "english", "spanish", "french", "italian", "portuguese", "dutch", "polish", "russian", "japanese", "korean", "chinese"];
+    for (const language of lyricLanguages) {
+      const option = document.createElement("option");
+      option.value = language;
+      option.textContent = language === "auto" ? "Auto detect" : language[0].toUpperCase() + language.slice(1);
+      languageSelect.append(option);
+    }
+    languageSelect.value = lyricLanguages.includes(draft?.lyrics_language) ? draft.lyrics_language : "auto";
+    languageLabel.append(languageSelect);
     const advancedHint = document.createElement("div");
     advancedHint.textContent = "Shorter segments reduce per-clip VRAM use. Auto Build still clamps the final segment to the exact audio end.";
-    advancedHint.style.cssText = "align-self:end;color:#94a3b8;font-size:11px;line-height:1.4;padding-bottom:2px;";
+    advancedHint.style.cssText = "grid-column:1 / -1;color:#94a3b8;font-size:11px;line-height:1.4;padding-bottom:2px;";
     const useCurrentBuilderSettings = makeCheckbox("Use current Scene Defaults and story settings", false);
     useCurrentBuilderSettings.wrapper.style.cssText += "grid-column:1 / -1;border:1px solid #334155;border-radius:7px;background:#111827;padding:8px;";
     useCurrentBuilderSettings.wrapper.title = "Preserve the current Scene Defaults, story layer, story beats, and per-scene performance settings instead of applying Auto Build recommendations.";
@@ -397,7 +411,7 @@ export function createAutoBuild({
     const skipPromptCreation = makeCheckbox("Skip prompt creation (review timeline first)", false);
     skipPromptCreation.wrapper.style.cssText += "grid-column:1 / -1;border:1px solid #334155;border-radius:7px;background:#111827;padding:8px;";
     skipPromptCreation.wrapper.title = "Return to the timeline after Auto Build saves the audio, scenes, references, mappings, and lyric notes. You can generate prompts later from the normal builder tools.";
-    advancedBody.append(durationLabel, advancedHint, storyBoardRow, useCurrentBuilderSettings.wrapper, skipPromptCreation.wrapper);
+    advancedBody.append(durationLabel, languageLabel, advancedHint, storyBoardRow, useCurrentBuilderSettings.wrapper, skipPromptCreation.wrapper);
     advanced.append(advancedSummary, advancedBody);
 
     const note = document.createElement("div");
@@ -467,6 +481,7 @@ export function createAutoBuild({
         singer: await encodeAutoBuildFile(selected.singer),
         locations: await Promise.all(selected.locations.map(encodeAutoBuildFile)),
         duration: durationSelect.value, custom_duration: customDuration.value,
+        lyrics_language: languageSelect.value,
         use_current_settings: useCurrentBuilderSettings.input.checked,
         skip_prompts: skipPromptCreation.input.checked, advanced_open: advanced.open,
       };
@@ -481,7 +496,7 @@ export function createAutoBuild({
       closing = true;
       const controls = [close, cancel, build, createProjectNow, ltxEngine, miniMaxEngine, openRunner,
         songRow.choose, singerRow.choose, locationRow.choose, songInput, singerInput, locationInput,
-        lyricsInput, durationSelect, customDuration, useCurrentBuilderSettings.input, skipPromptCreation.input, speedPreset, musicPreset, openStoryBoard];
+        lyricsInput, durationSelect, customDuration, languageSelect, useCurrentBuilderSettings.input, skipPromptCreation.input, speedPreset, musicPreset, openStoryBoard];
       const disabled = controls.map((control) => control.disabled);
       controls.forEach((control) => { control.disabled = true; });
       try {
@@ -657,6 +672,7 @@ export function createAutoBuild({
         lyrics,
         segmentDuration,
         selectedEngine,
+        languageSelect.value,
         selected.singer ? `${selected.singer.name || ""}:${selected.singer.size || 0}:${selected.singer.lastModified || 0}` : "",
         ...(selected.locationSource === "images" ? selected.locations.map((file) => `${file?.name || ""}:${file?.size || 0}:${file?.lastModified || 0}`) : []),
       ]);
@@ -687,7 +703,7 @@ export function createAutoBuild({
       cancel.disabled = true;
       close.disabled = true;
       createProjectNow.disabled = true;
-      for (const control of [ltxEngine, miniMaxEngine, openRunner, songRow.choose, singerRow.choose, locationRow.choose, lyricsInput, durationSelect, customDuration, useCurrentBuilderSettings.input, skipPromptCreation.input, speedPreset, musicPreset, openStoryBoard]) control.disabled = true;
+      for (const control of [ltxEngine, miniMaxEngine, openRunner, songRow.choose, singerRow.choose, locationRow.choose, lyricsInput, durationSelect, customDuration, languageSelect, useCurrentBuilderSettings.input, skipPromptCreation.input, speedPreset, musicPreset, openStoryBoard]) control.disabled = true;
       status.style.display = "block";
       const setStatus = (message) => {
         status.textContent = message;
@@ -851,7 +867,7 @@ export function createAutoBuild({
         if (needsLyricTranscription) {
           await transcribeExistingScenesWithOptions({
             referenceLyrics: lyrics,
-            language: "english",
+            language: languageSelect.value,
             replaceAll: false,
             instrumentalText: "[instrumental]",
           }, {
@@ -906,7 +922,7 @@ export function createAutoBuild({
         cancel.disabled = false;
         close.disabled = false;
         createProjectNow.disabled = false;
-        for (const control of [ltxEngine, miniMaxEngine, openRunner, songRow.choose, singerRow.choose, locationRow.choose, lyricsInput, durationSelect, customDuration, useCurrentBuilderSettings.input, skipPromptCreation.input, speedPreset, musicPreset, openStoryBoard]) control.disabled = false;
+        for (const control of [ltxEngine, miniMaxEngine, openRunner, songRow.choose, singerRow.choose, locationRow.choose, lyricsInput, durationSelect, customDuration, languageSelect, useCurrentBuilderSettings.input, skipPromptCreation.input, speedPreset, musicPreset, openStoryBoard]) control.disabled = false;
         toast(`Auto Build paused:\n${String(error?.message || error)}`, true);
       }
     };
