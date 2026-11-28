@@ -1348,6 +1348,15 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
                     matched_word_indices[reference_index] = best_index
                     used_acoustic.add(best_index)
 
+            if not matched_word_indices:
+                anchor_count = min(len(reference_tokens), len(acoustic_words))
+                if anchor_count > 1:
+                    for anchor in range(anchor_count):
+                        fraction = anchor / (anchor_count - 1)
+                        reference_index = round(fraction * (len(reference_tokens) - 1))
+                        acoustic_index = round(fraction * (len(acoustic_words) - 1))
+                        matched_word_indices[reference_index] = acoustic_index
+
         timed_words = [None] * len(reference_tokens)
         for reference_index, acoustic_index in matched_word_indices.items():
             acoustic = acoustic_words[acoustic_index]
@@ -2054,38 +2063,47 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
                 unit["text"] for unit in reference_units if unit.get("type") == "vocal"
             ) if reference_units else cleaned_reference_lyrics
 
-            result = None
-            mode = "transcribe"
-            use_acoustic_reference_timing = segment_mode == "reference_scene_words"
-            if alignable_reference_text and not use_acoustic_reference_timing:
-                print("[TimestampedLyrics] Running stable-ts reference alignment...")
-                try:
-                    result = model.align(
-                        tmp_wav_path,
-                        alignable_reference_text,
-                        language=lang,
-                        verbose=False,
-                    )
-                    mode = "align"
-                except Exception as align_err:
-                    print(f"[TimestampedLyrics] Reference alignment failed, falling back to transcription: {align_err}")
-
-            if result is None:
+            def transcribe():
                 print("[TimestampedLyrics] Running stable-ts acoustic transcription...")
-                result = model.transcribe(
+                return model.transcribe(
                     tmp_wav_path,
                     language=lang,
                     word_timestamps=True,
                     verbose=False,
                 )
-                if use_acoustic_reference_timing:
+
+            result = None
+            transcription = None
+            mode = "transcribe"
+            use_reference_word_timing = segment_mode == "reference_scene_words"
+            alignment_language = lang
+            if use_reference_word_timing and alignable_reference_text and lang is None:
+                transcription = transcribe()
+                alignment_language = transcription.language
+            if alignable_reference_text and (alignment_language or not use_reference_word_timing):
+                print("[TimestampedLyrics] Running stable-ts reference alignment...")
+                try:
+                    result = model.align(
+                        tmp_wav_path,
+                        alignable_reference_text,
+                        language=alignment_language,
+                        verbose=False,
+                    )
+                except Exception as align_err:
+                    print(f"[TimestampedLyrics] Reference alignment failed, falling back to transcription: {align_err}")
+                if result is not None:
+                    mode = "align_reference_words" if use_reference_word_timing else "align"
+
+            if result is None:
+                result = transcribe() if transcription is None else transcription
+                if use_reference_word_timing:
                     mode = "transcribe_reference_words"
 
             stable_segments = self._segments_from_stable_result(result)
             if reference_units:
                 prealigned_reference_segments = (
                     self._reference_scene_word_segments(reference_units, stable_segments, total_duration)
-                    if use_acoustic_reference_timing
+                    if use_reference_word_timing
                     else None
                 )
                 segments = self._segments_from_reference_units(
